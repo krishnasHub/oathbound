@@ -1,0 +1,3092 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Action RPG Prototype</title>
+<style>
+  :root { --bg:#0b0c0f; --panel:#16181df0; --border:#3a3f4a; --text:#e8e6e3; --muted:#9aa0a6; --accent:#ffd34a; }
+  html, body { margin:0; height:100%; background:var(--bg); overflow:hidden; color:var(--text);
+    font-family: system-ui, "Segoe UI", sans-serif; user-select:none; }
+  canvas { display:block; cursor:crosshair; }
+  .hidden { display:none !important; }
+  .muted { color:var(--muted); }
+  .panel { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:var(--panel);
+    border:1px solid var(--border); border-radius:10px; padding:16px 20px; min-width:340px;
+    max-width:min(720px, 92vw); max-height:84vh; overflow:auto; box-shadow:0 10px 40px #000a; }
+  .panel h1 { margin:0 0 6px; font-size:22px; }
+  .panel h2 { margin:0 0 12px; font-size:18px; display:flex; justify-content:space-between; align-items:center; gap:16px; }
+  .panel h3 { margin:14px 0 6px; font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); }
+  button { background:#2a2f3a; color:var(--text); border:1px solid #4a5160; border-radius:6px; padding:6px 12px;
+    font:inherit; cursor:pointer; }
+  button:hover:not(:disabled) { background:#363d4b; }
+  button:disabled { opacity:.35; cursor:default; }
+  .controls { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; margin:12px 0 16px; font-size:14px; }
+  .controls b { color:var(--accent); font-weight:600; }
+  .gold { color:var(--accent); font-size:14px; font-weight:600; }
+  /* inventory */
+  .equip, .grid { display:grid; gap:6px; }
+  .equip { grid-template-columns:repeat(3, 1fr); }
+  .grid { grid-template-columns:repeat(8, 64px); }
+  .cell { position:relative; height:58px; border:1px solid #3a3f4a; border-radius:6px; background:#1f232b;
+    font-size:10.5px; line-height:1.2; padding:4px; box-sizing:border-box; overflow:hidden; cursor:pointer; }
+  .cell.empty { cursor:default; opacity:.45; }
+  .cell .slotlabel { color:var(--muted); font-size:10px; text-transform:uppercase; }
+  .cell .qty { position:absolute; right:4px; bottom:3px; font-weight:700; color:#fff; }
+  .equip .cell { height:64px; font-size:12px; }
+  .r-common { border-color:#8a8f99; } .r-magic { border-color:#6aa8ff; color:#bcd7ff; }
+  .r-rare { border-color:#ffd34a; color:#ffe8a0; } .r-quest { border-color:#ff9a3d; color:#ffc890; }
+  .hint { font-size:12px; color:var(--muted); margin-top:10px; }
+  #tooltip { position:absolute; pointer-events:none; background:#0f1115f5; border:1px solid var(--border);
+    border-radius:6px; padding:8px 10px; font-size:12.5px; max-width:240px; z-index:20; line-height:1.45; }
+  #tooltip .up { color:#6fe08a; } #tooltip .down { color:#ff6b6b; }
+  /* character */
+  .attr { display:grid; grid-template-columns:90px 40px 32px 1fr; align-items:center; gap:8px; margin:4px 0; }
+  .attr button { padding:2px 0; }
+  .derived { display:grid; grid-template-columns:1fr auto; gap:3px 20px; font-size:14px; }
+  .derived span:nth-child(even) { text-align:right; font-variant-numeric:tabular-nums; }
+  /* quests */
+  .quest { border-left:3px solid var(--accent); padding:4px 10px; margin:8px 0; }
+  .quest.done { border-color:#555; opacity:.6; }
+  /* dialogue */
+  #dialogue { position:absolute; left:50%; bottom:110px; transform:translateX(-50%); width:min(640px, 92vw);
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px 18px; box-shadow:0 10px 40px #000a; }
+  #dialogue .speaker { color:var(--accent); font-weight:700; margin-bottom:6px; }
+  #dialogue .text { line-height:1.5; margin-bottom:10px; }
+  #dialogue .choices button { display:block; width:100%; text-align:left; margin:4px 0; line-height:1.4; }
+  #dialogue .verb { font-weight:700; }
+  /* character select */
+  #charselect { width:min(900px, 94vw); max-width:none; box-sizing:border-box; background:#16181d; }
+  .cs-classes { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; margin:14px 0 18px; }
+  .cs-card { border:2px solid #343945; border-radius:8px; padding:10px 12px; cursor:pointer; background:#1b1e25; }
+  .cs-card:hover { background:#222630; }
+  .cs-card.sel { background:#232836; }
+  .cs-card .nm { font-weight:700; font-size:16px; display:flex; align-items:center; gap:8px; }
+  .cs-card .dot { width:12px; height:12px; border-radius:50%; }
+  .cs-card .tg { color:var(--muted); font-size:12.5px; margin-top:4px; line-height:1.35; }
+  .cs-card .key { margin-left:auto; color:var(--muted); font-size:11px; font-weight:400; }
+  .cs-body { display:grid; grid-template-columns:1fr 1fr; gap:6px 28px; }
+  @media (max-width: 680px) { .cs-body { grid-template-columns:1fr; } }
+  .statrow { display:grid; grid-template-columns:96px 1fr 44px; align-items:center; gap:8px; font-size:13.5px; margin:5px 0; }
+  .statrow .track { height:8px; background:#262a33; border-radius:4px; overflow:hidden; }
+  .statrow .fill { height:100%; border-radius:4px; }
+  .statrow .val { text-align:right; font-variant-numeric:tabular-nums; }
+  .cs-info p { margin:4px 0 10px; font-size:14px; line-height:1.45; }
+  .cs-info b { color:var(--text); }
+  .cs-abilities { display:grid; gap:6px; font-size:12.5px; line-height:1.4; margin-bottom:8px; }
+  .cs-sex { display:flex; gap:8px; margin:6px 0; }
+  .cs-sex button { flex:1; padding:8px; }
+  .cs-sex button.sel { border-color:var(--accent); background:#363d4b; }
+  .cs-footer { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:18px; flex-wrap:wrap; }
+  .cs-footer button { padding:10px 22px; font-weight:700; font-size:15px; border-color:var(--accent); }
+  #toasts { position:absolute; top:70px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column;
+    align-items:center; gap:6px; pointer-events:none; z-index:10; }
+  .toast { background:#000c; border:1px solid #333; padding:6px 14px; border-radius:6px; font-size:14px;
+    animation: fade 3.2s forwards; }
+  @keyframes fade { 0%{opacity:0; transform:translateY(-6px)} 8%{opacity:1; transform:none} 80%{opacity:1} 100%{opacity:0} }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="toasts"></div>
+
+<div id="charselect" class="panel">
+  <h1>Choose your hero</h1>
+  <div class="muted">Click a class (or press 1–4), pick a sex (M / F), then Begin (Enter).</div>
+  <div class="cs-classes" id="cs-classes"></div>
+  <div class="cs-body">
+    <div>
+      <h3>Attributes</h3>
+      <div id="cs-attrs"></div>
+      <h3>Derived stats (level 1, starting gear)</h3>
+      <div id="cs-derived"></div>
+    </div>
+    <div class="cs-info" id="cs-info"></div>
+  </div>
+  <div class="cs-footer">
+    <span class="muted" style="font-size:12.5px;max-width:520px">Prototype note: class stats, weapons, abilities and dialogue styles are all live. Abilities unlock at levels 1–4 (debug ` then K to level up).</span>
+    <button id="cs-begin">Begin</button>
+  </div>
+</div>
+
+<div id="help" class="panel hidden">
+  <h1>Action RPG — Mechanics Prototype</h1>
+  <div class="muted">Top-down test build. The systems map 1:1 to the planned Unreal classes (see DESIGN.md).</div>
+  <div class="controls">
+    <b>WASD</b><span>Move</span>
+    <b>Mouse</b><span>Aim — you see in a cone toward the cursor (plus a little around you). Enemies have sight cones too: approach from behind.</span>
+    <b>Left click</b><span>Primary attack (tap or hold): melee combo, or arcane bolt for the Mage</span>
+    <b>Right click</b><span>Hold: block (Knight sword & shield, Scholar) / draw bow, release to fire (Thief)</span>
+    <b>X</b><span>Knight: switch Sword & Shield ↔ Longsword</span>
+    <b>Space</b><span>Dodge roll (invulnerable, costs stamina)</span>
+    <b>1 – 4</b><span>Abilities (unlock at levels 1–4)</span>
+    <b>Q</b><span>Drink potion</span>
+    <b>E</b><span>Talk to NPCs</span>
+    <b>I / C / J</b><span>Inventory / Character / Quest log</span>
+    <b>H / Esc</b><span>This help / close panels</span>
+    <b>` (backtick)</b><span>Debug overlay. While on: K = level up, G = +100 gold, L = spawn loot</span>
+  </div>
+  <div class="muted" style="font-size:13px;margin-bottom:14px">Tip: talk to Elder Maren (the <b style="color:#ffd34a">!</b>) in the village to begin. Watch for red wind-ups and roll through them.</div>
+  <button id="start-btn">Resume</button>
+</div>
+
+<div id="inventory" class="panel hidden">
+  <h2>Inventory <span class="gold" id="inv-gold"></span></h2>
+  <h3>Equipped</h3>
+  <div class="equip" id="inv-equip"></div>
+  <h3>Bag</h3>
+  <div class="grid" id="inv-grid"></div>
+  <div class="hint">Click: equip / use &nbsp;·&nbsp; Click equipped: unequip &nbsp;·&nbsp; Shift+Click: salvage for gold</div>
+</div>
+
+<div id="character" class="panel hidden">
+  <h2><span>Character — <span id="char-title"></span></span> <span class="gold" id="char-points"></span></h2>
+  <div id="char-attrs"></div>
+  <h3>Derived stats</h3>
+  <div class="derived" id="char-derived"></div>
+  <div style="margin-top:14px"><button id="respec-btn">Respec (free in prototype)</button></div>
+</div>
+
+<div id="quests" class="panel hidden">
+  <h2>Quest Log</h2>
+  <div id="quest-list"></div>
+</div>
+
+<div id="dialogue" class="hidden">
+  <div class="speaker"></div>
+  <div class="text"></div>
+  <div class="choices"></div>
+</div>
+<div id="tooltip" class="hidden"></div>
+
+<!-- =====================================================================
+     GAME DATA — all tuning lives here. Port to Unreal Data Tables as-is.
+     ===================================================================== -->
+<script type="application/json" id="game-data">
+{
+  "tuning": {
+    "hpPerVitality": 10, "hpPerLevel": 5,
+    "staminaBase": 80, "staminaPerAgility": 4, "staminaRegen": 38, "staminaRegenDelay": 0.55,
+    "manaPerFocus": 5, "manaRegen": 2.5,
+    "critPctPerAgility": 1, "critMultiplier": 1.6,
+    "mightScaling": 0.06, "agilityScaling": 0.06, "focusScaling": 0.07,
+    "armorConstant": 100, "damageVariance": 0.1,
+    "staggerTime": 0.55, "poiseRegenDelay": 2.0, "playerHitIframes": 0.45,
+    "dodge": { "cost": 22, "speed": 430, "duration": 0.32, "iframes": 0.26 },
+    "xpBase": 40, "xpGrowth": 1.45, "pointsPerLevel": 3,
+    "vision": { "nearRadius": 60, "coneRange": 360, "coneAngle": 80, "edgeBlur": 14, "falloffStart": 0.45, "edgeFog": 0.65 },
+    "enemyVision": { "coneAngle": 120, "hearRadius": 70 },
+    "threatSense": { "range": 450, "revealAfterAttack": 1.5, "revealAlpha": 0.55 },
+    "interactRange": 48, "respawnMinDistance": 420, "deathGoldPenalty": 0.1
+  },
+
+  "world3d": {
+    "_doc": "Unreal-only presentation settings. Gameplay numbers stay in pixels (shared with the HTML prototype); unitsPerPx converts them to Unreal units.",
+    "tileSize": 300, "unitsPerPx": 3.5, "wallHeight": 380,
+    "camera": { "armLength": 430, "socketOffset": [0, 60, 75], "fov": 80, "lagSpeed": 12 },
+    "sun": { "pitch": -36, "yaw": 125, "intensityLux": 9 },
+    "mounts": {
+      "_doc": "Where weapon kits attach: a bone plus an offset in that bone's space. Weapon parts are authored with +Z pointing out of the fist.",
+      "_measured": "-RPGProbe, idle pose: hand_r +Z points forward, hand_l +X points down, lowerarm_l +Z points out to the left",
+      "hand_r":     { "loc": [-9, 1, 0], "rot": [0, 0, 0] },
+      "hand_l":     { "loc": [-8, 0, 0], "rot": [90, 0, 0] },
+      "lowerarm_l": { "loc": [13, 0, 7], "rot": [0, 0, 0] }
+    },
+    "styleKits": {
+      "sword_shield": ["sword", "shield"], "longsword": ["greatsword"], "staff": ["staff"],
+      "daggers_bow": ["dagger", "bow"], "dagger_shield": ["dagger", "buckler"]
+    },
+    "enemyKits": { "sword": ["sword"], "bow": ["bow"] },
+    "kits": {
+      "sword": { "bone": "hand_r", "parts": [
+        { "shape": "Cube", "mat": "M_Metal_Steel", "loc": [0, 0, 52], "size": [6, 1.4, 82] },
+        { "shape": "Cube", "mat": "M_Metal_Gold", "loc": [0, 0, 10], "size": [20, 3, 3] },
+        { "shape": "Cylinder", "mat": "M_Wood_Walnut", "loc": [0, 0, 0], "size": [3.2, 3.2, 18] } ] },
+      "greatsword": { "bone": "hand_r", "parts": [
+        { "shape": "Cube", "mat": "M_Metal_Steel", "loc": [0, 0, 72], "size": [8, 1.6, 120] },
+        { "shape": "Cube", "mat": "M_Metal_Burnished_Steel", "loc": [0, 0, 11], "size": [28, 4, 4] },
+        { "shape": "Cylinder", "mat": "M_Wood_Walnut", "loc": [0, 0, -4], "size": [3.4, 3.4, 30] } ] },
+      "dagger": { "bone": "hand_r",
+        "holster": { "bone": "pelvis", "loc": [-6, 4, 22], "x": [0, 1, 0], "z": [-1, 0, 0] },
+        "parts": [
+        { "shape": "Cube", "mat": "M_Metal_Chrome", "loc": [0, 0, 22], "size": [4, 1, 30] },
+        { "shape": "Cube", "mat": "M_Metal_Copper", "loc": [0, 0, 6], "size": [10, 2.5, 2.5] },
+        { "shape": "Cylinder", "mat": "M_Wood_Walnut", "loc": [0, 0, 0], "size": [2.8, 2.8, 12] } ] },
+      "staff": { "bone": "hand_r", "mountRot": [-90, 0, 0], "parts": [
+        { "shape": "Cylinder", "mat": "M_Wood_Oak", "loc": [0, 0, 35], "size": [5, 5, 205] },
+        { "shape": "Cylinder", "mat": "M_Metal_Gold", "loc": [0, 0, 128], "size": [8, 8, 6] },
+        { "shape": "Sphere", "glow": "#b9a4ff", "loc": [0, 0, 141], "size": [17, 17, 17] } ] },
+      "shield": { "bone": "lowerarm_l", "parts": [
+        { "shape": "Cylinder", "mat": "M_Wood_Oak", "loc": [0, 0, 0], "size": [62, 62, 4] },
+        { "shape": "Sphere", "mat": "M_Metal_Steel", "loc": [0, 0, 3], "size": [12, 12, 6] } ] },
+      "buckler": { "bone": "lowerarm_l", "parts": [
+        { "shape": "Cylinder", "mat": "M_Metal_Copper", "loc": [0, 0, 0], "size": [38, 38, 3] } ] },
+      "bow": { "bone": "hand_l", "mountRot": [0, 0, 0], "mountLoc": [7, 0, 0],
+        "holster": { "bone": "spine_05", "loc": [-8, -17, 0], "x": [0.7, 0, -0.7], "z": [0.7, 0, 0.7] },
+        "parts": [
+        { "shape": "Cylinder", "mat": "M_Wood_Walnut", "loc": [-7.5, 0, 31], "rot": [14, 0, 0], "size": [2.6, 2.6, 66] },
+        { "shape": "Cylinder", "mat": "M_Wood_Walnut", "loc": [-7.5, 0, -31], "rot": [-14, 0, 0], "size": [2.6, 2.6, 66] },
+        { "shape": "Cylinder", "mat": "M_Metal_Copper", "loc": [0, 0, 0], "size": [3.4, 3.4, 12] },
+        { "id": "string", "shape": "Cylinder", "mat": "M_Metal_Chrome", "loc": [-15, 0, 0], "size": [0.35, 0.35, 124] } ] }
+    },
+    "looks": {
+      "player":       { "male": "manny", "female": "quinn" },
+      "elder":        { "mesh": "quinn", "tint": "#e8c860" },
+      "merchant":     { "mesh": "manny", "tint": "#d09050" },
+      "brask_guard":  { "mesh": "manny", "tint": "#a04030", "scale": 1.12, "weapon": "sword" },
+      "slime":        { "mesh": "slime", "tint": "#6cc24a", "scale": 0.9 },
+      "archer":       { "mesh": "manny", "tint": "#ddd6c4", "weapon": "bow" },
+      "bandit":       { "mesh": "manny", "tint": "#b0563a", "weapon": "sword" },
+      "bandit_lt":    { "mesh": "quinn", "tint": "#d08a6a", "weapon": "bow" },
+      "bandit_captain": { "mesh": "manny", "tint": "#8a2e1e", "scale": 1.12, "weapon": "sword" },
+      "brute":        { "mesh": "manny", "tint": "#7a4630", "scale": 1.6 }
+    }
+  },
+
+  "player": {
+    "unarmedDamage": 4, "poise": 60, "radius": 12,
+    "startGold": 10, "inventorySize": 16
+  },
+
+  "sexes": {
+    "male":   { "name": "Male" },
+    "female": { "name": "Female" }
+  },
+
+  "classes": {
+    "knight": {
+      "name": "Knight", "color": "#8fb4d9", "title": { "male": "sir knight", "female": "dame knight" },
+      "tagline": "The wall. Takes the most punishment and holds the line.",
+      "attributes": { "might": 8, "agility": 4, "focus": 2, "vitality": 8, "presence": 3 },
+      "hpBase": 90, "manaBase": 30, "moveSpeed": 155, "critPct": 5,
+      "styles": ["sword_shield", "longsword"],
+      "abilities": ["shield_bash", "charge", "rallying_cry", "cleave"],
+      "weapons": "One-handed sword + shield, or a two-handed longsword.",
+      "defense": "Heaviest armor. Blocks with the shield; a perfect block staggers the attacker.",
+      "dialogue": { "style": "Honor", "desc": "Swear oaths, invoke rank, challenge foes to an honor duel." },
+      "startItems": [ { "item": "rusty_sword", "equip": true }, { "item": "leather_vest", "equip": true }, { "item": "potion", "qty": 2 } ]
+    },
+    "mage": {
+      "name": "Mage", "color": "#a07bff", "title": "mage",
+      "tagline": "Glass cannon behind a mana shield. Fights at range.",
+      "attributes": { "might": 2, "agility": 4, "focus": 9, "vitality": 4, "presence": 6 },
+      "hpBase": 45, "manaBase": 60, "manaRegen": 6, "moveSpeed": 165, "critPct": 5,
+      "styles": ["staff"],
+      "abilities": ["fireball", "frost_nova", "blink", "chain_lightning"],
+      "weapons": "Arcane bolts (free) and spells (mana).",
+      "defense": "Mana shield: damage drains mana first. When mana runs dry, the shield shatters.",
+      "dialogue": { "style": "Hypnotize", "desc": "Compel NPCs to agree. It works, but they may resent it later." },
+      "startItems": [ { "item": "oak_staff", "equip": true }, { "item": "potion", "qty": 2 } ]
+    },
+    "thief": {
+      "name": "Thief", "color": "#3fc28f", "title": "stranger",
+      "tagline": "Fragile but fast. Avoids damage instead of absorbing it.",
+      "attributes": { "might": 4, "agility": 9, "focus": 2, "vitality": 4, "presence": 6 },
+      "hpBase": 40, "manaBase": 30, "moveSpeed": 200, "critPct": 10,
+      "styles": ["daggers_bow"],
+      "abilities": ["volley", "smoke_bomb", "shadow_dash", "poison_blade"],
+      "dodge": { "cost": 14, "speed": 470, "duration": 0.36, "iframes": 0.32 },
+      "weapons": "Daggers (backstab x2) and a bow with unlimited arrows.",
+      "defense": "No shield. The fastest, cheapest dodge rolls in the game.",
+      "dialogue": { "style": "Intimidate", "desc": "Threaten and extort. Frightened people comply... for now." },
+      "startItems": [ { "item": "dagger", "equip": true }, { "item": "potion", "qty": 2 } ]
+    },
+    "scholar": {
+      "name": "Scholar", "color": "#e0b050", "title": "scholar",
+      "tagline": "Master negotiator. Weakest in a fight, strongest in a conversation.",
+      "attributes": { "might": 2, "agility": 4, "focus": 5, "vitality": 4, "presence": 10 },
+      "hpBase": 45, "manaBase": 40, "moveSpeed": 165, "critPct": 5,
+      "styles": ["dagger_shield"],
+      "abilities": ["mend", "ward", "silver_words", "insight"],
+      "weapons": "Dagger + small shield.",
+      "defense": "Lowest armor. Light shield block and self-healing (Mend).",
+      "dialogue": { "style": "Negotiate", "desc": "Can talk down almost anyone — for a price, or a promise." },
+      "startItems": [ { "item": "dagger", "equip": true }, { "item": "potion", "qty": 3 } ]
+    }
+  },
+
+  "combat": { "attackMoveMul": 0.35 },
+
+  "weaponStyles": {
+    "sword_shield": {
+      "name": "Sword & Shield", "hint": "LMB 3-hit combo · hold RMB to block (raise it just before a hit = perfect block)",
+      "comboWindow": 0.45,
+      "primary": { "type": "melee", "scaling": "might", "combo": [
+        { "mult": 1.0, "range": 44, "arc": 110, "windup": 0.07, "active": 0.08, "recover": 0.20, "stamina": 12, "poise": 15, "knockback": 140, "lunge": 120 },
+        { "mult": 1.1, "range": 44, "arc": 110, "windup": 0.07, "active": 0.08, "recover": 0.22, "stamina": 12, "poise": 15, "knockback": 140, "lunge": 120 },
+        { "mult": 1.7, "range": 52, "arc": 150, "windup": 0.16, "active": 0.10, "recover": 0.40, "stamina": 20, "poise": 35, "knockback": 320, "lunge": 200 } ] },
+      "secondary": { "type": "block", "reduction": 0.7, "arc": 130, "staminaPerDamage": 0.8, "perfectWindow": 0.15, "moveMul": 0.5, "staminaRegenMul": 0.35 }
+    },
+    "longsword": {
+      "name": "Longsword", "hint": "LMB slow, wide, heavy 2-hit combo · no block",
+      "comboWindow": 0.5, "damageMul": 1.4,
+      "primary": { "type": "melee", "scaling": "might", "combo": [
+        { "mult": 1.0, "range": 60, "arc": 150, "windup": 0.18, "active": 0.10, "recover": 0.35, "stamina": 18, "poise": 35, "knockback": 260, "lunge": 140 },
+        { "mult": 1.5, "range": 64, "arc": 170, "windup": 0.28, "active": 0.12, "recover": 0.55, "stamina": 26, "poise": 60, "knockback": 420, "lunge": 200 } ] }
+    },
+    "staff": {
+      "name": "Staff", "hint": "LMB arcane bolt (free, hold to keep firing) · damage drains mana before HP",
+      "primary": { "type": "bolt", "scaling": "focus", "damage": 5, "weaponRatio": 0.5, "cooldown": 0.45,
+                   "speed": 480, "radius": 5, "range": 440, "poise": 10, "knockback": 60, "color": "#b9a4ff" },
+      "passive": { "type": "manaShield", "damagePerMana": 1.0, "breakStagger": 0.6, "breakRegenLock": 3 }
+    },
+    "daggers_bow": {
+      "name": "Daggers & Bow", "hint": "LMB fast 4-hit daggers (hit from behind = backstab x2) · hold RMB to draw bow, release to fire",
+      "comboWindow": 0.35, "backstab": 2.0,
+      "primary": { "type": "melee", "scaling": "agility", "combo": [
+        { "mult": 0.7, "range": 34, "arc": 90,  "windup": 0.05, "active": 0.06, "recover": 0.12, "stamina": 8,  "poise": 8,  "knockback": 60,  "lunge": 140 },
+        { "mult": 0.7, "range": 34, "arc": 90,  "windup": 0.05, "active": 0.06, "recover": 0.12, "stamina": 8,  "poise": 8,  "knockback": 60,  "lunge": 140 },
+        { "mult": 0.8, "range": 34, "arc": 90,  "windup": 0.05, "active": 0.06, "recover": 0.14, "stamina": 8,  "poise": 10, "knockback": 80,  "lunge": 140 },
+        { "mult": 1.2, "range": 38, "arc": 100, "windup": 0.10, "active": 0.07, "recover": 0.30, "stamina": 12, "poise": 18, "knockback": 160, "lunge": 220 } ] },
+      "secondary": { "type": "bow", "scaling": "agility", "damage": 10, "weaponRatio": 0.5, "drawTime": 0.8, "minDraw": 0.12,
+                     "minMul": 0.35, "fullBonus": 1.3, "speed": 560, "range": 520, "poise": 20, "knockback": 120,
+                     "moveMul": 0.55, "color": "#e8d9b0" }
+    },
+    "dagger_shield": {
+      "name": "Dagger & Shield", "hint": "LMB 3-hit dagger combo · hold RMB to block (light shield, no perfect block)",
+      "comboWindow": 0.4,
+      "primary": { "type": "melee", "scaling": "might", "combo": [
+        { "mult": 0.8, "range": 36, "arc": 90,  "windup": 0.06, "active": 0.07, "recover": 0.16, "stamina": 10, "poise": 8,  "knockback": 80,  "lunge": 120 },
+        { "mult": 0.8, "range": 36, "arc": 90,  "windup": 0.06, "active": 0.07, "recover": 0.18, "stamina": 10, "poise": 8,  "knockback": 80,  "lunge": 120 },
+        { "mult": 1.2, "range": 40, "arc": 110, "windup": 0.12, "active": 0.08, "recover": 0.32, "stamina": 14, "poise": 18, "knockback": 180, "lunge": 160 } ] },
+      "secondary": { "type": "block", "reduction": 0.5, "arc": 100, "staminaPerDamage": 1.0, "perfectWindow": 0, "moveMul": 0.5, "staminaRegenMul": 0.35 }
+    }
+  },
+
+  "abilities": {
+    "shield_bash":     { "name": "Shield Bash", "type": "cone", "unlockLevel": 1, "stamina": 20, "cooldown": 5, "requires": "shield",
+                         "damage": 8, "scaling": "might", "range": 40, "arc": 90, "poise": 200, "stagger": 1.2, "knockback": 380,
+                         "color": "#c8d4e0", "desc": "Slam your shield forward. Always staggers what it hits. Needs Sword & Shield." },
+    "charge":          { "name": "Charge", "type": "dashStrike", "unlockLevel": 2, "stamina": 25, "cooldown": 6,
+                         "damage": 16, "scaling": "might", "distance": 220, "duration": 0.22, "poise": 50, "knockback": 300,
+                         "color": "#8fb4d9", "desc": "Charge toward the cursor, invulnerable, hitting everything in your path." },
+    "rallying_cry":    { "name": "Rallying Cry", "type": "buff", "unlockLevel": 3, "stamina": 30, "cooldown": 15,
+                         "duration": 8, "mods": { "armor": 25, "might": 3 },
+                         "color": "#ffd34a", "desc": "+25 armor and +3 Might for 8 seconds." },
+    "cleave":          { "name": "Cleave", "type": "aoe", "unlockLevel": 4, "stamina": 30, "cooldown": 6,
+                         "damage": 18, "scaling": "might", "radius": 80, "poise": 50, "knockback": 320,
+                         "color": "#dfe3ff", "desc": "A full spin that hits and knocks back everything around you." },
+
+    "fireball":        { "name": "Fireball", "type": "projectile", "unlockLevel": 1, "mana": 10, "cooldown": 1.2,
+                         "damage": 16, "scaling": "focus", "speed": 420, "radius": 7, "range": 420, "poise": 25, "knockback": 160,
+                         "color": "#ff8a3d", "desc": "Hurl a fireball toward the cursor." },
+    "frost_nova":      { "name": "Frost Nova", "type": "aoe", "unlockLevel": 2, "mana": 20, "cooldown": 8,
+                         "damage": 10, "scaling": "focus", "radius": 110, "poise": 20, "knockback": 80,
+                         "applyTag": { "tag": "Slowed", "duration": 3 },
+                         "color": "#9fd8ff", "desc": "Burst of frost around you. Enemies hit move at 40% speed for 3s." },
+    "blink":           { "name": "Blink", "type": "blink", "unlockLevel": 3, "mana": 15, "cooldown": 4,
+                         "distance": 170, "iframes": 0.15,
+                         "color": "#b9a4ff", "desc": "Teleport toward the cursor (can't pass walls or water)." },
+    "chain_lightning": { "name": "Chain Lightning", "type": "chain", "unlockLevel": 4, "mana": 25, "cooldown": 5,
+                         "damage": 20, "scaling": "focus", "range": 320, "jumps": 3, "jumpRange": 140, "falloff": 0.75, "poise": 30,
+                         "color": "#cfe8ff", "desc": "Strike the enemy nearest the cursor; arcs to 3 more nearby, weaker each jump." },
+
+    "volley":          { "name": "Volley", "type": "projectile", "unlockLevel": 1, "stamina": 18, "cooldown": 3,
+                         "count": 3, "spread": 14, "arrow": true,
+                         "damage": 9, "scaling": "agility", "speed": 560, "radius": 3, "range": 420, "poise": 12, "knockback": 90,
+                         "color": "#e8d9b0", "desc": "Loose three arrows in a fan." },
+    "smoke_bomb":      { "name": "Smoke Bomb", "type": "smoke", "unlockLevel": 2, "stamina": 20, "cooldown": 12,
+                         "radius": 120, "duration": 3,
+                         "color": "#9aa0a6", "desc": "Vanish for 3s. Enemies lose track of you — perfect for a backstab. Attacking reveals you." },
+    "shadow_dash":     { "name": "Shadow Dash", "type": "dashStrike", "unlockLevel": 3, "stamina": 20, "cooldown": 5,
+                         "damage": 18, "scaling": "agility", "distance": 190, "duration": 0.18, "poise": 35, "knockback": 120,
+                         "color": "#3fc28f", "desc": "Invulnerable dash toward the cursor, striking everything in the path." },
+    "poison_blade":    { "name": "Poison Blade", "type": "weaponBuff", "unlockLevel": 4, "stamina": 15, "cooldown": 14,
+                         "duration": 8, "poison": { "damage": 4, "scaling": "agility", "period": 0.5, "duration": 3 },
+                         "color": "#7fd07f", "desc": "For 8s, dagger hits poison: damage every 0.5s for 3s." },
+
+    "mend":            { "name": "Mend", "type": "heal", "unlockLevel": 1, "mana": 20, "cooldown": 12,
+                         "healPerTick": 7, "period": 0.5, "duration": 4, "scaling": "focus",
+                         "color": "#5fe08a", "desc": "Heal over 4 seconds." },
+    "ward":            { "name": "Ward", "type": "buff", "unlockLevel": 2, "mana": 20, "cooldown": 14,
+                         "duration": 10, "absorb": 30, "scaling": "focus",
+                         "color": "#ffe9a8", "desc": "A ward that absorbs ~40 damage for 10 seconds." },
+    "silver_words":    { "name": "Silver Words", "type": "daze", "unlockLevel": 3, "mana": 20, "cooldown": 15,
+                         "range": 260, "daze": 3,
+                         "color": "#e0b050", "desc": "Daze a thinking enemy for 3s. Some will stop and talk — mid-fight. Beasts and the dead don't listen." },
+    "insight":         { "name": "Insight", "type": "mark", "unlockLevel": 4, "mana": 15, "cooldown": 10,
+                         "range": 320, "duration": 8, "damageTakenMul": 1.25,
+                         "color": "#ffd34a", "desc": "Study an enemy: it takes +25% damage for 8s and its next move is revealed." }
+  },
+
+  "enemies": {
+    "slime": { "name": "Slime", "hp": 30, "armor": 0, "speed": 78, "radius": 12, "color": "#6cc24a", "poise": 15,
+      "xp": 12, "gold": [1, 4], "loot": "trash", "aggro": 170, "leash": 360, "respawn": 40,
+      "attacks": [
+        { "type": "melee", "range": 22, "arc": 100, "windup": 0.5, "recover": 0.7, "cooldown": 0.3,
+          "damage": 8, "poise": 20, "knockback": 200, "lunge": 180 }
+      ] },
+    "archer": { "name": "Skeleton Archer", "hp": 26, "armor": 5, "speed": 82, "radius": 11, "color": "#ddd6c4", "poise": 20,
+      "xp": 18, "gold": [3, 8], "loot": "archer", "aggro": 260, "leash": 480, "respawn": 50, "preferredDist": 190,
+      "attacks": [
+        { "type": "ranged", "range": 260, "windup": 0.75, "recover": 0.4, "cooldown": 1.3,
+          "damage": 10, "poise": 15, "knockback": 90,
+          "projectile": { "speed": 310, "radius": 4, "color": "#f0e6c8", "range": 420 } }
+      ] },
+    "bandit": { "name": "Red Hand Bandit", "faction": "bandits", "intelligent": true, "hp": 45, "armor": 8, "speed": 88, "radius": 12, "color": "#b0563a", "poise": 30,
+      "xp": 5, "gold": [4, 10], "loot": "trash", "aggro": 260, "leash": 520, "respawn": -1,
+      "attacks": [
+        { "type": "melee", "range": 26, "arc": 110, "windup": 0.45, "recover": 0.6, "cooldown": 0.4, "damage": 11, "poise": 25, "knockback": 200, "lunge": 160 }
+      ] },
+    "bandit_lt": { "name": "Wren", "faction": "bandits", "intelligent": true, "dialogue": "wren_root", "parleyDialogue": "wren_parley", "hp": 50, "armor": 5, "speed": 84, "radius": 11, "color": "#d08a6a", "poise": 25,
+      "xp": 5, "gold": [6, 12], "loot": "archer", "aggro": 270, "leash": 520, "respawn": -1, "preferredDist": 190,
+      "attacks": [
+        { "type": "ranged", "range": 270, "windup": 0.8, "recover": 0.5, "cooldown": 1.4, "damage": 13, "poise": 20, "knockback": 100,
+          "projectile": { "speed": 360, "radius": 4, "color": "#e0b090", "range": 440 } }
+      ] },
+    "bandit_captain": { "name": "Captain Brask", "boss": true, "faction": "bandits", "intelligent": true, "dialogue": "brask_root", "parleyDialogue": "brask_parley", "hp": 140, "armor": 15, "speed": 92,
+      "radius": 15, "color": "#8a2e1e", "poise": 70, "xp": 10, "gold": [20, 30], "loot": "stash", "aggro": 280, "leash": 520, "respawn": -1,
+      "knockbackMul": 0.5, "resolveOnDeath": "toll_bridge:killed", "yieldDialogue": "brask_yield",
+      "attacks": [
+        { "type": "melee", "range": 34, "arc": 120, "windup": 0.55, "recover": 0.6, "cooldown": 0.25, "damage": 16, "poise": 35, "knockback": 240, "lunge": 120 },
+        { "type": "melee", "range": 34, "arc": 120, "windup": 0.45, "recover": 0.9, "cooldown": 0.25, "damage": 16, "poise": 35, "knockback": 240, "lunge": 120 },
+        { "type": "melee", "range": 46, "arc": 160, "windup": 0.9, "recover": 1.0, "cooldown": 0.4, "damage": 26, "poise": 60, "knockback": 400, "lunge": 260 }
+      ] },
+    "brute": { "name": "Ruin Brute", "boss": true, "hp": 260, "armor": 30, "speed": 68, "radius": 20, "color": "#a0522d", "poise": 110,
+      "xp": 150, "gold": [30, 50], "loot": "boss", "aggro": 230, "leash": 420, "respawn": 90, "knockbackMul": 0.25,
+      "questDrop": { "quest": "lost_relic", "item": "relic" },
+      "attacks": [
+        { "type": "melee", "range": 40, "arc": 130, "windup": 0.8,  "recover": 0.8, "cooldown": 0.2, "damage": 22, "poise": 55, "knockback": 320 },
+        { "type": "melee", "range": 40, "arc": 130, "windup": 0.65, "recover": 0.9, "cooldown": 0.2, "damage": 22, "poise": 55, "knockback": 320 },
+        { "type": "slam",  "range": 60, "radius": 95, "windup": 1.1, "recover": 1.3, "cooldown": 0.4, "damage": 32, "poise": 80, "knockback": 480 }
+      ] }
+  },
+
+  "items": {
+    "rusty_sword":  { "name": "Rusty Sword",  "type": "equipment", "slot": "weapon",  "mods": { "weaponDamage": 8 } },
+    "dagger":       { "name": "Dagger",       "type": "equipment", "slot": "weapon",  "mods": { "weaponDamage": 6, "critPct": 5 } },
+    "oak_staff":    { "name": "Oak Staff",    "type": "equipment", "slot": "weapon",  "mods": { "weaponDamage": 5, "focus": 1 } },
+    "iron_sword":   { "name": "Iron Sword",   "type": "equipment", "slot": "weapon",  "mods": { "weaponDamage": 12 } },
+    "war_axe":      { "name": "War Axe",      "type": "equipment", "slot": "weapon",  "mods": { "weaponDamage": 17 } },
+    "leather_vest": { "name": "Leather Vest", "type": "equipment", "slot": "armor",   "mods": { "armor": 10 } },
+    "chain_mail":   { "name": "Chain Mail",   "type": "equipment", "slot": "armor",   "mods": { "armor": 24, "agility": -2 } },
+    "ring":         { "name": "Ring",         "type": "equipment", "slot": "trinket", "mods": {}, "minAffixes": 1 },
+    "potion":       { "name": "Health Potion","type": "consumable", "stackable": true, "heal": 45 },
+    "relic":        { "name": "Ashford Relic","type": "quest" },
+    "bridge_charter": { "name": "Bridge Charter", "type": "quest" },
+    "brask_sabre":  { "name": "Brask's Sabre", "type": "equipment", "slot": "weapon", "rarity": "rare", "mods": { "weaponDamage": 14, "might": 2 } }
+  },
+
+  "rarities": {
+    "common": { "affixes": 0, "color": "#d8d8d8", "salvage": 3 },
+    "magic":  { "affixes": 1, "color": "#6aa8ff", "salvage": 10 },
+    "rare":   { "affixes": 2, "color": "#ffd34a", "salvage": 25 }
+  },
+
+  "affixes": [
+    { "stat": "might",    "min": 1, "max": 3, "label": "of Might" },
+    { "stat": "agility",  "min": 1, "max": 3, "label": "of Swiftness" },
+    { "stat": "focus",    "min": 1, "max": 3, "label": "of Insight" },
+    { "stat": "vitality", "min": 1, "max": 3, "label": "of Vigor" },
+    { "stat": "presence", "min": 1, "max": 3, "label": "of Charm" },
+    { "stat": "armor",    "min": 3, "max": 8, "label": "of Warding" },
+    { "stat": "critPct",  "min": 2, "max": 5, "label": "of Precision" }
+  ],
+
+  "lootTables": {
+    "trash":  { "dropChance": 0.4, "rolls": 1, "rarity": { "common": 65, "magic": 28, "rare": 7 },
+                "entries": [ { "item": "potion", "weight": 50 }, { "item": "iron_sword", "weight": 8 },
+                             { "item": "leather_vest", "weight": 12 }, { "item": "ring", "weight": 10 } ] },
+    "archer": { "dropChance": 0.55, "rolls": 1, "rarity": { "common": 55, "magic": 33, "rare": 12 },
+                "entries": [ { "item": "potion", "weight": 40 }, { "item": "iron_sword", "weight": 10 },
+                             { "item": "leather_vest", "weight": 12 }, { "item": "chain_mail", "weight": 5 },
+                             { "item": "ring", "weight": 12 } ] },
+    "stash":  { "dropChance": 1.0, "rolls": 2, "gold": [40, 60], "rarity": { "common": 30, "magic": 50, "rare": 20 },
+                "entries": [ { "item": "potion", "weight": 40 }, { "item": "iron_sword", "weight": 15 },
+                             { "item": "leather_vest", "weight": 15 }, { "item": "ring", "weight": 15 } ] },
+    "boss":   { "dropChance": 1.0, "rolls": 3, "rarity": { "common": 10, "magic": 50, "rare": 40 },
+                "entries": [ { "item": "war_axe", "weight": 30 }, { "item": "chain_mail", "weight": 30 },
+                             { "item": "ring", "weight": 25 }, { "item": "potion", "weight": 15 } ] }
+  },
+
+  "quests": {
+    "toll_bridge": { "name": "The Toll Bridge", "giver": "Elder Maren",
+      "desc": "The Red Hands bandits hold the south bridge and toll anyone who crosses. Deal with them — however you see fit.",
+      "objective": { "type": "flag", "flag": "bridge_resolved", "text": "Deal with the bandits at the south bridge" },
+      "reward": { "xp": 120, "gold": 40 } },
+    "lost_relic": { "name": "The Lost Relic", "giver": "Elder Maren",
+      "desc": "Recover the village relic from the Ruin Brute in the south-east ruins.",
+      "objective": { "type": "collect", "item": "relic", "count": 1 },
+      "reward": { "xp": 200, "gold": 80 } },
+    "slime_cull": { "name": "Slime Trouble", "giver": "Tobin the Trader",
+      "desc": "Slimes keep eating Tobin's stock. Cull five of them in the meadow.",
+      "objective": { "type": "kill", "target": "slime", "count": 5 },
+      "reward": { "xp": 50, "gold": 25, "item": "iron_sword", "rarity": "magic" } }
+  },
+
+  "npcs": {
+    "elder":       { "name": "Elder Maren",      "color": "#e8c860", "dialogue": "elder_root" },
+    "merchant":    { "name": "Tobin the Trader", "color": "#d09050", "dialogue": "merchant_root" },
+    "brask_guard": { "name": "Guard Brask",      "color": "#a04030", "dialogue": "brask_guard_root", "spawnAt": [14, 8] }
+  },
+
+  "dialogueVerbs": {
+    "persuade":   { "label": "Persuade",   "stat": "presence" },
+    "leverage":   { "label": "Leverage",   "stat": "presence", "bonus": 30 },
+    "honor":      { "label": "Honor",      "stat": "presence", "secondary": "might", "class": "knight",  "bonus": 15 },
+    "hypnotize":  { "label": "Hypnotize",  "stat": "focus",                          "class": "mage",    "bonus": 10, "mana": 20 },
+    "intimidate": { "label": "Intimidate", "stat": "presence", "secondary": "might", "class": "thief",   "bonus": 10 },
+    "negotiate":  { "label": "Negotiate",  "stat": "presence",                       "class": "scholar", "bonus": 30 }
+  },
+
+  "encounters": {
+    "toll_bridge": { "leader": "bandit_captain", "faction": "bandits", "parleyRange": 150, "crossRow": 12,
+                     "metFlag": "brask_spoke", "flag": "bridge_resolved", "outcomeFlag": "toll_outcome",
+                     "crossBark": "Oi! Nobody crosses without paying! Get them!" }
+  },
+
+  "dialogue": {
+    "elder_root": {
+      "text": [
+        { "if": { "flag": "met_elder" }, "text": "What do you need, {title}?" },
+        { "if": { "class": "knight" },  "text": "A knight! The crown hasn't sent one of yours to Ashford in years. Please — we need help." },
+        { "if": { "class": "mage" },    "text": "A mage... Folk here don't trust spellcraft. But Ashford can't afford to be choosy right now." },
+        { "if": { "class": "thief" },   "text": "Keep your hands where I can see them, stranger. ...Still. You look like someone who gets things done." },
+        { "if": { "class": "scholar" }, "text": "A scholar! Gods be thanked — someone who can actually read. You may be exactly who we need." }
+      ],
+      "do": [ { "setFlag": "met_elder" } ],
+      "choices": [
+        { "text": "What's troubling the village?", "if": { "quest": "toll_bridge", "is": "none" }, "next": "elder_bridge_offer", "marker": "!" },
+        { "verb": "honor", "text": "By my oath, Ashford is under my protection.", "if": { "not": { "flag": "sworn_elder" } }, "next": "elder_sworn" },
+        { "verb": "hypnotize", "text": "(Slip into her thoughts) What are you not telling me?", "if": { "not": { "flag": "elder_read" } },
+          "check": { "resolve": 6, "success": "elder_hypno_ok", "fail": "elder_hypno_fail" } },
+        { "verb": "intimidate", "text": "Before I risk my neck for your bridge, let's talk about my fee.", "if": { "quest": "toll_bridge", "is": "active" },
+          "check": { "resolve": 5, "success": "elder_extort_ok", "fail": "elder_extort_fail" } },
+        { "verb": "negotiate", "text": "Does Ashford keep any old records about that bridge?", "if": { "quest": "toll_bridge", "is": "active" },
+          "check": { "resolve": 4, "success": "elder_charter_ok", "fail": "elder_charter_fail" } },
+        { "text": "About the bridge...", "if": { "quest": "toll_bridge", "is": "active" }, "next": "elder_bridge_progress" },
+        { "text": "The bridge is open.", "if": { "quest": "toll_bridge", "is": "complete" },
+          "do": [ { "turnIn": "toll_bridge" }, { "if": { "flag": "double_reward" }, "gold": 40 } ], "next": "elder_bridge_done", "marker": "?" },
+        { "text": "Is there anything else I can do?", "if": [ { "quest": "toll_bridge", "is": "turnedIn" }, { "quest": "lost_relic", "is": "none" } ], "next": "elder_relic_offer", "marker": "!" },
+        { "text": "About the relic...", "if": { "quest": "lost_relic", "is": "active" }, "next": "elder_relic_progress" },
+        { "text": "I recovered the relic.", "if": { "quest": "lost_relic", "is": "complete" }, "do": [ { "turnIn": "lost_relic" } ], "next": "elder_relic_done", "marker": "?" },
+        { "text": "I need to rest.", "do": [ { "restore": true } ], "next": "elder_rest" },
+        { "text": "Farewell." }
+      ] },
+
+    "elder_bridge_offer": {
+      "text": [
+        { "if": { "class": "knight" }, "text": "Bandits — the Red Hands — hold the south bridge and toll every soul who crosses. A knight could end that. However you see fit." },
+        { "if": { "class": "thief" },  "text": "Bandits hold the south bridge. The Red Hands. I suppose you'd know their kind. Clear them off and there's coin in it." },
+        { "text": "Bandits — the Red Hands — have taken the south bridge and toll anyone who crosses. Our traders can't reach the road. Deal with them... however you must." }
+      ],
+      "choices": [
+        { "text": "It shall be done, by my honor.", "if": { "class": "knight" }, "do": [ { "startQuest": "toll_bridge" } ] },
+        { "text": "Coin first, questions never. I'll handle it.", "if": { "class": "thief" }, "do": [ { "startQuest": "toll_bridge" } ] },
+        { "text": "I'll see what can be done.", "if": { "not": { "class": ["knight", "thief"] } }, "do": [ { "startQuest": "toll_bridge" } ] },
+        { "text": "Not yet.", "next": "elder_root" }
+      ] },
+    "elder_bridge_progress": { "text": "The bridge is east of here, where the road meets the river. Brask leads them — proud, greedy, and not as stupid as he looks.",
+      "choices": [ { "text": "I'll deal with him." } ] },
+    "elder_sworn": { "do": [ { "setFlag": "sworn_elder" }, { "disposition": 20 }, { "giveItem": "potion" } ],
+      "text": "Then Ashford is in your debt, {title}. Take this — it isn't much, but it's what we have.",
+      "choices": [ { "text": "(Bow)", "next": "elder_root" } ] },
+    "elder_hypno_ok": { "do": [ { "setFlag": "elder_read" }, { "setFlag": "knows_relic" }, { "disposition": -10 } ],
+      "text": "(Her thoughts unspool) ...the relic. A brute carried the Ashford relic into the south ruins, and with the bridge held, no one can go after it... Why did I just tell you that?",
+      "choices": [ { "text": "(Withdraw quietly)", "next": "elder_root" } ] },
+    "elder_hypno_fail": { "do": [ { "setFlag": "elder_read" }, { "disposition": -30 } ],
+      "text": "Stop that! I can feel you in my head! ...Try it again and you'll find no welcome in Ashford.",
+      "choices": [ { "text": "My apologies.", "next": "elder_root" } ] },
+    "elder_extort_ok": { "do": [ { "setFlag": "double_reward" }, { "disposition": -10 } ],
+      "text": "...Fine! Double the reward. Just get it done.",
+      "choices": [ { "text": "Pleasure doing business.", "next": "elder_root" } ] },
+    "elder_extort_fail": { "do": [ { "disposition": -20 } ],
+      "text": "I won't be extorted in my own village. The reward stands as offered.",
+      "choices": [ { "text": "Suit yourself.", "next": "elder_root" } ] },
+    "elder_charter_ok": { "do": [ { "setFlag": "knows_charter" }, { "giveItem": "bridge_charter" }, { "disposition": 10 } ],
+      "text": "Records? ...The old charter! The bridge was granted to Ashford by royal decree. Here — if anyone can make use of it, it's you.",
+      "choices": [ { "text": "This will help. Thank you.", "next": "elder_root" } ] },
+    "elder_charter_fail": { "text": "Records? I'm afraid whatever we had burned with the old hall.",
+      "choices": [ { "text": "A pity.", "next": "elder_root" } ] },
+    "elder_bridge_done": {
+      "text": [
+        { "if": { "flag": "toll_outcome", "is": "honor" },      "text": "They say you beat Brask in fair combat and his men simply walked away. A true knight. Ashford won't forget it." },
+        { "if": { "flag": "toll_outcome", "is": "hypnotized" }, "text": "The bandits just... walked away? Glassy-eyed, I heard. I won't ask how. I'm not sure I want to know." },
+        { "if": { "flag": "toll_outcome", "is": "scared" },     "text": "Brask ran like a kicked dog, they say, and left his loot behind. Remind me never to cross you." },
+        { "if": { "flag": "toll_outcome", "is": "recruited" },  "text": "Brask... as our town guard? You may be mad. But if it works, Ashford owes you twice over." },
+        { "if": { "flag": "toll_outcome", "is": "charter" },    "text": "You read them the royal charter and they fled? Ha! The pen and the sword, indeed." },
+        { "if": { "flag": "toll_outcome", "is": "truce" },      "text": "They say you talked Brask down in the middle of a sword fight. In the middle of one! Remarkable." },
+        { "if": { "flag": "toll_outcome", "is": "bargain" },    "text": "Thirty gold to end it? Cheaper than a funeral. Well bargained." },
+        { "if": { "flag": "toll_outcome", "is": "blackmail" },  "text": "Gone, just like that. Whatever you said to Brask, it worked." },
+        { "if": { "flag": "toll_outcome", "is": "paid" },       "text": "You paid them? Well... the road is open for you, at least. They're still there for the rest of us." },
+        { "if": { "flag": "toll_outcome", "is": "persuaded" },  "text": "They let you pass, but they still hold the bridge. It's a start, I suppose." },
+        { "text": "The bandits are dead. Harsh — but the road is open." }
+      ],
+      "choices": [ { "text": "Glad to help.", "next": "elder_root" } ] },
+
+    "elder_relic_offer": {
+      "text": [
+        { "if": { "flag": "knows_relic" }, "text": "You already know, don't you... The relic. The brute in the south-east ruins has it. Please, bring it home." },
+        { "text": "There is one more thing. A brute has made its lair in the old ruins to the south-east, and it took our village relic. Bring it back... carefully." }
+      ],
+      "choices": [ { "text": "I'll get it back.", "do": [ { "startQuest": "lost_relic" } ] }, { "text": "Not yet.", "next": "elder_root" } ] },
+    "elder_relic_progress": { "text": "The ruins lie to the south-east, past the archers' woods. The brute hits hard — watch its wind-up and roll away.",
+      "choices": [ { "text": "I'll be careful." } ] },
+    "elder_relic_done": { "text": "The relic! Ashford owes you a great debt. (End of prototype content — thanks for testing!)",
+      "choices": [ { "text": "Farewell." } ] },
+    "elder_rest": { "text": "Sit by the fire a while... You feel fully restored.",
+      "choices": [ { "text": "Thanks.", "next": "elder_root" } ] },
+
+    "brask_root": {
+      "text": [
+        { "if": { "flag": "duel_lost" },   "text": "Back for another lesson, {title}? Fifty gold — or another round on your back." },
+        { "if": { "flag": "brask_spoke" }, "text": "Made up your mind? Fifty gold." },
+        { "if": { "sex": "male" },         "text": "Halt. This bridge belongs to the Red Hands. Toll's fifty gold. ...You've the look of my little brother about you, lad. Doesn't change the price." },
+        { "text": "Halt. This bridge belongs to the Red Hands now. Toll's fifty gold — or turn around." }
+      ],
+      "do": [ { "setFlag": "brask_spoke" } ],
+      "choices": [
+        { "text": "[Pay 50 gold] Fine. Here.", "if": { "gold": 50 }, "do": [ { "takeGold": 50 }, { "resolve": "toll_bridge:paid" } ], "next": "brask_paid" },
+        { "verb": "persuade", "text": "The people of Ashford can't pay this. Let them through.",
+          "check": { "resolve": 7, "bonus": [ { "if": { "sex": "male" }, "add": 25 } ], "success": "brask_persuaded", "fail": "brask_persuade_fail" } },
+        { "verb": "honor", "text": "I am a knight of the realm. I challenge you to single combat — your men stand aside.",
+          "check": { "resolve": 4, "success": "brask_duel", "fail": "brask_duel_refused" } },
+        { "verb": "hypnotize", "text": "(Reach into his mind) You're tired of this cold bridge, Brask. Send your men home.",
+          "check": { "resolve": 6, "success": "brask_hypno_ok", "fail": "brask_hypno_fail" } },
+        { "verb": "intimidate", "text": "(Spin a dagger) I've cut deeper purses than yours, Brask. Walk away while you still can.",
+          "check": { "resolve": 6, "success": "brask_scared", "fail": "brask_laughs" } },
+        { "verb": "negotiate", "text": "Ashford needs guards, and guards get paid — honestly, every week. I can arrange it.",
+          "check": { "resolve": 6, "success": "brask_recruit", "fail": "brask_counter" } },
+        { "verb": "negotiate", "text": "(Unroll the charter) This bridge is Ashford's by royal decree. Tolling it is a hanging offence.", "if": { "hasItem": "bridge_charter" },
+          "check": { "resolve": 1, "success": "brask_charter", "fail": "brask_counter" } },
+        { "verb": "leverage", "text": "Westmarch still pays 200 gold for your head, Brask. I'd hate for them to learn where you are.", "if": { "flag": "knows_bounty" },
+          "check": { "resolve": 3, "success": "brask_blackmail", "fail": "brask_laughs" } },
+        { "text": "(Draw your weapon) Then we do this the hard way.", "do": [ { "hostile": "bandits" } ] },
+        { "text": "I'll be back." }
+      ] },
+    "brask_paid": { "text": "Pleasure doing business. Off you go — and mind the planks.", "choices": [ { "text": "(Leave)" } ] },
+    "brask_persuaded": { "do": [ { "resolve": "toll_bridge:persuaded" } ],
+      "text": [
+        { "if": { "sex": "male" }, "text": "(He looks at you a long moment) ...Gods, you sound just like him. Fine. You can pass. Just you, mind." },
+        { "text": "...Fine. You can pass. Just you, mind — and don't make a habit of it." }
+      ],
+      "choices": [ { "text": "(Cross the bridge)" } ] },
+    "brask_persuade_fail": { "text": "Nice speech. Fifty gold.", "choices": [ { "text": "...", "next": "brask_root" } ] },
+    "brask_duel": { "text": "Ha! A proper challenge. Lads — stand back. Nobody touches the knight. Steel, then!",
+      "choices": [ { "text": "(Raise your weapon)", "do": [ { "duel": true } ] } ] },
+    "brask_duel_refused": { "text": "I don't duel tin cans. Get them, boys!", "choices": [ { "text": "(Fight)", "do": [ { "hostile": "bandits" } ] } ] },
+    "brask_yield": { "text": "Enough! Enough... I yield. You fight like a demon, {title}. A deal's a deal — Red Hands, we're done here. Take my sabre. I won't be needing it.",
+      "choices": [ { "text": "(Accept the sabre)", "do": [ { "giveItem": "brask_sabre" }, { "resolve": "toll_bridge:honor" }, { "setFlag": "brask_respect" }, { "leave": "bandits" } ] } ] },
+    "brask_hypno_ok": { "text": "(His eyes glaze over) ...Tired. So tired of this bridge. Lads... pack it up. We're going home.",
+      "choices": [ { "text": "(Release him)", "do": [ { "resolve": "toll_bridge:hypnotized" }, { "setFlag": "brask_resentment" }, { "leave": "bandits" } ] } ] },
+    "brask_hypno_fail": { "text": "(He shakes his head violently) Get out of my head, sorcerer! KILL THEM!",
+      "choices": [ { "text": "(Fight)", "do": [ { "hostile": "bandits" } ] } ] },
+    "brask_scared": { "text": "(He goes pale) ...Keep that blade away from me. It's not worth it. Lads, we're leaving. NOW.",
+      "choices": [ { "text": "(Watch them run)", "do": [ { "resolve": "toll_bridge:scared" }, { "setFlag": "brask_fear" }, { "dropStash": true }, { "leave": "bandits" } ] } ] },
+    "brask_laughs": { "text": "(He laughs) You? Boys, show this one what happens to people who threaten the Red Hands.",
+      "choices": [ { "text": "(Fight)", "do": [ { "hostile": "bandits" } ] } ] },
+    "brask_recruit": { "text": "Paid work. Honest work... You'd vouch for us? ...Gods help me, I'm tired of sleeping in the mud. Deal. Red Hands — we're going to Ashford.",
+      "choices": [ { "text": "(Shake his hand)", "do": [ { "resolve": "toll_bridge:recruited" }, { "setFlag": "brask_trust" }, { "recruit": "brask_guard" }, { "leave": "bandits" } ] } ] },
+    "brask_charter": { "text": "A royal charter? ...Hanging offence. Right. Lads — we were never here.",
+      "choices": [ { "text": "(Roll up the charter)", "do": [ { "resolve": "toll_bridge:charter" }, { "leave": "bandits" } ] } ] },
+    "brask_counter": { "text": "Clever tongue. Fine — thirty gold and we pack up. Final offer.",
+      "choices": [
+        { "text": "[Pay 30 gold] Deal.", "if": { "gold": 30 }, "do": [ { "takeGold": 30 }, { "resolve": "toll_bridge:bargain" }, { "leave": "bandits" } ] },
+        { "text": "Not today." } ] },
+    "brask_blackmail": { "text": "...You wouldn't. (He studies your face.) You would. Fine. Red Hands — we're moving on.",
+      "choices": [ { "text": "(Watch them go)", "do": [ { "resolve": "toll_bridge:blackmail" }, { "leave": "bandits" } ] } ] },
+
+    "brask_parley": { "text": "(Brask staggers, blinking) ...Words. Fine — talk, before I change my mind.",
+      "choices": [
+        { "verb": "negotiate", "text": "There's no profit in dying on a bridge, Brask. Walk away and keep your men alive.",
+          "check": { "resolve": 6, "success": "brask_truce", "fail": "brask_parley_fail" } },
+        { "verb": "negotiate", "text": "(Unroll the charter) This bridge is Ashford's by royal decree. Stop now, or hang later.", "if": { "hasItem": "bridge_charter" },
+          "check": { "resolve": 1, "success": "brask_charter", "fail": "brask_parley_fail" } },
+        { "verb": "leverage", "text": "Westmarch still pays 200 gold for your head. Keep swinging and they'll hear where you died.", "if": { "flag": "knows_bounty" },
+          "check": { "resolve": 3, "success": "brask_blackmail", "fail": "brask_parley_fail" } },
+        { "text": "(Keep fighting)" }
+      ] },
+    "brask_truce": { "text": "...Fine. FINE. Truce. Red Hands — we're done here. Nobody pays us enough for this.",
+      "choices": [ { "text": "(Lower your weapon)", "do": [ { "resolve": "toll_bridge:truce" }, { "leave": "bandits" } ] } ] },
+    "brask_parley_fail": { "text": "(He shakes it off) Talk's over!", "choices": [ { "text": "(Fight on)" } ] },
+    "wren_parley": { "text": "(Wren lowers her crossbow, dazed) ...Why are we even fighting for him?",
+      "choices": [
+        { "verb": "negotiate", "text": "You don't have to. Walk away, Wren — and tell me what you know about Brask.",
+          "check": { "resolve": 3, "success": "wren_walks", "fail": "wren_shuts" } },
+        { "text": "(Keep fighting)" }
+      ] },
+    "wren_walks": { "do": [ { "setFlag": "knows_bounty" } ],
+      "text": "(She drops the crossbow) ...Westmarch. 200 gold on his head. He's terrified of it. I'm done here.",
+      "choices": [ { "text": "Go home, Wren.", "do": [ { "leaveSelf": true } ] } ] },
+    "wren_root": {
+      "text": [
+        { "if": { "flag": "knows_bounty" }, "text": "I've told you what I know. Now go." },
+        { "if": { "flag": "wren_talked" },  "text": "Still here?" },
+        { "text": "(The crossbowwoman doesn't look up) Talk to the captain, not me." }
+      ],
+      "do": [ { "setFlag": "wren_talked" } ],
+      "choices": [
+        { "text": "You don't look like you want to be here either.", "if": [ { "sex": "female" }, { "not": { "flag": "knows_bounty" } } ], "next": "wren_opens" },
+        { "verb": "persuade", "text": "What's Brask got over you? You could just walk away.", "if": { "not": { "flag": "knows_bounty" } },
+          "check": { "resolve": 8, "success": "wren_opens", "fail": "wren_shuts" } },
+        { "verb": "honor", "text": "Lower your crossbow and you have my word no harm comes to you.", "if": { "not": { "flag": "knows_bounty" } },
+          "check": { "resolve": 6, "success": "wren_opens", "fail": "wren_shuts" } },
+        { "verb": "hypnotize", "text": "(Brush against her mind) What do you know about Brask?", "if": { "not": { "flag": "knows_bounty" } },
+          "check": { "resolve": 3, "success": "wren_opens", "fail": "wren_shuts" } },
+        { "verb": "intimidate", "text": "Tell me something useful, or you're first.", "if": { "not": { "flag": "knows_bounty" } },
+          "check": { "resolve": 4, "success": "wren_scared", "fail": "wren_shuts" } },
+        { "verb": "negotiate", "text": "I could find you honest work in Ashford. What would it take?", "if": { "not": { "flag": "knows_bounty" } },
+          "check": { "resolve": 4, "success": "wren_opens", "fail": "wren_shuts" } },
+        { "text": "Never mind." }
+      ] },
+    "wren_opens": { "do": [ { "setFlag": "knows_bounty" }, { "disposition": 20 } ],
+      "text": "(She glances at Brask, then lowers her voice) ...He promised us coin. All we got is mud and his temper. You want leverage? Westmarch has a 200-gold bounty on him. He's terrified of it.",
+      "choices": [ { "text": "Thank you, Wren." } ] },
+    "wren_scared": { "do": [ { "setFlag": "knows_bounty" }, { "disposition": -20 } ],
+      "text": "Alright, alright! Westmarch. There's a 200-gold bounty on him there. Use it — just leave me out of it.",
+      "choices": [ { "text": "Smart choice." } ] },
+    "wren_shuts": { "text": "I've nothing to say to you.", "choices": [ { "text": "(Leave her be)" } ] },
+
+    "brask_guard_root": {
+      "text": [
+        { "if": { "flag": "brask_resentment" }, "text": "You. I remember everything, you know. Every second you were in my head." },
+        { "text": "Honest work. Strange feeling. ...Thank you, {title}. The Red Hands won't trouble Ashford again." }
+      ],
+      "choices": [ { "text": "Keep the village safe, Brask." } ] },
+
+    "merchant_root": { "text": "Potions, blades, armor! Coin up front, no refunds. (You have {gold} gold.)",
+      "choices": [
+        { "text": "Buy Health Potion (15g)", "if": { "gold": 15 }, "do": [ { "buy": { "item": "potion", "cost": 15 } } ], "next": "merchant_root" },
+        { "text": "Buy Iron Sword (60g)", "if": { "gold": 60 }, "do": [ { "buy": { "item": "iron_sword", "cost": 60 } } ], "next": "merchant_root" },
+        { "text": "Buy Leather Vest (40g)", "if": { "gold": 40 }, "do": [ { "buy": { "item": "leather_vest", "cost": 40 } } ], "next": "merchant_root" },
+        { "text": "Need any help around here?", "if": { "quest": "slime_cull", "is": "none" }, "next": "tobin_slime_offer", "marker": "!" },
+        { "text": "About those slimes...", "if": { "quest": "slime_cull", "is": "active" }, "next": "tobin_slime_progress" },
+        { "text": "The slimes are dealt with.", "if": { "quest": "slime_cull", "is": "complete" }, "do": [ { "turnIn": "slime_cull" } ], "next": "tobin_slime_done", "marker": "?" },
+        { "text": "Just looking." }
+      ] },
+    "tobin_slime_offer": { "text": "Slimes keep oozing into my storehouse and eating the stock. Cull five of them in the meadow and I'll give you a proper blade.",
+      "choices": [ { "text": "Deal.", "do": [ { "startQuest": "slime_cull" } ] }, { "text": "Not now.", "next": "merchant_root" } ] },
+    "tobin_slime_progress": { "text": "Five slimes. So far you've squashed {quest:slime_cull}.", "choices": [ { "text": "Back to it." } ] },
+    "tobin_slime_done": { "text": "My stock thanks you! Here — as promised.", "choices": [ { "text": "Thanks, Tobin.", "next": "merchant_root" } ] }
+  },
+
+  "map": {
+    "legend": "# wall  T tree  H house  ~ water  = bridge  . grass  , path  r ruins floor",
+    "regions": [ { "id": "north", "name": "Ashford side", "maxRow": 13 },
+                 { "id": "south", "name": "South bank",   "maxRow": 999 } ],
+    "spawns": { "P": "player", "E": "npc:elder", "M": "npc:merchant", "s": "enemy:slime", "a": "enemy:archer", "B": "enemy:brute",
+                "C": "enemy:bandit_captain", "W": "enemy:bandit_lt", "x": "enemy:bandit" },
+    "rows": [
+      "################################################",
+      "#TT..........T......T..........T.........T...TT#",
+      "#T..HHH..HHH..T.........s.............s.......T#",
+      "#...HHH..HHH......................s............#",
+      "#....,....,..T..........s......................#",
+      "#..,,,,E,,,,,.......T..............T.....s.....#",
+      "#..,......,..T.............s...................#",
+      "#..,..HHH.,M.T.......................s.........#",
+      "#..,..HHH.,..T..........T......................#",
+      "#..,,,,P,,,,,,,,,,,,,,,,,,,,,,,............T...#",
+      "#TT..........T...............x,..W.............#",
+      "#TTTTTTTTTTTTT......T.......x.C.x..............#",
+      "#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~==~~~~~~~~~~~~~~~#",
+      "#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~==~~~~~~~~~~~~~~~#",
+      "#~~~~~~~..........TTT.....................TT...#",
+      "#~~~~~~...........TTT.......a.........a........#",
+      "#~~~~~...........................T.............#",
+      "#~~~~.......T..........a.................T.....#",
+      "#~~~.................TT........................#",
+      "#~~......T...........TT.......T.......a........#",
+      "#...........................................T..#",
+      "#......T..............a........................#",
+      "#.........T...............####..################",
+      "#.........................#rrrrrrrrrrrrrrrrrrrr#",
+      "#....T....................#rrrrrr#rrrrrrr#rrrrr#",
+      "#.........................#rrsrrrrrrrrrrrrrrarr#",
+      "#..........T..............#rrrrrr#rrrrrrr#rrrrr#",
+      "#..............s..........#rrrrrrrrrrrrBrrrrrrr#",
+      "#....T....................#rrarrrrrrrrrrrrrrrrr#",
+      "#.........................#rrrrrrrrrrrrrrrrrrrr#",
+      "#.......T.................#rrrrrrrrrrrrrrrrrrrr#",
+      "################################################"
+    ]
+  }
+}
+</script>
+
+<script>
+'use strict';
+// =====================================================================
+// Architecture note: each section is labelled with its planned Unreal
+// equivalent. Keep this file structured the same way so porting is 1:1.
+// =====================================================================
+
+const DATA = JSON.parse(document.getElementById('game-data').textContent);
+const T = DATA.tuning;
+const TILE = 32;
+const DEG = Math.PI / 180;
+const SOLID = new Set(['#', 'T', 'H', '~']);
+const BLOCKS_SHOTS = new Set(['#', 'T', 'H']);
+const ATTRIBUTES = ['might', 'agility', 'focus', 'vitality', 'presence'];
+const STAT_LABELS = { might: 'Might', agility: 'Agility', focus: 'Focus', vitality: 'Vitality', presence: 'Presence',
+  armor: 'Armor', weaponDamage: 'Weapon Damage', critPct: 'Crit %' };
+
+// ---------- utilities ----------
+const rand = (a, b) => a + Math.random() * (b - a);
+const randi = (a, b) => Math.floor(rand(a, b + 1));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const angleTo = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
+function angDiff(a, b) { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
+function weighted(list) {
+  const total = list.reduce((s, e) => s + e.weight, 0);
+  let r = Math.random() * total;
+  for (const e of list) if ((r -= e.weight) <= 0) return e;
+  return list[list.length - 1];
+}
+const xpToNext = level => Math.round(T.xpBase * Math.pow(T.xpGrowth, level - 1));
+
+// ---------- Event bus  (Unreal: multicast delegates / GameplayMessageSubsystem) ----------
+const Events = {
+  handlers: {},
+  on(name, fn) { (this.handlers[name] ||= []).push(fn); },
+  emit(name, payload) { (this.handlers[name] || []).forEach(fn => fn(payload)); },
+};
+
+// =====================================================================
+// World / tilemap
+// =====================================================================
+const World = {
+  rows: [], w: 0, h: 0, spawns: [],
+  load(map) {
+    const raw = map.rows;
+    this.h = raw.length;
+    this.w = Math.max(...raw.map(r => r.length));
+    this.rows = raw.map((r, y) => {
+      const row = r.padEnd(this.w, '.').split('');
+      for (let x = 0; x < row.length; x++) {
+        const kind = map.spawns[row[x]];
+        if (!kind) continue;
+        this.spawns.push({ kind, x: x * TILE + TILE / 2, y: y * TILE + TILE / 2 });
+        const left = row[x - 1];
+        row[x] = left && !SOLID.has(left) ? left : '.';
+      }
+      return row;
+    });
+  },
+  tile(tx, ty) { return (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h) ? '#' : this.rows[ty][tx]; },
+  tileAt(px, py) { return this.tile(Math.floor(px / TILE), Math.floor(py / TILE)); },
+  // Which map region a y position is in (enemies only engage the player inside their own region).
+  regionAt(py) { const row = Math.floor(py / TILE); return DATA.map.regions.find(r => row <= r.maxRow).id; },
+};
+
+function hitsTiles(x, y, r, set = SOLID) {
+  const x0 = Math.floor((x - r) / TILE), x1 = Math.floor((x + r) / TILE);
+  const y0 = Math.floor((y - r) / TILE), y1 = Math.floor((y + r) / TILE);
+  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+    if (!set.has(World.tile(tx, ty))) continue;
+    const cx = clamp(x, tx * TILE, tx * TILE + TILE), cy = clamp(y, ty * TILE, ty * TILE + TILE);
+    if ((x - cx) ** 2 + (y - cy) ** 2 < r * r) return true;
+  }
+  return false;
+}
+
+function hasLOS(a, b) {
+  const d = dist(a, b), steps = Math.ceil(d / 8);
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    if (BLOCKS_SHOTS.has(World.tileAt(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t))) return false;
+  }
+  return true;
+}
+
+// =====================================================================
+// Gameplay tags  (Unreal: FGameplayTagContainer on the ASC)
+// =====================================================================
+class TagSet {
+  constructor() { this.m = new Map(); }
+  add(tag, duration = Infinity) { this.m.set(tag, Math.max(this.m.get(tag) || 0, duration)); }
+  has(tag) { return this.m.has(tag); }
+  remove(tag) { this.m.delete(tag); }
+  clear() { this.m.clear(); }
+  tick(dt) {
+    for (const [k, v] of this.m) {
+      if (v === Infinity) continue;
+      if (v - dt <= 0) this.m.delete(k); else this.m.set(k, v - dt);
+    }
+  }
+}
+
+// =====================================================================
+// StatsComponent  (Unreal: URPGAttributeSet + AbilitySystemComponent + GameplayEffects)
+//   base attributes + modifiers (from gear) + timed effects (buffs / HoTs)
+// =====================================================================
+class StatsComponent {
+  constructor(owner, base) {
+    this.owner = owner;
+    this.base = { ...base };
+    this.mods = [];      // { source, stat, value }  — equipment etc.
+    this.effects = [];   // { id, name, remaining, period, heal, mods }
+    this.staminaDelay = 0;
+    this.staminaRegenMul = 1;   // lowered while blocking
+    this.manaLock = 0;          // mana regen disabled (mana shield shattered)
+    this.fill();
+  }
+  get(stat) {
+    let v = this.base[stat] || 0;
+    for (const m of this.mods) if (m.stat === stat) v += m.value;
+    for (const e of this.effects) if (e.mods && e.mods[stat]) v += e.mods[stat];
+    return v;
+  }
+  get maxHp() { return Math.round(this.get('hpFlat') + this.get('vitality') * T.hpPerVitality + this.get('level') * T.hpPerLevel); }
+  get maxStamina() { return T.staminaBase + this.get('agility') * T.staminaPerAgility; }
+  get maxMana() { return this.get('manaFlat') + this.get('focus') * T.manaPerFocus; }
+  get critChance() { return Math.max(0, this.get('critPct') + this.get('agility') * T.critPctPerAgility) / 100; }
+  get armor() { return Math.max(0, this.get('armor')); }
+
+  fill() { this.hp = this.maxHp; this.stamina = this.maxStamina; this.mana = this.maxMana; }
+  clamp() {
+    this.hp = Math.min(this.hp, this.maxHp);
+    this.stamina = Math.min(this.stamina, this.maxStamina);
+    this.mana = Math.min(this.mana, this.maxMana);
+  }
+  addModifiers(source, mods) {
+    for (const [stat, value] of Object.entries(mods || {})) this.mods.push({ source, stat, value });
+    this.clamp();
+  }
+  removeModifiers(source) { this.mods = this.mods.filter(m => m.source !== source); this.clamp(); }
+  spendStamina(n) {
+    if (this.stamina < n) return false;
+    this.stamina -= n;
+    this.staminaDelay = T.staminaRegenDelay;
+    return true;
+  }
+  addEffect(e) {
+    this.effects = this.effects.filter(x => x.id !== e.id);
+    this.effects.push({ ...e, remaining: e.duration, tickTimer: e.period || 0 });
+  }
+  tick(dt) {
+    if (this.staminaDelay > 0) this.staminaDelay -= dt;
+    else this.stamina = Math.min(this.maxStamina, this.stamina + T.staminaRegen * this.staminaRegenMul * dt);
+    if (this.manaLock > 0) this.manaLock -= dt;
+    else this.mana = Math.min(this.maxMana, this.mana + (this.base.manaRegen ?? T.manaRegen) * dt);
+    for (const e of this.effects) {
+      e.remaining -= dt;
+      if (e.period) {
+        e.tickTimer -= dt;
+        while (e.tickTimer <= 0) { e.tickTimer += e.period; if (e.heal) heal(this.owner, e.heal); if (e.dot) applyDot(this.owner, e.dot, e.source); }
+      }
+    }
+    this.effects = this.effects.filter(e => e.remaining > 0);
+    this.clamp();
+  }
+}
+
+// =====================================================================
+// Damage pipeline  (Unreal: URPGDamageExecution — UGameplayEffectExecutionCalculation)
+// =====================================================================
+const scalingOf = stat => ({ might: T.mightScaling, agility: T.agilityScaling, focus: T.focusScaling })[stat] || 0;
+const scaleBy = (stats, stat) => 1 + stats.get(stat) * scalingOf(stat);
+
+function computeDamage(src, target, base, scaling) {
+  let dmg = base * (scaling ? scaleBy(src.stats, scaling) : 1);
+  let crit = false;
+  if (Math.random() < src.stats.critChance) { dmg *= T.critMultiplier; crit = true; }
+  dmg *= T.armorConstant / (T.armorConstant + target.stats.armor);
+  if (target.tags.has('Marked')) dmg *= target.markMul || 1;
+  dmg *= rand(1 - T.damageVariance, 1 + T.damageVariance);
+  return { amount: Math.max(1, Math.round(dmg)), crit };
+}
+
+// opts: { base, scaling, poise, knockback, dir, from }   (from = where the hit comes from; defaults to src)
+// Returns true if the hit connected (including blocked / absorbed hits), false if it passed through.
+function dealDamage(src, target, o) {
+  if (target.dead || target.tags.has('Invulnerable')) return false;
+  // striking a neutral faction member (or a bystander during a duel) turns the whole faction hostile
+  if (src === player && target.def?.faction && target.passive())
+    Encounters.setHostile(target.def.faction, Game.duel ? 'You broke the duel! The Red Hands attack!' : 'You attacked the Red Hands!');
+  let { amount, crit } = computeDamage(src, target, o.base, o.scaling);
+  let poise = o.poise || 0, knockback = o.knockback || 0;
+  const isPlayer = target === player;
+  const textY = target.y - target.radius - 6;
+
+  // --- shield block  (Unreal: GA_Block + State.Blocking tag checked in the damage execution) ---
+  const guard = target.guard && target.style.secondary;
+  if (guard && Math.abs(angDiff(target.facing, angleTo(target, o.from || src))) <= guard.arc * DEG / 2) {
+    if (guard.perfectWindow && target.guard.t <= guard.perfectWindow) {
+      FX.text(target.x, textY - 10, 'PERFECT BLOCK', '#ffffff', 14);
+      FX.ring(target.x, target.y, 34, '#ffffff', 0.3);
+      if (src !== target && !src.dead && dist(src, target) < 140) {
+        src.tags.add('Staggered', T.staggerTime * 1.8);
+        src.onStagger();
+        FX.text(src.x, src.y - src.radius - 22, 'STAGGER', '#8fd0ff', 12);
+      }
+      Cam.shake(3);
+      return true;
+    }
+    const cost = amount * guard.staminaPerDamage;
+    if (target.stats.stamina >= cost) {
+      target.stats.stamina -= cost;
+      target.stats.staminaDelay = T.staminaRegenDelay;
+      amount = Math.round(amount * (1 - guard.reduction));
+      poise *= 0.3; knockback *= 0.3;
+      FX.text(target.x - 16, textY - 14, 'BLOCK', '#c8d4e0', 11);
+    } else {  // not enough stamina to absorb it: guard break, full damage
+      target.stats.stamina = 0;
+      target.guard = null;
+      target.tags.add('Staggered', T.staggerTime * 1.5);
+      target.onStagger();
+      FX.text(target.x, textY - 18, 'GUARD BREAK', '#ff9a5a', 14);
+    }
+  }
+
+  // --- absorb effects (Ward)  (Unreal: a "Shield" attribute consumed before Health) ---
+  for (const fx of target.stats.effects) {
+    if (!(fx.absorb > 0) || amount <= 0) continue;
+    const soaked = Math.min(fx.absorb, amount);
+    fx.absorb -= soaked; amount -= soaked;
+    FX.text(target.x - 14, textY, `(${soaked})`, '#ffe9a8', 13);
+  }
+
+  // --- mana shield  (Unreal: damage execution routes damage into Mana before Health) ---
+  const ms = target.style?.passive;
+  if (ms?.type === 'manaShield' && amount > 0 && target.stats.mana > 0) {
+    const absorbed = Math.min(amount, Math.floor(target.stats.mana * ms.damagePerMana));
+    target.stats.mana -= absorbed / ms.damagePerMana;
+    amount -= absorbed;
+    if (absorbed > 0) FX.text(target.x + 14, textY, `(${absorbed})`, '#9db8ff', 13);
+    if (amount === 0) poise *= 0.5;
+    if (target.stats.mana < 1) {
+      target.stats.mana = 0;
+      target.stats.manaLock = ms.breakRegenLock;
+      target.tags.add('Staggered', ms.breakStagger);
+      target.onStagger();
+      FX.text(target.x, textY - 18, 'SHIELD SHATTERED', '#9db8ff', 14);
+      FX.burst(target.x, target.y, '#9db8ff', 18);
+    }
+  }
+
+  target.flash = 0.12;
+  if (amount > 0) {
+    target.stats.hp -= amount;
+    FX.text(target.x, textY, crit ? amount + '!' : '' + amount,
+      isPlayer ? '#ff5a5a' : crit ? '#ffd34a' : '#ffffff', crit ? 18 : 14);
+  }
+  // duel opponents yield instead of dying
+  if (Game.duel === target && target.stats.hp <= target.stats.maxHp * 0.2) {
+    target.stats.hp = Math.max(1, Math.round(target.stats.hp));
+    Game.duel = null;
+    target.kx = target.ky = 0;
+    target.tags.clear();
+    target.state = 'idle';
+    Dialogue.open(target, target.def.yieldDialogue);
+    return true;
+  }
+  if (knockback) {
+    const a = o.dir ?? angleTo(src, target);
+    const kb = knockback * (target.def?.knockbackMul ?? 1);
+    target.knock(Math.cos(a) * kb, Math.sin(a) * kb);
+  }
+  if (src === player && target instanceof Enemy) target.provoked = true;
+  if (src === player && target instanceof Enemy && ['idle', 'return'].includes(target.state) && !target.passive()) {
+    target.state = 'chase';
+    FX.text(target.x, target.y - target.radius - 12, '!', '#ffe14a', 16);
+  }
+  target.poise -= poise;
+  target.poiseTimer = T.poiseRegenDelay;
+  if (target.poise <= 0) {
+    target.poise = target.maxPoise;
+    target.tags.add('Staggered', T.staggerTime);
+    target.onStagger();
+    FX.text(target.x, target.y - target.radius - 22, 'STAGGER', '#8fd0ff', 12);
+  }
+  if (isPlayer) { target.tags.add('Invulnerable', T.playerHitIframes); Cam.shake(7); }
+  else Cam.shake(crit ? 3 : 1.5);
+  if (target.stats.hp <= 0) { target.stats.hp = 0; target.die(src); }
+  return true;
+}
+
+// Damage over time: no crits, armor, poise or knockback. Can't finish a duel opponent (they yield instead).
+function applyDot(target, amount, src) {
+  if (target.dead) return;
+  let n = Math.max(1, Math.round(amount));
+  if (Game.duel === target) n = Math.min(n, Math.max(0, Math.floor(target.stats.hp - target.stats.maxHp * 0.2 - 1)));
+  if (n <= 0) return;
+  target.stats.hp -= n;
+  FX.text(target.x + rand(-8, 8), target.y - target.radius - 6, '' + n, '#7fd07f', 12);
+  if (target.stats.hp <= 0) { target.stats.hp = 0; target.die(src); }
+}
+
+function heal(target, amount) {
+  if (target.dead) return;
+  const before = target.stats.hp;
+  target.stats.hp = Math.min(target.stats.maxHp, target.stats.hp + amount);
+  const gained = Math.round(target.stats.hp - before);
+  if (gained > 0) FX.text(target.x, target.y - target.radius - 6, '+' + gained, '#5fe08a', 13);
+}
+
+const opponentsOf = team => team === 'player' ? Game.enemies.filter(e => !e.dead && !e.leaving) : (player.dead ? [] : [player]);
+
+// =====================================================================
+// Character base  (Unreal: ARPGCharacterBase : ACharacter, IAbilitySystemInterface)
+// =====================================================================
+let nextId = 1;
+class Character {
+  constructor(x, y, radius, team, statsBase) {
+    this.id = nextId++;
+    this.x = x; this.y = y; this.radius = radius; this.team = team;
+    this.facing = 0;
+    this.tags = new TagSet();
+    this.stats = new StatsComponent(this, statsBase);
+    this.kx = 0; this.ky = 0;            // knockback velocity
+    this.flash = 0;
+    this.dead = false;
+    this.maxPoise = statsBase.poise || 50;
+    this.poise = this.maxPoise;
+    this.poiseTimer = 0;
+  }
+  move(dx, dy) {
+    const steps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / 6));
+    const sx = dx / steps, sy = dy / steps;
+    for (let i = 0; i < steps; i++) {
+      if (!hitsTiles(this.x + sx, this.y, this.radius)) this.x += sx;
+      if (!hitsTiles(this.x, this.y + sy, this.radius)) this.y += sy;
+    }
+  }
+  moveToward(target, speed, dt) {
+    const a = angleTo(this, target);
+    this.facing = a;   // matters for backstabs
+    this.move(Math.cos(a) * speed * dt, Math.sin(a) * speed * dt);
+  }
+  knock(ax, ay) { this.kx += ax; this.ky += ay; }
+  onStagger() {}
+  baseUpdate(dt) {
+    this.tags.tick(dt);
+    this.stats.tick(dt);
+    if (this.flash > 0) this.flash -= dt;
+    if (Math.abs(this.kx) + Math.abs(this.ky) > 5) {
+      this.move(this.kx * dt, this.ky * dt);
+      const f = Math.pow(0.002, dt);
+      this.kx *= f; this.ky *= f;
+    } else { this.kx = 0; this.ky = 0; }
+    this.poiseTimer -= dt;
+    if (this.poiseTimer <= 0) this.poise = this.maxPoise;
+  }
+}
+
+// =====================================================================
+// AbilityComponent  (Unreal: ASC + URPGGameplayAbility subclasses)
+// =====================================================================
+class AbilityComponent {
+  constructor(owner, ids) {
+    this.owner = owner;
+    this.ids = ids;
+    this.cd = Object.fromEntries(ids.map(id => [id, 0]));
+  }
+  def(id) { return DATA.abilities[id]; }
+  unlocked(id) { return this.owner.level >= this.def(id).unlockLevel; }
+  tick(dt) { for (const k in this.cd) this.cd[k] = Math.max(0, this.cd[k] - dt); }
+  canAfford(d) { const s = this.owner.stats; return (!d.mana || s.mana >= d.mana) && (!d.stamina || s.stamina >= d.stamina); }
+  tryActivate(id) {
+    const o = this.owner, d = this.def(id);
+    const fail = msg => { FX.text(o.x, o.y - 30, msg, '#aab', 12); return false; };
+    if (!this.unlocked(id)) return fail(`${d.name} unlocks at Lv ${d.unlockLevel}`);
+    if (o.motion || o.tags.has('Staggered')) return false;
+    if (this.cd[id] > 0) return fail('Not ready');
+    if (d.mana && o.stats.mana < d.mana) return fail('Not enough mana');
+    if (d.stamina && o.stats.stamina < d.stamina) return fail('Not enough stamina');
+    if (d.requires === 'shield' && o.style.secondary?.type !== 'block') return fail('Needs a shield (press X)');
+    o.tags.remove('Hidden');                          // acting breaks stealth (Smoke Bomb re-applies it)
+    if (AbilityImpls[d.type](o, d) === false) return false;   // e.g. no valid target: nothing spent
+    if (d.mana) o.stats.mana -= d.mana;
+    if (d.stamina) o.stats.spendStamina(d.stamina);
+    this.cd[id] = d.cooldown;
+    o.attack = null; o.queuedAttack = false;
+    return true;
+  }
+}
+
+// The enemy nearest the cursor, within `range` of the caster.
+function targetNearCursor(o, range) {
+  const m = Input.mouseWorld();
+  let best = null, bd = Infinity;
+  for (const e of opponentsOf(o.team)) {
+    if (dist(o, e) > range || !hasLOS(o, e)) continue;
+    const d = dist(e, m);
+    if (d < bd) { bd = d; best = e; }
+  }
+  return best;
+}
+
+// One implementation per ability *type*; concrete abilities are pure data.
+// Returning false cancels the cast (no cost, no cooldown).
+const scaled = (o, d, v) => v * (d.scaling ? scaleBy(o.stats, d.scaling) : 1);
+const AbilityImpls = {
+  projectile(o, d) {
+    o.facing = angleTo(o, Input.mouseWorld());
+    const n = d.count || 1;
+    for (let i = 0; i < n; i++) {
+      const ang = o.facing + (i - (n - 1) / 2) * (d.spread || 0) * DEG;
+      Projectiles.spawn({ owner: o, team: o.team, x: o.x + Math.cos(ang) * o.radius, y: o.y + Math.sin(ang) * o.radius,
+        ang, speed: d.speed, radius: d.radius, range: d.range, color: d.color, arrow: d.arrow,
+        hit: { base: d.damage, scaling: d.scaling, poise: d.poise, knockback: d.knockback } });
+    }
+  },
+  aoe(o, d) {
+    FX.ring(o.x, o.y, d.radius, d.color, 0.35);
+    for (const e of opponentsOf(o.team))
+      if (dist(o, e) <= d.radius + e.radius &&
+          dealDamage(o, e, { base: d.damage, scaling: d.scaling, poise: d.poise, knockback: d.knockback, dir: angleTo(o, e) }) &&
+          d.applyTag)
+        e.tags.add(d.applyTag.tag, d.applyTag.duration);
+  },
+  cone(o, d) {   // Shield Bash
+    o.facing = angleTo(o, Input.mouseWorld());
+    FX.swing(o, d.range + o.radius, d.arc * DEG, d.color);
+    for (const e of opponentsOf(o.team)) {
+      if (dist(o, e) - e.radius > d.range || Math.abs(angDiff(o.facing, angleTo(o, e))) > d.arc * DEG / 2) continue;
+      if (dealDamage(o, e, { base: d.damage, scaling: d.scaling, poise: d.poise, knockback: d.knockback }) && d.stagger && !e.dead) {
+        e.tags.add('Staggered', d.stagger);
+        e.onStagger();
+      }
+    }
+  },
+  buff(o, d) {   // Rallying Cry, Ward
+    o.stats.addEffect({ id: d.name, name: d.name, duration: d.duration, mods: d.mods,
+                        absorb: d.absorb ? Math.round(scaled(o, d, d.absorb)) : 0 });
+    FX.ring(o.x, o.y, 40, d.color, 0.5);
+  },
+  blink(o, d) {  // stops at the first wall / water tile — no skipping the bridge
+    const m = Input.mouseWorld(), a = angleTo(o, m), maxD = Math.min(d.distance, dist(o, m));
+    let best = 0;
+    for (let s = 6; s <= maxD; s += 6) {
+      if (hitsTiles(o.x + Math.cos(a) * s, o.y + Math.sin(a) * s, o.radius)) break;
+      best = s;
+    }
+    if (best < 12) return false;
+    FX.ghost(o, d.color);
+    o.x += Math.cos(a) * best; o.y += Math.sin(a) * best;
+    o.facing = a;
+    o.tags.add('Invulnerable', d.iframes);
+    FX.ring(o.x, o.y, 22, d.color, 0.3);
+  },
+  chain(o, d) {  // Chain Lightning
+    let target = targetNearCursor(o, d.range);
+    if (!target) { FX.text(o.x, o.y - 30, 'No target', '#aab', 12); return false; }
+    const hit = new Set(), points = [{ x: o.x, y: o.y }];
+    let base = d.damage;
+    for (let i = 0; i <= d.jumps && target; i++) {
+      hit.add(target);
+      points.push({ x: target.x, y: target.y });
+      dealDamage(o, target, { base, scaling: d.scaling, poise: d.poise, knockback: 60 });
+      base *= d.falloff;
+      const from = target;
+      target = opponentsOf(o.team).filter(e => !hit.has(e) && dist(from, e) <= d.jumpRange)
+                                   .sort((a, b) => dist(from, a) - dist(from, b))[0];
+    }
+    FX.bolt(points, d.color);
+  },
+  smoke(o, d) {  // Smoke Bomb: hidden + everyone nearby loses track of you
+    FX.smoke(o.x, o.y, d.radius);
+    o.tags.add('Hidden', d.duration);
+    for (const e of opponentsOf(o.team))
+      if (dist(o, e) < d.radius * 3 && ['chase', 'windup', 'recover'].includes(e.state)) { e.state = 'idle'; e.wanderTarget = null; }
+  },
+  weaponBuff(o, d) {  // Poison Blade
+    o.stats.addEffect({ id: d.name, name: d.name, duration: d.duration, onHitPoison: d.poison });
+    FX.ring(o.x, o.y, 30, d.color, 0.4);
+  },
+  daze(o, d) {   // Silver Words
+    const e = targetNearCursor(o, d.range);
+    if (!e) { FX.text(o.x, o.y - 30, 'No target', '#aab', 12); return false; }
+    if (!e.def.intelligent) { FX.text(e.x, e.y - e.radius - 14, "It doesn't understand words", '#aab', 12); return false; }
+    if (e.passive()) { FX.text(e.x, e.y - e.radius - 14, "They're not fighting you", '#aab', 12); return false; }
+    e.tags.add('Staggered', d.daze);
+    e.onStagger();
+    FX.text(e.x, e.y - e.radius - 22, 'DAZED', d.color, 13);
+    FX.bolt([{ x: o.x, y: o.y }, { x: e.x, y: e.y }], d.color);
+    if (e.def.parleyDialogue) Dialogue.open(e, e.def.parleyDialogue);   // talk, mid-fight
+  },
+  mark(o, d) {   // Insight
+    const e = targetNearCursor(o, d.range);
+    if (!e) { FX.text(o.x, o.y - 30, 'No target', '#aab', 12); return false; }
+    e.tags.add('Marked', d.duration);
+    e.markMul = d.damageTakenMul;
+    FX.ring(e.x, e.y, e.radius + 10, d.color, 0.5);
+  },
+  dashStrike(o, d) {
+    o.facing = angleTo(o, Input.mouseWorld());
+    o.motion = { ang: o.facing, speed: d.distance / d.duration, t: d.duration, strike: d, hit: new Set() };
+    o.tags.add('Invulnerable', d.duration + 0.05);
+    o.tags.add('Dodging', d.duration);
+  },
+  heal(o, d) {
+    o.stats.addEffect({ id: d.name, name: d.name, duration: d.duration, period: d.period, heal: scaled(o, d, d.healPerTick) });
+    FX.ring(o.x, o.y, 30, d.color, 0.5);
+  },
+};
+
+// =====================================================================
+// Inventory  (Unreal: URPGInventoryComponent + URPGItemDefinition data assets)
+// =====================================================================
+let nextUid = 1;
+function makeItem(id, rarityWeights) {
+  const b = DATA.items[id];
+  const it = { uid: nextUid++, id, name: b.name, type: b.type, slot: b.slot, mods: { ...(b.mods || {}) },
+               rarity: b.type === 'quest' ? 'quest' : 'common', qty: 1, stackable: !!b.stackable };
+  if (b.type === 'equipment') {
+    let rarity = rarityWeights
+      ? weighted(Object.entries(rarityWeights).map(([k, w]) => ({ k, weight: w }))).k : 'common';
+    let n = DATA.rarities[rarity].affixes;
+    if (n < (b.minAffixes || 0)) { n = b.minAffixes; rarity = n >= 2 ? 'rare' : 'magic'; }
+    it.rarity = rarity;
+    const pool = [...DATA.affixes], picked = [];
+    for (let i = 0; i < n && pool.length; i++) {
+      const a = pool.splice(randi(0, pool.length - 1), 1)[0];
+      it.mods[a.stat] = (it.mods[a.stat] || 0) + randi(a.min, a.max);
+      picked.push(a);
+    }
+    if (picked.length) it.name = `${b.name} ${picked[0].label}`;
+    if (b.rarity) it.rarity = b.rarity;   // unique items: fixed rarity, fixed stats
+  }
+  return it;
+}
+
+class InventoryComponent {
+  constructor(owner, capacity) {
+    this.owner = owner;
+    this.capacity = capacity;
+    this.items = [];
+    this.equipment = { weapon: null, armor: null, trinket: null };
+    this.gold = 0;
+  }
+  changed() { Events.emit('inventoryChanged'); }
+  find(uid) { return this.items.find(i => i.uid === uid); }
+  count(id) { return this.items.filter(i => i.id === id).reduce((s, i) => s + i.qty, 0); }
+  add(it) {
+    if (it.stackable) {
+      const ex = this.items.find(i => i.id === it.id);
+      if (ex) { ex.qty += it.qty; this.changed(); return true; }
+    }
+    if (this.items.length >= this.capacity) return false;
+    this.items.push(it);
+    this.changed();
+    return true;
+  }
+  remove(it, qty = it.qty) {
+    it.qty -= qty;
+    if (it.qty <= 0) this.items = this.items.filter(i => i !== it);
+    this.changed();
+  }
+  equip(it) {
+    const slot = it.slot, prev = this.equipment[slot];
+    this.items = this.items.filter(i => i !== it);
+    if (prev) { this.owner.stats.removeModifiers(slot); this.items.push(prev); }
+    this.equipment[slot] = it;
+    this.owner.stats.addModifiers(slot, it.mods);
+    this.changed();
+  }
+  unequip(slot) {
+    const it = this.equipment[slot];
+    if (!it) return;
+    if (this.items.length >= this.capacity) { UI.toast('Bag is full'); return; }
+    this.equipment[slot] = null;
+    this.owner.stats.removeModifiers(slot);
+    this.items.push(it);
+    this.changed();
+  }
+  use(it) {
+    if (it.type === 'equipment') return this.equip(it);
+    if (it.type === 'consumable') {
+      const b = DATA.items[it.id];
+      if (b.heal) {
+        if (this.owner.stats.hp >= this.owner.stats.maxHp) { FX.text(this.owner.x, this.owner.y - 30, 'Already at full health', '#aab', 12); return; }
+        heal(this.owner, b.heal);
+      }
+      this.remove(it, 1);
+    }
+  }
+  salvage(it) {
+    if (it.type === 'quest') { UI.toast("Can't salvage quest items"); return; }
+    const value = (DATA.rarities[it.rarity]?.salvage || 2) * it.qty;
+    this.gold += value;
+    this.remove(it);
+    UI.toast(`Salvaged ${it.name} for ${value}g`, '#ffd34a');
+  }
+}
+
+// =====================================================================
+// Player  (Unreal: ARPGPlayerCharacter → BP_Player)
+// =====================================================================
+// Base stats for a class at level 1 (shared by Player and the character-select preview).
+function classBaseStats(classId) {
+  const C = DATA.classes[classId], P = DATA.player;
+  return { ...C.attributes, hpFlat: C.hpBase, manaFlat: C.manaBase, manaRegen: C.manaRegen ?? T.manaRegen,
+           level: 1, critPct: C.critPct, weaponDamage: P.unarmedDamage, poise: P.poise };
+}
+
+// Damage of the first primary hit (shown on character select / character panel).
+function primaryHitDamage(stats, style) {
+  const p = style.primary;
+  const base = p.type === 'bolt'
+    ? p.damage + stats.get('weaponDamage') * p.weaponRatio
+    : stats.get('weaponDamage') * p.combo[0].mult * (style.damageMul || 1);
+  return base * scaleBy(stats, p.scaling);
+}
+
+class Player extends Character {
+  constructor(x, y, classId, sex) {
+    const P = DATA.player, C = DATA.classes[classId];
+    super(x, y, P.radius, 'player', classBaseStats(classId));
+    this.classId = classId;
+    this.classDef = C;
+    this.sex = sex;
+    this.moveSpeed = C.moveSpeed;
+    this.spawn = { x, y };
+    this.xp = 0;
+    this.attrPoints = 0;
+    this.inventory = new InventoryComponent(this, P.inventorySize);
+    this.abilities = new AbilityComponent(this, C.abilities);
+    this.attack = null;        // { def, phase, t }
+    this.queuedAttack = false;
+    this.comboStep = 0;
+    this.comboTimer = 0;
+    this.motion = null;        // dodge / dash
+    this.styleIdx = 0;         // index into classDef.styles (Knight can swap)
+    this.guard = null;         // { t } while blocking — t = time since raised (perfect-block window)
+    this.draw = null;          // { t } while drawing the bow
+    this.boltCd = 0;
+    this.castSlow = 0;
+    this.inventory.gold = P.startGold;
+    for (const s of C.startItems) {
+      const it = makeItem(s.item);
+      it.qty = s.qty || 1;
+      this.inventory.add(it);
+      if (s.equip) this.inventory.equip(it);
+    }
+    this.stats.fill();
+  }
+  get level() { return this.stats.base.level; }
+  get style() { return DATA.weaponStyles[this.classDef.styles[this.styleIdx]]; }
+
+  moveInput() {
+    const d = Input.down;
+    let ix = (d.has('KeyD') || d.has('ArrowRight') ? 1 : 0) - (d.has('KeyA') || d.has('ArrowLeft') ? 1 : 0);
+    let iy = (d.has('KeyS') || d.has('ArrowDown') ? 1 : 0) - (d.has('KeyW') || d.has('ArrowUp') ? 1 : 0);
+    const len = Math.hypot(ix, iy) || 1;
+    return [ix / len, iy / len];
+  }
+
+  update(dt) {
+    this.baseUpdate(dt);
+    if (this.dead) return;
+    this.abilities.tick(dt);
+    this.comboTimer -= dt;
+    this.boltCd -= dt;
+    this.castSlow -= dt;
+    this.stats.staminaRegenMul = 1;
+
+    if (this.motion) { this.guard = this.draw = null; this.updateMotion(dt); return; }
+    if (this.tags.has('Staggered')) { this.onStagger(); return; }
+    if (!this.attack) this.facing = angleTo(this, Input.mouseWorld());
+    if (this.attack) this.updateAttack(dt);
+    this.updateSecondary(dt);
+
+    const sec = this.style.secondary;
+    let mul = 1;
+    if (this.attack) mul = DATA.combat.attackMoveMul;
+    else if (this.guard || this.draw) mul = sec.moveMul;
+    else if (this.castSlow > 0) mul = 0.6;
+    if (this.guard) this.stats.staminaRegenMul = sec.staminaRegenMul;
+    const [ix, iy] = this.moveInput();
+    this.move(ix * this.moveSpeed * mul * dt, iy * this.moveSpeed * mul * dt);
+  }
+
+  // --- secondary (RMB): block or bow  (Unreal: GA_Block / GA_BowDraw, held-input abilities) ---
+  updateSecondary(dt) {
+    const sec = this.style.secondary;
+    const rmb = Input.down.has('Mouse2') && !UI.blocking();
+    if (!sec || this.attack) { this.guard = this.draw = null; return; }
+    if (sec.type === 'block') {
+      if (rmb) { this.guard ||= { t: 0 }; this.guard.t += dt; } else this.guard = null;
+    } else if (sec.type === 'bow') {
+      if (rmb) { this.draw ||= { t: 0 }; this.draw.t += dt; }
+      else if (this.draw) { this.fireArrow(this.draw.t); this.draw = null; }
+    }
+  }
+  fireArrow(t) {
+    const b = this.style.secondary;
+    if (t < b.minDraw) return;
+    this.tags.remove('Hidden');
+    const k = clamp(t / b.drawTime, 0, 1), full = k >= 1;
+    const mul = (b.minMul + (1 - b.minMul) * k) * (full ? b.fullBonus : 1);
+    Projectiles.spawn({ owner: this, team: this.team, arrow: true, color: full ? '#fff3c0' : b.color,
+      x: this.x + Math.cos(this.facing) * this.radius, y: this.y + Math.sin(this.facing) * this.radius,
+      ang: this.facing, speed: b.speed * (0.6 + 0.4 * k), radius: 3, range: b.range,
+      hit: { base: (b.damage + this.stats.get('weaponDamage') * b.weaponRatio) * mul, scaling: b.scaling,
+             poise: b.poise * mul, knockback: b.knockback * mul } });
+    if (full) FX.text(this.x, this.y - 28, 'Full draw!', '#fff3c0', 11);
+  }
+
+  // --- primary (LMB): melee combo or bolt  (Unreal: GA_LightAttack w/ montage notifies / GA_ArcaneBolt) ---
+  tryAttack() {
+    if (this.motion || this.dead || this.tags.has('Staggered')) return;
+    this.tags.remove('Hidden');
+    if (this.style.primary.type === 'bolt') { if (this.boltCd <= 0) this.fireBolt(); return; }
+    if (this.attack) { if (this.attack.phase !== 'windup') this.queuedAttack = true; return; }
+    this.startAttack();
+  }
+  fireBolt() {
+    const p = this.style.primary;
+    this.boltCd = p.cooldown;
+    this.castSlow = 0.15;
+    this.facing = angleTo(this, Input.mouseWorld());
+    Projectiles.spawn({ owner: this, team: this.team, color: p.color,
+      x: this.x + Math.cos(this.facing) * this.radius, y: this.y + Math.sin(this.facing) * this.radius,
+      ang: this.facing, speed: p.speed, radius: p.radius, range: p.range,
+      hit: { base: p.damage + this.stats.get('weaponDamage') * p.weaponRatio, scaling: p.scaling,
+             poise: p.poise, knockback: p.knockback } });
+  }
+  swapStyle() {
+    const styles = this.classDef.styles;
+    if (styles.length < 2 || this.attack || this.motion) return;
+    this.styleIdx = (this.styleIdx + 1) % styles.length;
+    this.comboStep = 0; this.comboTimer = 0;
+    this.guard = this.draw = null;
+    UI.toast(`Switched to ${this.style.name}`, this.classDef.color);
+  }
+  startAttack() {
+    const combo = this.style.primary.combo;
+    const step = this.comboTimer > 0 ? (this.comboStep + 1) % combo.length : 0;
+    const a = combo[step];
+    if (!this.stats.spendStamina(a.stamina)) { FX.text(this.x, this.y - 30, 'No stamina', '#7fd07f', 12); this.comboTimer = 0; return; }
+    this.facing = angleTo(this, Input.mouseWorld());
+    this.comboStep = step;
+    this.attack = { def: a, phase: 'windup', t: a.windup };
+  }
+  updateAttack(dt) {
+    const at = this.attack;
+    at.t -= dt;
+    if (at.t > 0) return;
+    if (at.phase === 'windup') {
+      at.phase = 'active'; at.t = at.def.active;
+      this.knock(Math.cos(this.facing) * at.def.lunge, Math.sin(this.facing) * at.def.lunge);
+      this.swingHit(at.def);
+    } else if (at.phase === 'active') {
+      at.phase = 'recover'; at.t = at.def.recover;
+    } else {
+      this.attack = null;
+      this.comboTimer = this.style.comboWindow ?? 0.45;
+      if (this.queuedAttack) { this.queuedAttack = false; this.startAttack(); }
+    }
+  }
+  swingHit(a) {
+    const st = this.style, pr = st.primary;
+    const finisher = this.comboStep === pr.combo.length - 1;
+    FX.swing(this, a.range + this.radius, a.arc * DEG, finisher ? '#ffe9a8' : '#ffffff');
+    const base = this.stats.get('weaponDamage') * a.mult * (st.damageMul || 1);
+    for (const e of opponentsOf(this.team)) {
+      if (dist(this, e) - e.radius > a.range) continue;
+      if (Math.abs(angDiff(this.facing, angleTo(this, e))) > (a.arc * DEG) / 2) continue;
+      // backstab: we're behind the enemy (more than 110° off the way it is facing)
+      let mul = 1;
+      if (st.backstab && Math.abs(angDiff(e.facing, angleTo(e, this))) > 110 * DEG) {
+        mul = st.backstab;
+        FX.text(e.x, e.y - e.radius - 22, 'BACKSTAB', '#3fc28f', 12);
+      }
+      if (dealDamage(this, e, { base: base * mul, scaling: pr.scaling, poise: a.poise, knockback: a.knockback }) && !e.dead) {
+        const poison = this.stats.effects.find(fx => fx.onHitPoison)?.onHitPoison;
+        if (poison) e.stats.addEffect({ id: 'poison', name: 'Poison', duration: poison.duration, period: poison.period,
+                                        dot: scaled(this, poison, poison.damage), source: this });
+      }
+    }
+  }
+
+  // --- dodge roll (Unreal: GA_Dodge granting State.Invulnerable via a duration GE) ---
+  tryDodge() {
+    if (this.motion || this.dead || this.tags.has('Staggered')) return;
+    const d = { ...T.dodge, ...(this.classDef.dodge || {}) };
+    if (!this.stats.spendStamina(d.cost)) { FX.text(this.x, this.y - 30, 'No stamina', '#7fd07f', 12); return; }
+    const [ix, iy] = this.moveInput();
+    const ang = (ix || iy) ? Math.atan2(iy, ix) : this.facing;
+    this.attack = null; this.queuedAttack = false;
+    this.motion = { ang, speed: d.speed, t: d.duration };
+    this.tags.add('Invulnerable', d.iframes);
+    this.tags.add('Dodging', d.duration);
+  }
+  updateMotion(dt) {
+    const mo = this.motion;
+    mo.t -= dt;
+    this.move(Math.cos(mo.ang) * mo.speed * dt, Math.sin(mo.ang) * mo.speed * dt);
+    if (mo.strike) {
+      for (const e of opponentsOf(this.team)) {
+        if (mo.hit.has(e.id) || dist(this, e) > this.radius + e.radius + 10) continue;
+        mo.hit.add(e.id);
+        const d = mo.strike;
+        dealDamage(this, e, { base: d.damage, scaling: d.scaling, poise: d.poise, knockback: d.knockback, dir: mo.ang });
+      }
+    }
+    if (Math.random() < 0.6) FX.ghost(this, mo.strike ? mo.strike.color : this.classDef.color);
+    if (mo.t <= 0) this.motion = null;
+  }
+
+  drinkPotion() {
+    const pot = this.inventory.items.find(i => i.id === 'potion');
+    if (!pot) { FX.text(this.x, this.y - 30, 'No potions', '#aab', 12); return; }
+    this.inventory.use(pot);
+  }
+
+  gainXp(n) {
+    this.xp += n;
+    FX.text(this.x, this.y - 34, `+${n} XP`, '#b48cff', 12);
+    while (this.xp >= xpToNext(this.level)) {
+      this.xp -= xpToNext(this.level);
+      this.stats.base.level++;
+      this.attrPoints += T.pointsPerLevel;
+      this.stats.fill();
+      FX.ring(this.x, this.y, 60, '#ffd34a', 0.6);
+      UI.toast(`Level ${this.level}! +${T.pointsPerLevel} attribute points — press C`, '#ffd34a');
+      for (const id of this.abilities.ids)
+        if (DATA.abilities[id].unlockLevel === this.level)
+          UI.toast(`New ability: ${DATA.abilities[id].name} [${this.abilities.ids.indexOf(id) + 1}]`, DATA.abilities[id].color);
+    }
+    UI.refresh();
+  }
+
+  onStagger() { this.attack = null; this.queuedAttack = false; this.guard = this.draw = null; }
+  die() {
+    this.dead = true;
+    this.attack = null; this.motion = null;
+    Game.deathTimer = 2.5;
+    FX.burst(this.x, this.y, this.classDef.color, 24);
+  }
+  respawn() {
+    const lost = Math.floor(this.inventory.gold * T.deathGoldPenalty);
+    this.inventory.gold -= lost;
+    this.dead = false;
+    this.x = this.spawn.x; this.y = this.spawn.y;
+    this.kx = this.ky = 0;
+    this.tags.clear();
+    this.stats.effects = [];
+    this.stats.fill();
+    for (const e of Game.enemies) if (!e.dead && !e.leaving) e.reset();
+    if (Game.duel) { Game.duel = null; Game.flags.duel_lost = true; UI.toast('You lost the duel.', '#ff8080'); }
+    UI.toast(lost ? `You lost ${lost} gold.` : 'You wake in the village.', '#ff8080');
+  }
+}
+
+// =====================================================================
+// Enemy + AI  (Unreal: ARPGEnemyCharacter + ARPGAIController running a StateTree)
+// =====================================================================
+class Enemy extends Character {
+  constructor(type, x, y) {
+    const def = DATA.enemies[type];
+    super(x, y, def.radius, 'enemy', { hpFlat: def.hp, armor: def.armor || 0, poise: def.poise });
+    this.type = type;
+    this.def = def;
+    this.home = { x, y };
+    this.state = 'idle';
+    this.t = 0;
+    this.atkIndex = 0;
+    this.curAtk = null;
+    this.cool = 0;
+    this.wanderTarget = null;
+    this.strafe = Math.random() < 0.5 ? 1 : -1;
+    this.respawnTimer = 0;
+    this.leaving = 0;          // > 0 while walking off the map (faction disbanded)
+    this.revealT = 0;          // > 0: just attacked, so the player glimpses it even outside their view
+    this.region = World.regionAt(y);   // stays in its own region unless provoked
+    this.provoked = false;             // attacked by the player: will fight back across regions
+  }
+  // Neutral faction members don't fight — unless they're the player's duel opponent.
+  passive() { return !!this.def.faction && Game.factions[this.def.faction] !== 'hostile' && Game.duel !== this; }
+  leave() { this.leaving = 2; this.state = 'leaving'; }
+  reset() {
+    this.x = this.home.x; this.y = this.home.y;
+    this.kx = this.ky = 0;
+    this.state = 'idle';
+    this.tags.clear();
+    this.provoked = false;
+    this.stats.effects = [];
+    this.stats.fill();
+    this.poise = this.maxPoise;
+  }
+  update(dt) {
+    if (this.dead) {
+      this.respawnTimer -= dt;
+      if (this.respawnTimer <= 0 && dist(player, this.home) > T.respawnMinDistance) { this.dead = false; this.reset(); }
+      return;
+    }
+    this.baseUpdate(dt);
+    this.revealT -= dt;
+    if (this.leaving > 0) {   // walk east and fade out, then gone for good
+      this.leaving -= dt;
+      this.move(this.def.speed * dt, 0);
+      if (this.leaving <= 0) { this.dead = true; this.respawnTimer = Infinity; }
+      return;
+    }
+    if (this.passive()) {     // stand your ground, watch the player
+      if (dist(this, player) < 260) this.facing = angleTo(this, player);
+      this.state = 'idle';
+      return;
+    }
+    this.cool -= dt;
+    if (this.tags.has('Staggered')) return;
+    enemyAI(this, dt);
+  }
+  onStagger() { if (this.state === 'windup') { this.state = 'chase'; this.cool = 0.4; } }
+  beginWindup(atk) {
+    this.curAtk = atk;
+    this.state = 'windup';
+    this.t = atk.windup;
+    this.facing = angleTo(this, player);
+  }
+  performAttack() {
+    const a = this.curAtk, p = player;
+    if (a.type === 'melee') {
+      FX.swing(this, a.range + this.radius, a.arc * DEG, '#ff7070');
+      if (a.lunge) this.knock(Math.cos(this.facing) * a.lunge, Math.sin(this.facing) * a.lunge);
+      if (!p.dead && dist(this, p) - p.radius <= a.range + this.radius * 0.5 &&
+          Math.abs(angDiff(this.facing, angleTo(this, p))) <= (a.arc * DEG) / 2)
+        dealDamage(this, p, { base: a.damage, poise: a.poise, knockback: a.knockback });
+    } else if (a.type === 'slam') {
+      FX.ring(this.x, this.y, a.radius, '#ff7040', 0.4);
+      Cam.shake(5);
+      if (!p.dead && dist(this, p) <= a.radius + p.radius)
+        dealDamage(this, p, { base: a.damage, poise: a.poise, knockback: a.knockback });
+    } else if (a.type === 'ranged') {
+      const pr = a.projectile;
+      Projectiles.spawn({ owner: this, team: this.team, x: this.x, y: this.y, ang: this.facing,
+        speed: pr.speed, radius: pr.radius, range: pr.range, color: pr.color, arrow: true,
+        hit: { base: a.damage, poise: a.poise, knockback: a.knockback } });
+    }
+    this.atkIndex++;
+    this.cool = a.cooldown || 0;
+    this.revealT = T.threatSense.revealAfterAttack;
+  }
+  die(src) {
+    this.dead = true;
+    this.respawnTimer = this.def.respawn < 0 ? Infinity : (this.def.respawn || 40);
+    FX.burst(this.x, this.y, this.def.color, 16);
+    Events.emit('enemyKilled', this);
+    if (src === player) player.gainXp(this.def.xp);
+    Loot.drop(this);
+    if (this.def.resolveOnDeath) { const [enc, outcome] = this.def.resolveOnDeath.split(':'); Encounters.resolve(enc, outcome); }
+  }
+}
+
+function enemyAI(e, dt) {
+  const p = player, def = e.def, d = dist(e, p);
+  const hidden = p.tags.has('Hidden');                         // Smoke Bomb
+  const spd = def.speed * (e.tags.has('Slowed') ? 0.4 : 1);   // Frost Nova
+  const ev = T.enemyVision;
+  const inView = d < (def.hearRadius ?? ev.hearRadius) ||
+                 Math.abs(angDiff(e.facing, angleTo(e, p))) <= (def.visionAngle ?? ev.coneAngle) * DEG / 2;
+  const sameSide = e.provoked || World.regionAt(p.y) === e.region;   // e.g. south-bank enemies ignore you until you cross
+  const sees = () => !p.dead && !hidden && sameSide && d < def.aggro && inView && hasLOS(e, p);
+  const nextAtk = () => def.attacks[e.atkIndex % def.attacks.length];
+
+  switch (e.state) {
+    case 'idle': {
+      if (sees()) { e.state = 'chase'; FX.text(e.x, e.y - e.radius - 12, '!', '#ffe14a', 16); break; }
+      e.t -= dt;
+      if (!e.wanderTarget || e.t <= 0) {
+        e.t = rand(1.5, 4);
+        const a = rand(0, Math.PI * 2), r = rand(0, 60);
+        e.wanderTarget = { x: e.home.x + Math.cos(a) * r, y: e.home.y + Math.sin(a) * r };
+      }
+      if (dist(e, e.wanderTarget) > 4) e.moveToward(e.wanderTarget, spd * 0.35, dt);
+      break;
+    }
+    case 'chase': {
+      if (hidden) { e.state = 'idle'; e.wanderTarget = null; break; }   // lost you in the smoke
+      if (!sameSide) { e.state = 'return'; e.t = 6; break; }             // you left its territory
+      if (p.dead || dist(e, e.home) > def.leash || d > def.aggro * 1.8) { e.state = 'return'; e.t = 6; break; }
+      const atk = nextAtk();
+      e.facing = angleTo(e, p);
+      if (atk.type === 'ranged') {
+        const want = def.preferredDist || 200;
+        const dir = d < want - 40 ? -1 : d > want + 40 ? 1 : 0;
+        if (Math.random() < dt * 0.4) e.strafe *= -1;
+        const a = e.facing;
+        const mx = Math.cos(a) * dir + Math.cos(a + Math.PI / 2) * e.strafe * 0.6;
+        const my = Math.sin(a) * dir + Math.sin(a + Math.PI / 2) * e.strafe * 0.6;
+        e.move(mx * spd * dt, my * spd * dt);
+        if (e.cool <= 0 && d < atk.range && hasLOS(e, p)) e.beginWindup(atk);
+      } else {
+        if (d - p.radius > atk.range * 0.8) e.moveToward(p, spd, dt);
+        if (e.cool <= 0 && d - p.radius <= atk.range + e.radius * 0.5) e.beginWindup(atk);
+      }
+      break;
+    }
+    case 'windup': {
+      if (!sameSide) { e.state = 'return'; e.t = 6; break; }             // cancel: you crossed back
+      e.t -= dt;
+      if (e.curAtk.type === 'ranged') e.facing += angDiff(e.facing, angleTo(e, p)) * Math.min(1, dt * 4); // archers track
+      if (e.t <= 0) { e.performAttack(); e.state = 'recover'; e.t = e.curAtk.recover; }
+      break;
+    }
+    case 'recover': {
+      e.t -= dt;
+      if (e.t <= 0) e.state = 'chase';
+      break;
+    }
+    case 'return': {
+      e.t -= dt;
+      e.moveToward(e.home, spd * 1.2, dt);
+      if (sees() && dist(e, e.home) < def.leash * 0.6) { e.state = 'chase'; break; }
+      if (dist(e, e.home) < 8 || e.t <= 0) e.reset();
+      break;
+    }
+  }
+}
+
+// =====================================================================
+// Projectiles
+// =====================================================================
+const Projectiles = {
+  list: [],
+  spawn(p) {
+    this.list.push({ ...p, vx: Math.cos(p.ang) * p.speed, vy: Math.sin(p.ang) * p.speed, life: p.range / p.speed });
+  },
+  update(dt) {
+    for (const p of this.list) {
+      p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+      if (p.life <= 0 || BLOCKS_SHOTS.has(World.tileAt(p.x, p.y))) { p.done = true; FX.burst(p.x, p.y, p.color, 5); continue; }
+      for (const t of opponentsOf(p.team)) {
+        if (dist(p, t) > t.radius + p.radius) continue;
+        // a dodging (invulnerable) target lets the projectile pass through
+        const from = { x: p.x - p.vx * 0.05, y: p.y - p.vy * 0.05 };  // the side it arrives from (for blocking)
+        if (dealDamage(p.owner, t, { ...p.hit, dir: Math.atan2(p.vy, p.vx), from })) { p.done = true; FX.burst(p.x, p.y, p.color, 8); break; }
+      }
+    }
+    this.list = this.list.filter(p => !p.done);
+  },
+};
+
+// =====================================================================
+// Loot & pickups
+// =====================================================================
+function spawnPickup(x, y, data) {
+  const a = rand(0, Math.PI * 2), r = rand(4, 20);
+  Game.pickups.push({ x: x + Math.cos(a) * r, y: y + Math.sin(a) * r, t: 0, ...data });
+}
+const Loot = {
+  dropTable(x, y, tableId) {
+    const table = DATA.lootTables[tableId];
+    if (!table) return;
+    if (table.gold) spawnPickup(x, y, { kind: 'gold', amount: randi(table.gold[0], table.gold[1]) });
+    for (let i = 0; i < (table.rolls || 1); i++)
+      if (Math.random() < table.dropChance)
+        spawnPickup(x, y, { kind: 'item', item: makeItem(weighted(table.entries).item, table.rarity) });
+  },
+  drop(e) {
+    const def = e.def;
+    if (def.gold) spawnPickup(e.x, e.y, { kind: 'gold', amount: randi(def.gold[0], def.gold[1]) });
+    this.dropTable(e.x, e.y, def.loot);
+    const q = def.questDrop;
+    if (q && Quests.status(q.quest) !== 'turnedIn' && player.inventory.count(q.item) === 0 &&
+        !Game.pickups.some(p => p.item?.id === q.item))
+      spawnPickup(e.x, e.y, { kind: 'item', item: makeItem(q.item) });
+  },
+};
+let fullBagWarned = 0;
+function updatePickups(dt) {
+  const p = player;
+  fullBagWarned -= dt;
+  for (const pk of Game.pickups) {
+    pk.t += dt;
+    if (p.dead || pk.t < 0.35) continue;
+    const d = dist(pk, p);
+    if (pk.kind === 'gold' && d < 70) { const a = angleTo(pk, p); pk.x += Math.cos(a) * 260 * dt; pk.y += Math.sin(a) * 260 * dt; }
+    if (d > p.radius + 10) continue;
+    if (pk.kind === 'gold') {
+      p.inventory.gold += pk.amount;
+      FX.text(p.x, p.y - 24, `+${pk.amount}g`, '#ffd34a', 12);
+      pk.done = true;
+      UI.refresh();
+    } else if (p.inventory.add(pk.item)) {
+      UI.toast(`Picked up ${pk.item.name}`, rarityColor(pk.item));
+      pk.done = true;
+    } else if (fullBagWarned <= 0) { UI.toast('Bag is full — salvage something (I, Shift+Click)'); fullBagWarned = 3; }
+  }
+  Game.pickups = Game.pickups.filter(pk => !pk.done);
+}
+const rarityColor = it => it.rarity === 'quest' ? '#ff9a3d' : DATA.rarities[it.rarity]?.color || '#ddd';
+
+// =====================================================================
+// Quests  (Unreal: URPGQuestSubsystem — UGameInstanceSubsystem)
+// =====================================================================
+const Quests = {
+  state: {},   // id -> { status: 'active'|'complete'|'turnedIn', progress }
+  status(id) { return this.state[id]?.status || 'none'; },
+  progressText(id) {
+    const s = this.state[id], o = DATA.quests[id].objective;
+    if (o.type === 'flag') return o.text;
+    return `${o.type === 'kill' ? 'Slain' : 'Found'} ${s ? s.progress : 0}/${o.count}`;
+  },
+  start(id) {
+    this.state[id] = { status: 'active', progress: 0 };
+    UI.toast(`Quest started: ${DATA.quests[id].name}`, '#ffd34a');
+    this.refresh(id);
+  },
+  refresh(id) {
+    const q = DATA.quests[id], s = this.state[id];
+    if (!s || s.status === 'turnedIn') return;
+    const o = q.objective;
+    if (o.type === 'collect') s.progress = Math.min(o.count, player.inventory.count(o.item));
+    if (o.type === 'flag') s.progress = Game.flags[o.flag] ? 1 : 0;
+    const done = s.progress >= (o.count ?? 1);
+    if (done && s.status === 'active') { s.status = 'complete'; UI.toast(`${q.name}: complete — return to ${q.giver}`, '#6fe08a'); }
+    else if (!done && s.status === 'complete') s.status = 'active';
+    UI.refresh();
+  },
+  onKill(e) {
+    for (const [id, s] of Object.entries(this.state)) {
+      const o = DATA.quests[id].objective;
+      if (s.status === 'active' && o.type === 'kill' && o.target === e.type) {
+        s.progress = Math.min(o.count, s.progress + 1);
+        this.refresh(id);
+      }
+    }
+  },
+  turnIn(id) {
+    const q = DATA.quests[id], s = this.state[id], inv = player.inventory;
+    if (q.objective.type === 'collect') {
+      let need = q.objective.count;
+      for (const it of [...inv.items]) if (it.id === q.objective.item && need > 0) { const n = Math.min(need, it.qty); need -= n; inv.remove(it, n); }
+    }
+    s.status = 'turnedIn';
+    const r = q.reward;
+    UI.toast(`Quest complete: ${q.name}`, '#6fe08a');
+    if (r.gold) { inv.gold += r.gold; UI.toast(`+${r.gold} gold`, '#ffd34a'); }
+    if (r.item) {
+      const it = makeItem(r.item, r.rarity ? { [r.rarity]: 1 } : null);
+      if (inv.add(it)) UI.toast(`Received ${it.name}`, rarityColor(it));
+      else spawnPickup(player.x, player.y, { kind: 'item', item: it });
+    }
+    if (r.xp) player.gainXp(r.xp);
+  },
+};
+Events.on('enemyKilled', e => Quests.onKill(e));
+Events.on('inventoryChanged', () => { for (const id in Quests.state) Quests.refresh(id); UI.refresh(); });
+
+// =====================================================================
+// Dialogue  (Unreal: URPGDialogueAsset + a dialogue widget)
+// =====================================================================
+// Conditions used by dialogue choices, text variants and actions.
+function checkCond(c) {
+  if (!c) return true;
+  if (Array.isArray(c)) return c.every(checkCond);
+  if (c.not) return !checkCond(c.not);
+  if (c.quest) return [].concat(c.is).includes(Quests.status(c.quest));
+  if (c.class) return [].concat(c.class).includes(player.classId);
+  if (c.sex) return player.sex === c.sex;
+  if (c.flag) return c.is !== undefined ? Game.flags[c.flag] === c.is : !!Game.flags[c.flag];
+  if (c.gold !== undefined) return player.inventory.gold >= c.gold;
+  if (c.hasItem) return player.inventory.count(c.hasItem) > 0;
+  if (c.disposition) return (Game.disposition[Dialogue.npcKey] || 0) >= c.disposition.gte;
+  return true;
+}
+
+function runActions(list) {
+  const npc = Dialogue.npc;
+  for (const a of list || []) {
+    if (a.if && !checkCond(a.if)) continue;
+    if (a.startQuest) Quests.start(a.startQuest);
+    if (a.turnIn) Quests.turnIn(a.turnIn);
+    if (a.restore) { player.stats.fill(); FX.ring(player.x, player.y, 40, '#5fe08a', 0.5); }
+    if (a.buy) {
+      const inv = player.inventory;
+      if (inv.gold < a.buy.cost) { UI.toast('Not enough gold'); continue; }
+      const it = makeItem(a.buy.item);
+      if (inv.add(it)) { inv.gold -= a.buy.cost; UI.toast(`Bought ${it.name}`, rarityColor(it)); }
+      else UI.toast('Bag is full');
+    }
+    if (a.setFlag) Game.flags[a.setFlag] = true;
+    if (a.disposition) Game.disposition[Dialogue.npcKey] = clamp((Game.disposition[Dialogue.npcKey] || 0) + a.disposition, -100, 100);
+    if (a.gold) { player.inventory.gold += a.gold; UI.toast(`+${a.gold} gold`, '#ffd34a'); }
+    if (a.takeGold) { player.inventory.gold -= a.takeGold; UI.toast(`−${a.takeGold} gold`, '#ffd34a'); }
+    if (a.giveItem) {
+      const it = makeItem(a.giveItem);
+      if (player.inventory.add(it)) UI.toast(`Received ${it.name}`, rarityColor(it));
+      else spawnPickup(player.x, player.y, { kind: 'item', item: it });
+    }
+    if (a.resolve) { const [enc, outcome] = a.resolve.split(':'); Encounters.resolve(enc, outcome); }
+    if (a.hostile) Encounters.setHostile(a.hostile);
+    if (a.duel && npc) Encounters.startDuel(npc);
+    if (a.leave) Game.enemies.filter(e => e.def.faction === a.leave && !e.dead).forEach(e => e.leave());
+    if (a.recruit) {
+      const def = DATA.npcs[a.recruit];
+      Game.npcs.push({ id: a.recruit, def, x: def.spawnAt[0] * TILE + TILE / 2, y: def.spawnAt[1] * TILE + TILE / 2, radius: 12 });
+    }
+    if (a.dropStash && npc) Loot.dropTable(npc.x, npc.y, 'stash');
+    if (a.leaveSelf && npc?.leave) npc.leave();
+    UI.refresh();
+  }
+}
+
+function fillTemplate(text) {
+  const t = player.classDef.title;
+  return text.replace(/\{quest:(\w+)\}/g, (_, id) => Quests.progressText(id))
+             .replace(/\{gold\}/g, () => player.inventory.gold)
+             .replace(/\{title\}/g, () => typeof t === 'string' ? t : t[player.sex]);
+}
+// node.text can be a string or a list of { if, text } variants — first match wins
+function nodeText(node) {
+  if (typeof node.text === 'string') return node.text;
+  return (node.text.find(v => checkCond(v.if)) || node.text[node.text.length - 1]).text;
+}
+function npcMarker(npc) {
+  const root = DATA.dialogue[npc.def.dialogue];
+  const visible = root.choices.filter(c => c.marker && checkCond(c.if));
+  return visible.some(c => c.marker === '?') ? '?' : visible.length ? '!' : null;
+}
+
+// --- hidden, seeded skill checks ---
+function hashStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function seededRandom(key) {  // mulberry32 on a string hash: same save + same NPC + same option = same roll
+  let t = (hashStr(key) + 0x6D2B79F5) >>> 0;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+function checkChance(c) {
+  const v = DATA.dialogueVerbs[c.verb || 'persuade'], s = player.stats;
+  const score = s.get(v.stat) + (v.secondary ? s.get(v.secondary) / 2 : 0);
+  let pct = 50 + 5 * (score - c.check.resolve) + (v.bonus || 0) + (Game.disposition[Dialogue.npcKey] || 0) / 4;
+  for (const b of c.check.bonus || []) if (checkCond(b.if)) pct += b.add;
+  return clamp(pct, 5, 95) / 100;
+}
+// a choice is visible if its conditions pass, its verb belongs to the player's class, and it hasn't already failed
+function choiceVisible(c) {
+  const v = c.verb && DATA.dialogueVerbs[c.verb];
+  if (v?.class && v.class !== player.classId) return false;
+  if (c.check && Game.checks[Dialogue.checkKey(c)] === false) return false;
+  return checkCond(c.if);
+}
+
+const Dialogue = {
+  isOpen: false, npc: null, npcKey: null, nodeId: null, choices: [],
+  el: document.getElementById('dialogue'),
+  open(npc, nodeId) {
+    this.npc = npc;
+    this.npcKey = npc.type || npc.id;   // enemies: their type ('bandit_captain'); villagers: their id
+    this.isOpen = true;
+    player.guard = player.draw = null;
+    this.show(nodeId || npc.def.dialogue);
+  },
+  checkKey(c) { return `${Game.seed}|${this.npcKey}|${c._key}`; },
+  show(nodeId) {
+    if (!nodeId) return this.close();
+    const node = DATA.dialogue[nodeId];
+    this.nodeId = nodeId;
+    node.choices.forEach((c, i) => { c._key = `${nodeId}#${i}`; });
+    const text = fillTemplate(nodeText(node));   // text is picked before the node's actions run
+    runActions(node.do);
+    this.choices = node.choices.filter(choiceVisible);
+    const sp = this.el.querySelector('.speaker');
+    sp.textContent = this.npc.def.name;
+    sp.style.color = this.npc.def.color;
+    this.el.querySelector('.text').textContent = text;
+    const box = this.el.querySelector('.choices');
+    box.innerHTML = '';
+    this.choices.forEach((c, i) => {
+      const b = document.createElement('button');
+      b.append(`${i + 1}. `);
+      const v = c.verb && DATA.dialogueVerbs[c.verb];
+      if (v) {
+        const tag = document.createElement('span');
+        tag.className = 'verb';
+        tag.style.color = v.class ? player.classDef.color : '#ffd34a';
+        tag.textContent = `[${v.label}${v.mana ? ` · ${v.mana} mana` : ''}] `;
+        b.append(tag);
+        if (v.mana && player.stats.mana < v.mana) { b.disabled = true; b.title = 'Not enough mana'; }
+      }
+      b.append(fillTemplate(c.text));
+      if (Game.debug && c.check) {
+        const odds = document.createElement('span');
+        odds.className = 'muted';
+        odds.textContent = `  (${Math.round(checkChance(c) * 100)}%)`;
+        b.append(odds);
+      }
+      b.onclick = () => this.choose(i);
+      box.appendChild(b);
+    });
+    this.el.classList.remove('hidden');
+  },
+  choose(i) {
+    const c = this.choices[i];
+    if (!c) return;
+    const v = c.verb && DATA.dialogueVerbs[c.verb];
+    if (v?.mana) { if (player.stats.mana < v.mana) return; player.stats.mana -= v.mana; }
+    let next = c.next;
+    if (c.check) {
+      const key = this.checkKey(c);
+      if (!(key in Game.checks)) Game.checks[key] = seededRandom(key) < checkChance(c);
+      next = Game.checks[key] ? c.check.success : c.check.fail;
+    }
+    runActions(c.do);
+    if (!this.isOpen) return;
+    if (next) this.show(next); else this.close();
+  },
+  close() { this.isOpen = false; this.el.classList.add('hidden'); },
+};
+
+// =====================================================================
+// Encounters & factions  (Unreal: URPGEncounterSubsystem + faction attitude on the AIController)
+//   A faction is 'neutral' (talkable, won't attack) until provoked, or 'hostile'.
+// =====================================================================
+const Encounters = {
+  setHostile(faction, bark) {
+    if (Game.factions[faction] === 'hostile') return;
+    Game.factions[faction] = 'hostile';
+    Game.duel = null;
+    UI.toast(bark || 'They attack!', '#ff8080');
+    Dialogue.close();
+  },
+  startDuel(enemy) {
+    Game.duel = enemy;
+    enemy.state = 'chase';
+    UI.toast(`Duel! Bring ${enemy.def.name} to his knees (below 20% health). His men won't interfere.`, '#ffd34a');
+  },
+  resolve(id, outcome) {
+    const enc = DATA.encounters[id];
+    if (Game.flags[enc.flag]) return;
+    Game.flags[enc.flag] = true;
+    Game.flags[enc.outcomeFlag] = outcome;
+    Game.flags[id + '_passable'] = true;
+    UI.toast('The bridge is open.', '#6fe08a');
+    for (const q in Quests.state) Quests.refresh(q);
+  },
+  update() {
+    for (const [id, enc] of Object.entries(DATA.encounters)) {
+      if (Game.flags[id + '_passable']) continue;
+      const leader = Game.enemies.find(e => e.type === enc.leader);
+      if (!leader || leader.dead || !leader.passive() || Game.duel || Dialogue.isOpen || player.dead) continue;
+      if (!Game.flags[enc.metFlag] && dist(leader, player) < enc.parleyRange) Dialogue.open(leader);   // they stop you
+      else if (player.y > enc.crossRow * TILE + 8) this.setHostile(enc.faction, enc.crossBark);      // you tried to slip past
+    }
+  },
+};
+
+// =====================================================================
+// Input
+// =====================================================================
+const Input = {
+  down: new Set(), pressed: new Set(), mouse: { x: 0, y: 0 },
+  mouseWorld() { return { x: this.mouse.x / view.zoom + Cam.x, y: this.mouse.y / view.zoom + Cam.y }; },
+  endFrame() { this.pressed.clear(); },
+};
+const PREVENT = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backquote', 'Tab']);
+addEventListener('keydown', e => {
+  if (PREVENT.has(e.code)) e.preventDefault();
+  if (!Input.down.has(e.code)) Input.pressed.add(e.code);
+  Input.down.add(e.code);
+});
+addEventListener('keyup', e => Input.down.delete(e.code));
+addEventListener('blur', () => Input.down.clear());
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+canvas.addEventListener('mousemove', e => { Input.mouse.x = e.clientX; Input.mouse.y = e.clientY; });
+canvas.addEventListener('mousedown', e => { const b = 'Mouse' + e.button; Input.pressed.add(b); Input.down.add(b); });
+addEventListener('mouseup', e => Input.down.delete('Mouse' + e.button));
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// =====================================================================
+// Camera & FX
+// =====================================================================
+const view = { w: 0, h: 0, zoom: 1 };   // zoom: world pixels → screen pixels
+function resize() {
+  const dpr = devicePixelRatio || 1;
+  view.w = innerWidth; view.h = innerHeight;
+  view.zoom = Math.max(1, view.h / (TILE * 20));   // show ~20 tiles vertically
+  canvas.width = view.w * dpr; canvas.height = view.h * dpr;
+  canvas.style.width = view.w + 'px'; canvas.style.height = view.h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', resize);
+resize();
+
+const Cam = {
+  x: 0, y: 0, shakeAmt: 0,
+  target() {
+    const mw = World.w * TILE, mh = World.h * TILE, vw = view.w / view.zoom, vh = view.h / view.zoom;
+    return {
+      x: mw < vw ? (mw - vw) / 2 : clamp(player.x - vw / 2, 0, mw - vw),
+      y: mh < vh ? (mh - vh) / 2 : clamp(player.y - vh / 2, 0, mh - vh),
+    };
+  },
+  snap() { Object.assign(this, this.target()); },
+  update(dt) {
+    const t = this.target(), k = 1 - Math.pow(0.0005, dt);
+    this.x += (t.x - this.x) * k; this.y += (t.y - this.y) * k;
+    this.shakeAmt *= Math.pow(0.002, dt);
+  },
+  shake(a) { this.shakeAmt = Math.max(this.shakeAmt, a); },
+};
+
+const FX = {
+  items: [], texts: [],
+  text(x, y, str, color, size = 14) { this.texts.push({ x: x + rand(-6, 6), y, str, color, size, t: 0, life: 0.9 }); },
+  ring(x, y, r, color, life = 0.35) { this.items.push({ kind: 'ring', x, y, r, color, t: 0, life }); },
+  swing(o, range, arc, color) { this.items.push({ kind: 'swing', o, ang: o.facing, range, arc, color, t: 0, life: 0.14 }); },
+  ghost(o, color) { this.items.push({ kind: 'ghost', x: o.x, y: o.y, r: o.radius, color, t: 0, life: 0.25 }); },
+  bolt(points, color) { this.items.push({ kind: 'bolt', points, color, t: 0, life: 0.25 }); },
+  smoke(x, y, r) { this.items.push({ kind: 'smoke', x, y, r, t: 0, life: 1.2 }); },
+  burst(x, y, color, n = 10) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, Math.PI * 2), s = rand(40, 160);
+      this.items.push({ kind: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, color, t: 0, life: rand(0.25, 0.5) });
+    }
+  },
+  update(dt) {
+    for (const f of this.items) { f.t += dt; if (f.kind === 'spark') { f.x += f.vx * dt; f.y += f.vy * dt; f.vx *= 0.9; f.vy *= 0.9; } }
+    for (const t of this.texts) { t.t += dt; t.y -= 38 * dt; }
+    this.items = this.items.filter(f => f.t < f.life);
+    this.texts = this.texts.filter(t => t.t < t.life);
+  },
+  draw(seen = () => true) {
+    for (const f of this.items) {
+      const at = f.kind === 'swing' ? f.o : f.kind === 'bolt' ? null : f;
+      if (at && !seen(at, f.r || 0)) continue;
+      const k = 1 - f.t / f.life;
+      ctx.globalAlpha = k;
+      if (f.kind === 'ring') {
+        ctx.strokeStyle = f.color; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (0.6 + 0.4 * (1 - k)), 0, Math.PI * 2); ctx.stroke();
+      } else if (f.kind === 'swing') {
+        ctx.fillStyle = f.color; ctx.globalAlpha = 0.45 * k;
+        ctx.beginPath(); ctx.moveTo(f.o.x, f.o.y);
+        ctx.arc(f.o.x, f.o.y, f.range, f.ang - f.arc / 2, f.ang + f.arc / 2); ctx.closePath(); ctx.fill();
+      } else if (f.kind === 'ghost') {
+        ctx.fillStyle = f.color; ctx.globalAlpha = 0.35 * k;
+        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2); ctx.fill();
+      } else if (f.kind === 'spark') {
+        ctx.fillStyle = f.color; ctx.fillRect(f.x - 2, f.y - 2, 4, 4);
+      } else if (f.kind === 'bolt') {   // jagged line through each point
+        ctx.strokeStyle = f.color; ctx.lineWidth = 2.5; ctx.beginPath();
+        f.points.forEach((p, i) => {
+          if (i === 0) { ctx.moveTo(p.x, p.y); return; }
+          const q = f.points[i - 1];
+          for (let s = 1; s <= 4; s++) {
+            const t = s / 4, j = s < 4 ? 7 : 0;
+            ctx.lineTo(q.x + (p.x - q.x) * t + rand(-j, j), q.y + (p.y - q.y) * t + rand(-j, j));
+          }
+        });
+        ctx.stroke();
+      } else if (f.kind === 'smoke') {
+        ctx.fillStyle = '#9aa0a6'; ctx.globalAlpha = 0.45 * k;
+        for (let i = 0; i < 7; i++) {
+          const a = i * 0.9 + f.t, r = f.r * (0.4 + 0.6 * (1 - k));
+          ctx.beginPath(); ctx.arc(f.x + Math.cos(a) * r * 0.5, f.y + Math.sin(a) * r * 0.5, r * 0.55, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'center';
+    for (const t of this.texts) {
+      if (!seen(t, 10)) continue;
+      ctx.globalAlpha = Math.min(1, 2 * (1 - t.t / t.life));
+      ctx.font = `bold ${t.size}px system-ui, sans-serif`;
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.strokeText(t.str, t.x, t.y);
+      ctx.fillStyle = t.color; ctx.fillText(t.str, t.x, t.y);
+    }
+    ctx.globalAlpha = 1;
+  },
+};
+
+// =====================================================================
+// Game setup
+// =====================================================================
+const Game = { enemies: [], npcs: [], pickups: [], started: false, debug: false, deathTimer: 0, time: 0, fps: 60,
+  // world state (Unreal: save-game object)
+  seed: 0,              // per playthrough — makes dialogue rolls reproducible
+  flags: {},            // story flags set by dialogue / encounters
+  disposition: {},      // npcKey -> -100..100
+  checks: {},           // dialogue check key -> passed?
+  factions: { bandits: 'neutral' },
+  duel: null,           // enemy currently in a 1v1 duel with the player
+};
+let player;
+function initWorld() {  // called at the bottom, once every system is defined
+  World.load(DATA.map);
+  for (const s of World.spawns) {
+    const [kind, id] = s.kind.split(':');
+    if (kind === 'player') { Game.spawn = { x: s.x, y: s.y }; player = new Player(s.x, s.y, 'knight', 'male'); } // placeholder until chosen
+    else if (kind === 'enemy') Game.enemies.push(new Enemy(id, s.x, s.y));
+    else if (kind === 'npc') Game.npcs.push({ id, def: DATA.npcs[id], x: s.x, y: s.y, radius: 12 });
+  }
+  Cam.snap();
+}
+
+// Anyone you can talk to: villagers, plus neutral enemies that have dialogue (Brask, Wren).
+function talkables() {
+  return [...Game.npcs, ...Game.enemies.filter(e => e.def.dialogue && !e.dead && !e.leaving && e.passive())];
+}
+function nearestNpc() {
+  let best = null, bd = T.interactRange + 12;
+  for (const n of talkables()) { const d = dist(n, player) - (n.radius - 12); if (d < bd) { bd = d; best = n; } }
+  return best;
+}
+
+// soft collision between characters (heavier = larger radius moves less)
+function separate() {
+  const all = [player, ...Game.enemies].filter(c => !c.dead && !c.tags.has('Dodging'));
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
+    const a = all[i], b = all[j];
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01, min = a.radius + b.radius;
+    if (d >= min) continue;
+    const push = min - d, nx = dx / d, ny = dy / d;
+    const wa = b.radius ** 2 / (a.radius ** 2 + b.radius ** 2);
+    a.move(-nx * push * wa, -ny * push * wa);
+    b.move(nx * push * (1 - wa), ny * push * (1 - wa));
+  }
+}
+
+// =====================================================================
+// UI (DOM panels)  (Unreal: UMG widgets)
+// =====================================================================
+const $ = id => document.getElementById(id);
+const UI = {
+  panels: ['inventory', 'character', 'quests', 'help'],
+  open: null,
+  toast(msg, color = '#e8e6e3') {
+    const d = document.createElement('div');
+    d.className = 'toast'; d.textContent = msg; d.style.color = color;
+    $('toasts').appendChild(d);
+    setTimeout(() => d.remove(), 3200);
+  },
+  blocking() { return !Game.started || this.open !== null || Dialogue.isOpen; },
+  toggle(id) {
+    const wasOpen = this.open === id;
+    this.closeAll();
+    if (!wasOpen) { this.open = id; $(id).classList.remove('hidden'); this.refresh(); }
+  },
+  closeAll() {
+    for (const p of this.panels) $(p).classList.add('hidden');
+    $('tooltip').classList.add('hidden');
+    this.open = null;
+  },
+  refresh() {
+    if (this.open === 'inventory') this.renderInventory();
+    if (this.open === 'character') this.renderCharacter();
+    if (this.open === 'quests') this.renderQuests();
+  },
+  cell(it, attrs, empty) {
+    if (!it) return `<div class="cell empty" ${attrs}>${empty ? `<span class="slotlabel">${empty}</span>` : ''}</div>`;
+    return `<div class="cell r-${it.rarity}" ${attrs}>${it.name}${it.qty > 1 ? `<span class="qty">${it.qty}</span>` : ''}</div>`;
+  },
+  renderInventory() {
+    const inv = player.inventory;
+    $('inv-gold').textContent = `${inv.gold} gold`;
+    $('inv-equip').innerHTML = Object.entries(inv.equipment)
+      .map(([slot, it]) => it ? this.cell(it, `data-slot="${slot}"`).replace('">', `"><span class="slotlabel">${slot}</span><br>`) : this.cell(null, '', slot)).join('');
+    let html = inv.items.map(it => this.cell(it, `data-uid="${it.uid}"`)).join('');
+    for (let i = inv.items.length; i < inv.capacity; i++) html += this.cell(null, '');
+    $('inv-grid').innerHTML = html;
+  },
+  tooltipFor(it) {
+    const lines = [`<b style="color:${rarityColor(it)}">${it.name}</b>`];
+    if (it.type === 'equipment') lines.push(`<span class="muted">${it.rarity} ${it.slot}</span>`);
+    if (it.type === 'consumable') lines.push(`<span class="muted">Restores ${DATA.items[it.id].heal} HP</span>`);
+    if (it.type === 'quest') lines.push(`<span class="muted">Quest item</span>`);
+    const eq = it.type === 'equipment' ? player.inventory.equipment[it.slot] : null;
+    const compare = eq && eq !== it;
+    const stats = new Set([...Object.keys(it.mods), ...(compare ? Object.keys(eq.mods) : [])]);
+    for (const s of stats) {
+      const v = it.mods[s] || 0;
+      let diff = '';
+      if (compare) {
+        const dv = v - (eq.mods[s] || 0);
+        if (dv) diff = ` <span class="${dv > 0 ? 'up' : 'down'}">(${dv > 0 ? '+' : ''}${dv})</span>`;
+      }
+      lines.push(`${v >= 0 ? '+' : ''}${v} ${STAT_LABELS[s] || s}${diff}`);
+    }
+    if (compare) lines.push(`<span class="muted">compared to ${eq.name}</span>`);
+    return lines.join('<br>');
+  },
+  renderCharacter() {
+    const s = player.stats;
+    $('char-title').textContent = `${DATA.sexes[player.sex].name} ${player.classDef.name}`;
+    $('char-points').textContent = player.attrPoints ? `${player.attrPoints} points to spend` : '';
+    $('char-attrs').innerHTML = ATTRIBUTES.map(a => {
+      const bonus = s.get(a) - s.base[a];
+      return `<div class="attr"><span>${STAT_LABELS[a]}</span><b>${s.get(a)}</b>
+        <button data-attr="${a}" ${player.attrPoints ? '' : 'disabled'}>+</button>
+        <span class="muted" style="font-size:12px">${bonus ? `(${bonus > 0 ? '+' : ''}${bonus} gear)` : ''}</span></div>`;
+    }).join('');
+    const weapon = primaryHitDamage(s, player.style);
+    const reduction = 1 - T.armorConstant / (T.armorConstant + s.armor);
+    const rows = [
+      ['Level', player.level], ['XP', `${player.xp} / ${xpToNext(player.level)}`],
+      ['Max HP', s.maxHp], ['Max Stamina', s.maxStamina], ['Max Mana', s.maxMana], ['Move speed', player.moveSpeed],
+      [`Attack damage (${player.style.name}, hit 1)`, weapon.toFixed(1)],
+      ['Ability power', `×${(1 + s.get('focus') * T.focusScaling).toFixed(2)}`],
+      ['Crit chance', `${(s.critChance * 100).toFixed(0)}%`],
+      ['Armor', `${s.armor} (−${(reduction * 100).toFixed(0)}% dmg)`],
+    ];
+    $('char-derived').innerHTML = rows.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
+  },
+  renderQuests() {
+    const ids = Object.keys(Quests.state);
+    $('quest-list').innerHTML = ids.length ? ids.map(id => {
+      const q = DATA.quests[id], st = Quests.status(id);
+      const status = st === 'turnedIn' ? 'Completed' : st === 'complete' ? `Return to ${q.giver}` : `Progress: ${Quests.progressText(id)}`;
+      return `<div class="quest ${st === 'turnedIn' ? 'done' : ''}"><b>${q.name}</b><div class="muted">${q.desc}</div><div>${status}</div></div>`;
+    }).join('') : '<div class="muted">No quests yet. Look for a <b style="color:#ffd34a">!</b> above NPCs.</div>';
+  },
+};
+
+$('start-btn').onclick = () => UI.closeAll();
+$('inventory').addEventListener('click', e => {
+  const cell = e.target.closest('[data-uid],[data-slot]');
+  if (!cell) return;
+  const inv = player.inventory;
+  if (cell.dataset.slot) inv.unequip(cell.dataset.slot);
+  else {
+    const it = inv.find(+cell.dataset.uid);
+    if (!it) return;
+    if (e.shiftKey) inv.salvage(it); else inv.use(it);
+  }
+  $('tooltip').classList.add('hidden');
+  UI.refresh();
+});
+$('inventory').addEventListener('mousemove', e => {
+  const cell = e.target.closest('[data-uid],[data-slot]');
+  const tip = $('tooltip');
+  const inv = player.inventory;
+  const it = cell && (cell.dataset.slot ? inv.equipment[cell.dataset.slot] : inv.find(+cell.dataset.uid));
+  if (!it) { tip.classList.add('hidden'); return; }
+  tip.innerHTML = UI.tooltipFor(it);
+  tip.classList.remove('hidden');
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - 250) + 'px';
+  tip.style.top = (e.clientY + 14) + 'px';
+});
+$('inventory').addEventListener('mouseleave', () => $('tooltip').classList.add('hidden'));
+$('character').addEventListener('click', e => {
+  const a = e.target.dataset?.attr;
+  if (!a || player.attrPoints <= 0) return;
+  player.stats.base[a]++;
+  player.attrPoints--;
+  if (a === 'vitality') player.stats.hp += T.hpPerVitality;
+  if (a === 'focus') player.stats.mana += T.manaPerFocus;
+  if (a === 'agility') player.stats.stamina += T.staminaPerAgility;
+  UI.refresh();
+});
+$('respec-btn').onclick = () => {
+  Object.assign(player.stats.base, player.classDef.attributes);
+  player.attrPoints = (player.level - 1) * T.pointsPerLevel;
+  player.stats.clamp();
+  UI.refresh();
+};
+
+// =====================================================================
+// Character select  (Unreal: character-creation UMG screen reading URPGClassDefinition assets)
+// =====================================================================
+const CharSelect = {
+  classId: 'knight', sex: 'male',
+  ids: Object.keys(DATA.classes),
+
+  // Level-1 numbers for a class, computed with the real StatsComponent so the screen can't drift from the game.
+  preview(classId) {
+    const C = DATA.classes[classId];
+    const s = new StatsComponent({}, classBaseStats(classId));
+    for (const it of C.startItems) if (it.equip) s.addModifiers(DATA.items[it.item].slot, DATA.items[it.item].mods);
+    s.fill();
+    return {
+      hp: s.maxHp, stamina: s.maxStamina, mana: s.maxMana, speed: C.moveSpeed, armor: s.armor,
+      attack: +primaryHitDamage(s, DATA.weaponStyles[C.styles[0]]).toFixed(1),
+      magic: +(1 + s.get('focus') * T.focusScaling).toFixed(2),
+      crit: Math.round(s.critChance * 100),
+    };
+  },
+
+  render() {
+    const C = DATA.classes[this.classId];
+    $('cs-classes').innerHTML = this.ids.map((id, i) => {
+      const c = DATA.classes[id], sel = id === this.classId;
+      return `<div class="cs-card ${sel ? 'sel' : ''}" data-class="${id}" style="${sel ? `border-color:${c.color}` : ''}">
+        <div class="nm"><span class="dot" style="background:${c.color}"></span>${c.name}<span class="key">${i + 1}</span></div>
+        <div class="tg">${c.tagline}</div></div>`;
+    }).join('');
+
+    const row = (label, value, max, color, suffix = '') =>
+      `<div class="statrow"><span>${label}</span><div class="track"><div class="fill" style="width:${Math.max(3, value / max * 100)}%;background:${color}"></div></div><span class="val">${value}${suffix}</span></div>`;
+
+    $('cs-attrs').innerHTML = ATTRIBUTES.map(a => row(STAT_LABELS[a], C.attributes[a], 10, C.color)).join('');
+
+    // derived bars are scaled against the best class, so the comparison is visible at a glance
+    const all = this.ids.map(id => this.preview(id)), p = this.preview(this.classId);
+    const max = k => Math.max(...all.map(x => x[k]));
+    $('cs-derived').innerHTML = [
+      ['Max HP', 'hp', '#d64545'], ['Stamina', 'stamina', '#7fd07f'], ['Mana', 'mana', '#4f7fe0'],
+      ['Move speed', 'speed', '#e8e6e3'], ['Armor', 'armor', '#9aa0a6'], ['Attack dmg', 'attack', '#ff9a5a'],
+      ['Magic power', 'magic', '#b48cff', '×'], ['Crit chance', 'crit', '#ffd34a', '%'],
+    ].map(([label, k, color, suffix]) => row(label, p[k], max(k), color, suffix === '×' ? '' : suffix || '')).join('');
+
+    const sexBtn = id => `<button data-sex="${id}" class="${this.sex === id ? 'sel' : ''}">${DATA.sexes[id].name} <span class="muted">(${id[0].toUpperCase()})</span></button>`;
+    $('cs-info').innerHTML = `
+      <h3>Weapons</h3><p>${C.weapons}</p>
+      <h3>Defense</h3><p>${C.defense}</p>
+      <h3>Dialogue style — <span style="color:${C.color}">${C.dialogue.style}</span></h3><p>${C.dialogue.desc}</p>
+      <h3>Abilities</h3>
+      <div class="cs-abilities">${C.abilities.map(id => { const a = DATA.abilities[id];
+        return `<div><b style="color:${a.color}">Lv${a.unlockLevel} ${a.name}</b> <span class="muted">(${a.mana ? a.mana + ' mana' : a.stamina + ' stamina'})</span><br>${a.desc}</div>`; }).join('')}</div>
+      <h3>Sex</h3>
+      <div class="cs-sex">${Object.keys(DATA.sexes).map(sexBtn).join('')}</div>
+      <p class="muted" style="font-size:12.5px">Stats are identical. Some NPCs react differently to you, opening different dialogue lines and occasional quest branches.</p>`;
+    $('cs-begin').textContent = `Begin as ${DATA.sexes[this.sex].name} ${C.name}`;
+  },
+
+  select(classId) { this.classId = classId; this.render(); },
+  setSex(sex) { this.sex = sex; this.render(); },
+
+  handleKeys(P) {
+    this.ids.forEach((id, i) => { if (P.has('Digit' + (i + 1))) this.select(id); });
+    if (P.has('KeyM')) this.setSex('male');
+    if (P.has('KeyF')) this.setSex('female');
+    if (P.has('Enter')) this.begin();
+  },
+
+  begin() {
+    player = new Player(Game.spawn.x, Game.spawn.y, this.classId, this.sex);
+    Game.seed = Math.floor(Math.random() * 1e9);
+    Cam.snap();
+    Game.started = true;
+    $('charselect').classList.add('hidden');
+    UI.toast(`${DATA.sexes[this.sex].name} ${player.classDef.name} — talk to Elder Maren to begin.`, player.classDef.color);
+    UI.toast('Press H for controls');
+  },
+};
+$('cs-classes').addEventListener('click', e => { const c = e.target.closest('[data-class]'); if (c) CharSelect.select(c.dataset.class); });
+$('cs-info').addEventListener('click', e => { const b = e.target.closest('[data-sex]'); if (b) CharSelect.setSex(b.dataset.sex); });
+$('cs-begin').onclick = () => CharSelect.begin();
+
+// =====================================================================
+// HUD (canvas)
+// =====================================================================
+function bar(x, y, w, h, frac, color, label) {
+  ctx.fillStyle = '#000a'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+  ctx.fillStyle = '#222'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = color; ctx.fillRect(x, y, w * clamp(frac, 0, 1), h);
+  if (label) {
+    ctx.fillStyle = '#fff'; ctx.font = '11px system-ui, sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(label, x + 6, y + h - 4);
+  }
+}
+
+const HUD = {
+  draw() {
+    const W = view.w, H = view.h, s = player.stats;
+    // vitals
+    ctx.fillStyle = '#ffd34a'; ctx.font = 'bold 15px system-ui, sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(`Lv ${player.level} ${player.classDef.name}${player.attrPoints ? `  (+${player.attrPoints} pts — C)` : ''}`, 16, 24);
+    bar(16, 32, 240, 16, s.hp / s.maxHp, '#d64545', `HP ${Math.ceil(s.hp)} / ${s.maxHp}`);
+    bar(16, 52, 240, 10, s.stamina / s.maxStamina, s.staminaDelay > 0 ? '#5a9a4a' : '#7fd07f');
+    bar(16, 66, 240, 10, s.mana / s.maxMana, '#4f7fe0');
+    let ey = 92;
+    ctx.font = '12px system-ui, sans-serif';
+    for (const e of s.effects) {
+      ctx.fillStyle = '#5fe08a';
+      ctx.fillText(`${e.name}${e.absorb ? ` (${Math.ceil(e.absorb)})` : ''} ${e.remaining.toFixed(1)}s`, 16, ey); ey += 15;
+    }
+    if (player.tags.has('Hidden')) { ctx.fillStyle = '#c0c4cc'; ctx.fillText('Hidden', 16, ey); ey += 15; }
+    if (player.tags.has('Staggered')) { ctx.fillStyle = '#8fd0ff'; ctx.fillText('Staggered', 16, ey); }
+
+    // xp bar
+    bar(0, H - 6, W, 5, player.xp / xpToNext(player.level), '#b48cff');
+
+    // ability bar
+    const ids = player.abilities.ids, size = 54, gap = 8, n = ids.length + 1;
+    let x = (W - (n * size + (n - 1) * gap)) / 2;
+    const y = H - size - 18;
+    ids.forEach((id, i) => {
+      const d = DATA.abilities[id], unlocked = player.abilities.unlocked(id), cd = player.abilities.cd[id];
+      this.slot(x, y, size, String(i + 1), d.name, d.color, unlocked);
+      if (!unlocked) this.overlay(x, y, size, 1, '#000c', `Lv ${d.unlockLevel}`);
+      else if (cd > 0) this.overlay(x, y, size, cd / d.cooldown, '#000a', cd.toFixed(1));
+      else if (!player.abilities.canAfford(d)) this.overlay(x, y, size, 1, d.mana ? '#1a2a6080' : '#1a402080', '');
+      else if (d.requires === 'shield' && player.style.secondary?.type !== 'block') this.overlay(x, y, size, 1, '#00000090', 'shield');
+      if (unlocked) {   // cost: blue = mana, green = stamina
+        ctx.fillStyle = d.mana ? '#8fb0ff' : '#7fd07f'; ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+        ctx.fillText(d.mana || d.stamina, x + size - 4, y + size - 4);
+      }
+      x += size + gap;
+    });
+    // weapon style hint
+    const st = player.style, styles = player.classDef.styles;
+    const swap = styles.length > 1 ? `   ·   X: switch to ${DATA.weaponStyles[styles[(player.styleIdx + 1) % styles.length]].name}` : '';
+    ctx.textAlign = 'center'; ctx.font = '12px system-ui'; ctx.fillStyle = '#cfd3da';
+    ctx.fillText(`${st.name} — ${st.hint}${swap}`, W / 2, y - 10);
+
+    const pots = player.inventory.count('potion');
+    this.slot(x, y, size, 'Q', 'Potion', '#d64545', pots > 0);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'right'; ctx.fillText('×' + pots, x + size - 4, y + size - 4);
+
+    // gold + quest tracker
+    ctx.textAlign = 'right'; ctx.font = 'bold 15px system-ui'; ctx.fillStyle = '#ffd34a';
+    ctx.fillText(`${player.inventory.gold} gold`, W - 16, 24);
+    let qy = 50;
+    for (const [id, st] of Object.entries(Quests.state)) {
+      if (st.status === 'turnedIn') continue;
+      const q = DATA.quests[id];
+      ctx.font = 'bold 13px system-ui'; ctx.fillStyle = '#ffd34a'; ctx.fillText(q.name, W - 16, qy);
+      ctx.font = '12px system-ui'; ctx.fillStyle = st.status === 'complete' ? '#6fe08a' : '#ddd';
+      ctx.fillText(st.status === 'complete' ? `Return to ${q.giver}` : Quests.progressText(id), W - 16, qy + 16);
+      qy += 40;
+    }
+
+    // boss bar
+    const boss = Game.enemies.find(e => e.def.boss && !e.dead && ['chase', 'windup', 'recover'].includes(e.state));
+    if (boss) {
+      const bw = Math.min(500, W - 40);
+      bar((W - bw) / 2, 40, bw, 14, boss.stats.hp / boss.stats.maxHp, '#b03030');
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 14px system-ui'; ctx.fillText(boss.def.name, W / 2, 32);
+    }
+
+    // interact prompt
+    const npc = !player.dead && nearestNpc();
+    if (npc && !Dialogue.isOpen) {
+      ctx.textAlign = 'center'; ctx.font = 'bold 14px system-ui'; ctx.fillStyle = '#fff';
+      ctx.fillText(`[E] Talk to ${npc.def.name}`, W / 2, H - 120);
+    }
+
+    if (player.dead) {
+      ctx.fillStyle = '#000a'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#d64545'; ctx.font = 'bold 56px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.fillText('YOU DIED', W / 2, H / 2);
+    }
+
+    if (Game.debug) {
+      ctx.textAlign = 'left'; ctx.font = '12px monospace'; ctx.fillStyle = '#0f0';
+      const tags = [...player.tags.m.keys()].join(', ') || '-';
+      ctx.fillText(`FPS ${Game.fps.toFixed(0)} | tags: ${tags} | poise ${player.poise.toFixed(0)}/${player.maxPoise} | combo ${player.comboStep}`, 16, H - 92);
+      ctx.fillText('DEBUG: K level up · G +100 gold · L spawn loot', 16, H - 78);
+    }
+  },
+  slot(x, y, size, key, name, color, active) {
+    ctx.fillStyle = '#15171cdd'; ctx.fillRect(x, y, size, size);
+    ctx.strokeStyle = active ? color : '#444'; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, size - 2, size - 2);
+    ctx.fillStyle = '#aaa'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'left'; ctx.fillText(key, x + 4, y + 13);
+    ctx.fillStyle = active ? '#fff' : '#777'; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+    const words = name.split(' ');
+    words.forEach((w, i) => ctx.fillText(w, x + size / 2, y + size / 2 + 2 + (i - (words.length - 1) / 2) * 11));
+  },
+  overlay(x, y, size, frac, color, label) {
+    ctx.fillStyle = color; ctx.fillRect(x, y + size * (1 - frac), size, size * frac);
+    if (label) { ctx.fillStyle = '#fff'; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center'; ctx.fillText(label, x + size / 2, y + size / 2 + 5); }
+  },
+};
+
+// =====================================================================
+// World rendering
+// =====================================================================
+// =====================================================================
+// Vision  (Unreal: a fog-of-war post-process / material for the player's view;
+//          enemies use UAIPerceptionComponent sight config — cone + "hearing" radius)
+//   The player sees a cone toward the cursor plus a small circle around them.
+//   Trees, walls and houses block sight; water doesn't. Outside it: terrain greyed out,
+//   characters / loot / projectiles hidden.
+// =====================================================================
+const Vision = {
+  poly: [],
+  rangeToward(ang) {
+    const v = T.vision;
+    return Math.abs(angDiff(player.facing, ang)) <= v.coneAngle * DEG / 2 ? v.coneRange : v.nearRadius;
+  },
+  // How visible is this point, 0..1? Fades toward the far end of the cone, like the fog does.
+  // pad lets a character count as seen when its edge is in view.
+  visibility(pt, pad = 0) {
+    const v = T.vision, d = dist(player, pt);
+    if (d > this.rangeToward(angleTo(player, pt)) + pad || !hasLOS(player, pt)) return 0;
+    const start = v.falloffStart * v.coneRange;
+    return 1 - v.edgeFog * clamp((d - start) / (v.coneRange - start), 0, 1);
+  },
+  // Cast rays to build the visible polygon: dense across the cone, sparse around the near circle.
+  update() {
+    const v = T.vision, p = player, pts = [], half = v.coneAngle * DEG / 2, f = p.facing;
+    const cast = (ang, r) => {
+      const cx = Math.cos(ang), cy = Math.sin(ang);
+      let d = 0;
+      for (; d < r; d += 6)
+        if (BLOCKS_SHOTS.has(World.tileAt(p.x + cx * d, p.y + cy * d))) { d += 10; break; }  // light the face of what blocks you
+      d = Math.min(d, r);
+      pts.push({ x: p.x + cx * d, y: p.y + cy * d });
+    };
+    for (let a = -half; a <= half + 1e-6; a += DEG) cast(f + a, v.coneRange);
+    const rest = 2 * Math.PI - 2 * half, n = Math.ceil(rest / (3 * DEG));
+    for (let i = 0; i <= n; i++) cast(f + half + rest * i / n, v.nearRadius);
+    this.poly = pts;
+  },
+  // Grey out what you can't see. Works on a copy of the terrain layer:
+  //   1. copy the freshly drawn terrain and grey it (desaturate + darken)
+  //   2. cut the visible area out of that copy — blurred edges, and a radial gradient so
+  //      the far end of the cone stays partly hazy
+  //   3. lay the copy back over the world
+  layer: null,
+  drawFog() {
+    const v = T.vision, p = player;
+    const fc = this.layer || (this.layer = document.createElement('canvas'));
+    if (fc.width !== canvas.width || fc.height !== canvas.height) { fc.width = canvas.width; fc.height = canvas.height; }
+    const f = fc.getContext('2d');
+
+    f.setTransform(1, 0, 0, 1, 0, 0);
+    f.filter = 'none';
+    f.globalAlpha = 1;
+    f.globalCompositeOperation = 'copy';
+    f.drawImage(canvas, 0, 0);
+    f.globalCompositeOperation = 'saturation';   // mostly grey, with a hint of hue so water/grass still read apart
+    f.globalAlpha = 0.8;
+    f.fillStyle = '#808080';
+    f.fillRect(0, 0, fc.width, fc.height);
+    f.globalCompositeOperation = 'source-over';
+    f.globalAlpha = 1;
+    f.fillStyle = 'rgba(12,14,20,0.35)';
+    f.fillRect(0, 0, fc.width, fc.height);
+
+    f.setTransform(ctx.getTransform());           // same world transform as the main canvas
+    f.globalCompositeOperation = 'destination-out';
+    f.filter = `blur(${v.edgeBlur * view.zoom * (devicePixelRatio || 1)}px)`;
+    const g = f.createRadialGradient(p.x, p.y, 0, p.x, p.y, v.coneRange);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(v.falloffStart, 'rgba(0,0,0,1)');
+    g.addColorStop(1, `rgba(0,0,0,${1 - v.edgeFog})`);
+    f.fillStyle = g;
+    f.beginPath();
+    this.poly.forEach((pt, i) => (i ? f.lineTo(pt.x, pt.y) : f.moveTo(pt.x, pt.y)));
+    f.closePath();
+    f.fill();
+    f.filter = 'none';
+    f.globalCompositeOperation = 'source-over';
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(fc, 0, 0);
+    ctx.restore();
+  },
+};
+
+const tileHash = (x, y) => ((x * 73856093) ^ (y * 19349663)) >>> 0;
+const Render = {
+  fade: 1,   // visibility of the character being drawn
+  frame() {
+    ctx.fillStyle = '#0b0c0f'; ctx.fillRect(0, 0, view.w, view.h);
+    const sx = (Math.random() - 0.5) * Cam.shakeAmt * 2, sy = (Math.random() - 0.5) * Cam.shakeAmt * 2;
+    ctx.save();
+    ctx.scale(view.zoom, view.zoom);
+    ctx.translate(-Cam.x + sx, -Cam.y + sy);
+    this.tiles();
+    Vision.update();
+    Vision.drawFog();
+    const vis = (pt, pad) => (Game.debug ? 1 : Vision.visibility(pt, pad));   // debug shows everything
+    const seen = (pt, pad) => vis(pt, pad) > 0;
+    const faded = (c, draw, min = 0) => {   // draw a character at its visibility (fades in at the edge of sight)
+      const a = Math.max(vis(c, c.radius), min);
+      if (a <= 0) return;
+      this.fade = ctx.globalAlpha = a;
+      draw();
+      this.fade = ctx.globalAlpha = 1;
+    };
+    this.pickups(seen);
+    for (const n of Game.npcs) faded(n, () => this.npc(n));
+    for (const e of Game.enemies) if (!e.dead) faded(e, () => this.enemy(e), e.revealT > 0 ? T.threatSense.revealAlpha : 0);
+    if (!player.dead) { this.player(); this.threats(); }
+    this.projectiles(seen);
+    FX.draw(seen);
+    if (Game.debug) this.debug();
+    ctx.restore();
+    HUD.draw();
+  },
+  tiles() {
+    const x0 = Math.max(0, Math.floor(Cam.x / TILE) - 1), x1 = Math.min(World.w - 1, Math.ceil((Cam.x + view.w / view.zoom) / TILE) + 1);
+    const y0 = Math.max(0, Math.floor(Cam.y / TILE) - 1), y1 = Math.min(World.h - 1, Math.ceil((Cam.y + view.h / view.zoom) / TILE) + 1);
+    ctx.fillStyle = '#3c6c36';  // ground layer hides sub-pixel seams at fractional zoom
+    ctx.fillRect(x0 * TILE, y0 * TILE, (x1 - x0 + 1) * TILE, (y1 - y0 + 1) * TILE);
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+      const c = World.rows[ty][tx], px = tx * TILE, py = ty * TILE, h = tileHash(tx, ty);
+      const grass = h % 3 === 0 ? '#3a6934' : '#3d6e37';
+      switch (c) {
+        case '#':
+          ctx.fillStyle = '#4a4d55'; ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillStyle = '#5c606a'; ctx.fillRect(px, py, TILE, 5);
+          ctx.strokeStyle = '#3a3c43'; ctx.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+          break;
+        case 'T':
+          ctx.fillStyle = grass; ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillStyle = '#5a3d22'; ctx.fillRect(px + 13, py + 18, 6, 12);
+          ctx.fillStyle = h % 2 ? '#1f4d24' : '#245a2a';
+          ctx.beginPath(); ctx.arc(px + 16, py + 14, 13, 0, Math.PI * 2); ctx.fill();
+          break;
+        case 'H':
+          ctx.fillStyle = '#7a4b32'; ctx.fillRect(px, py, TILE, TILE);
+          ctx.strokeStyle = '#5e3824'; ctx.beginPath();
+          for (let i = 8; i < TILE; i += 8) { ctx.moveTo(px, py + i); ctx.lineTo(px + TILE, py + i); }
+          ctx.stroke();
+          break;
+        case '~': {
+          ctx.fillStyle = '#2a5d8f'; ctx.fillRect(px, py, TILE, TILE);
+          const o = Math.sin(Game.time * 2 + tx * 0.7 + ty) * 4;
+          ctx.fillStyle = '#3c74a8'; ctx.fillRect(px + 6 + o, py + 12, 12, 2);
+          break;
+        }
+        case ',':
+          ctx.fillStyle = '#8b7653'; ctx.fillRect(px, py, TILE, TILE);
+          break;
+        case '=':   // bridge planks over water
+          ctx.fillStyle = '#2a5d8f'; ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillStyle = '#8a6a44'; ctx.fillRect(px - 2, py, TILE + 4, TILE);
+          ctx.strokeStyle = '#5e4630'; ctx.lineWidth = 1; ctx.beginPath();
+          for (let i = 6; i < TILE; i += 7) { ctx.moveTo(px - 2, py + i); ctx.lineTo(px + TILE + 2, py + i); }
+          ctx.stroke();
+          break;
+        case 'r':
+          ctx.fillStyle = h % 4 === 0 ? '#58534b' : '#5f5a52'; ctx.fillRect(px, py, TILE, TILE);
+          ctx.strokeStyle = '#4c4840'; ctx.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+          break;
+        default:
+          ctx.fillStyle = grass; ctx.fillRect(px, py, TILE, TILE);
+          if (h % 11 === 0) { ctx.fillStyle = '#4f8a45'; ctx.fillRect(px + (h % 20), py + (h % 17) + 6, 2, 5); }
+      }
+    }
+  },
+  body(c, color, alpha = 1) {
+    ctx.globalAlpha = alpha * this.fade;
+    ctx.fillStyle = '#0006';
+    ctx.beginPath(); ctx.ellipse(c.x, c.y + c.radius * 0.8, c.radius, c.radius * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = c.flash > 0 ? '#ffffff' : color;
+    ctx.beginPath(); ctx.arc(c.x, c.y, c.radius, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#0008'; ctx.lineWidth = 2; ctx.stroke();
+    // facing nub
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(c.x + Math.cos(c.facing) * c.radius * 0.7, c.y + Math.sin(c.facing) * c.radius * 0.7, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = this.fade;
+  },
+  player() {
+    const p = player, st = p.style;
+    const blink = p.tags.has('Invulnerable') && !p.tags.has('Dodging') && Math.floor(Game.time * 20) % 2;
+    this.body(p, p.classDef.color, p.tags.has('Hidden') ? 0.3 : p.tags.has('Dodging') ? 0.55 : blink ? 0.4 : 1);
+    const ward = p.stats.effects.find(fx => fx.absorb > 0);
+    if (ward) {
+      ctx.strokeStyle = '#ffe9a8'; ctx.lineWidth = 2; ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.radius + 9, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    }
+    if (p.stats.effects.some(fx => fx.onHitPoison)) {
+      ctx.fillStyle = '#7fd07f';
+      ctx.beginPath(); ctx.arc(p.x + Math.cos(p.facing) * (p.radius + 4), p.y + Math.sin(p.facing) * (p.radius + 4), 3, 0, Math.PI * 2); ctx.fill();
+    }
+    if (st.passive?.type === 'manaShield' && p.stats.mana >= 1) {  // shield bubble, brighter = more mana
+      ctx.strokeStyle = `rgba(157,184,255,${0.2 + 0.6 * p.stats.mana / p.stats.maxMana})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.radius + 6, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (p.guard) {  // shield arc; white during the perfect-block window
+      const g = st.secondary, perfect = g.perfectWindow && p.guard.t <= g.perfectWindow;
+      ctx.strokeStyle = perfect ? '#ffffff' : '#c8d4e0'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.radius + 6, p.facing - g.arc * DEG / 2, p.facing + g.arc * DEG / 2); ctx.stroke();
+    }
+    if (p.draw) {  // bow + aim line that grows with draw
+      const b = st.secondary, k = clamp(p.draw.t / b.drawTime, 0, 1);
+      ctx.strokeStyle = k >= 1 ? '#fff3c0' : '#8b5a2b'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.radius + 6, p.facing - 0.9, p.facing + 0.9); ctx.stroke();
+      ctx.strokeStyle = `rgba(255,243,192,${0.2 + 0.6 * k})`; ctx.lineWidth = 1.5; ctx.setLineDash([5, 5]);
+      ctx.beginPath(); ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x + Math.cos(p.facing) * (60 + 160 * k), p.y + Math.sin(p.facing) * (60 + 160 * k)); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (p.tags.has('Staggered')) this.stars(p);
+  },
+  enemy(e) {
+    if (e.state === 'windup') this.telegraph(e);
+    this.body(e, e.def.color, e.leaving > 0 ? e.leaving / 2 : 1);
+    if (e.def.dialogue && e.passive() && !e.leaving) {   // talkable: show their name like an NPC
+      ctx.textAlign = 'center'; ctx.font = '11px system-ui'; ctx.fillStyle = '#ffd8c8';
+      ctx.fillText(e.def.name, e.x, e.y + e.radius + 14);
+    }
+    if (e.tags.has('Staggered')) this.stars(e);
+    if (e.tags.has('Slowed')) {
+      ctx.strokeStyle = '#9fd8ff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.radius + 3, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (e.stats.effects.some(fx => fx.dot)) {
+      ctx.fillStyle = '#7fd07f';
+      for (let i = 0; i < 3; i++) { const a = Game.time * 3 + i * 2.1; ctx.fillRect(e.x + Math.cos(a) * e.radius - 1.5, e.y + Math.sin(a) * e.radius - 1.5, 3, 3); }
+    }
+    if (e.tags.has('Marked')) {   // Insight: gold ring + its HP and next move
+      ctx.strokeStyle = '#ffd34a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.radius + 6, 0, Math.PI * 2); ctx.stroke();
+      const next = e.def.attacks[e.atkIndex % e.def.attacks.length];
+      ctx.textAlign = 'center'; ctx.font = '10px system-ui'; ctx.fillStyle = '#ffd34a';
+      ctx.fillText(`${Math.ceil(e.stats.hp)}/${e.stats.maxHp} · next: ${next.type}${next.damage ? ' ' + next.damage : ''}`, e.x, e.y - e.radius - 16);
+    }
+    if (e.type === 'archer') { // bow
+      ctx.strokeStyle = '#8b5a2b'; ctx.lineWidth = 2; ctx.beginPath();
+      ctx.arc(e.x + Math.cos(e.facing) * 6, e.y + Math.sin(e.facing) * 6, 9, e.facing - 1.1, e.facing + 1.1); ctx.stroke();
+    }
+    if (e.stats.hp < e.stats.maxHp && !e.def.boss) {
+      const w = e.radius * 2 + 8;
+      ctx.fillStyle = '#000a'; ctx.fillRect(e.x - w / 2, e.y - e.radius - 10, w, 5);
+      ctx.fillStyle = '#d64545'; ctx.fillRect(e.x - w / 2, e.y - e.radius - 10, w * e.stats.hp / e.stats.maxHp, 5);
+    }
+  },
+  // Threat sense: a red arrow at the edge of your circle for each unseen enemy hunting you.
+  // It pulses bright while that enemy winds up an attack, so you know where to turn or when to dodge.
+  threats() {
+    const p = player;
+    for (const e of Game.enemies) {
+      if (e.dead || e.leaving || e.passive() || !['chase', 'windup', 'recover'].includes(e.state)) continue;
+      const d = dist(p, e);
+      if (d > T.threatSense.range || Vision.visibility(e, e.radius) > 0) continue;
+      const a = angleTo(p, e), winding = e.state === 'windup';
+      const r = p.radius + 22, size = 0.28 + 0.2 * (1 - d / T.threatSense.range);   // closer = wider
+      ctx.globalAlpha = winding ? 0.7 + 0.3 * Math.sin(Game.time * 20) : 0.5;
+      ctx.fillStyle = winding ? '#ff3030' : '#ff9070';
+      ctx.beginPath();
+      ctx.moveTo(p.x + Math.cos(a) * (r + 16), p.y + Math.sin(a) * (r + 16));
+      ctx.lineTo(p.x + Math.cos(a - size) * r, p.y + Math.sin(a - size) * r);
+      ctx.lineTo(p.x + Math.cos(a + size) * r, p.y + Math.sin(a + size) * r);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  },
+  telegraph(e) {
+    const a = e.curAtk, prog = 1 - e.t / a.windup;
+    ctx.fillStyle = `rgba(255,50,50,${0.12 + 0.3 * prog})`;
+    ctx.strokeStyle = 'rgba(255,80,80,0.8)'; ctx.lineWidth = 1.5;
+    if (a.type === 'melee') {
+      const r = a.range + e.radius;
+      ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.arc(e.x, e.y, r, e.facing - a.arc * DEG / 2, e.facing + a.arc * DEG / 2); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+    } else if (a.type === 'slam') {
+      ctx.beginPath(); ctx.arc(e.x, e.y, a.radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(e.x, e.y, a.radius * prog, 0, Math.PI * 2); ctx.fill();
+    } else if (a.type === 'ranged') {
+      ctx.strokeStyle = `rgba(255,80,80,${0.3 + 0.6 * prog})`; ctx.setLineDash([6, 6]);
+      ctx.beginPath(); ctx.moveTo(e.x, e.y);
+      ctx.lineTo(e.x + Math.cos(e.facing) * a.range, e.y + Math.sin(e.facing) * a.range); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  },
+  stars(c) {
+    ctx.fillStyle = '#ffe14a'; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('✦ ✦', c.x, c.y - c.radius - 4 + Math.sin(Game.time * 10) * 2);
+  },
+  npc(n) {
+    this.body({ ...n, facing: Math.PI / 2, flash: 0 }, n.def.color);
+    ctx.textAlign = 'center'; ctx.font = '11px system-ui'; ctx.fillStyle = '#fff';
+    ctx.fillText(n.def.name, n.x, n.y + n.radius + 14);
+    const m = npcMarker(n);
+    if (m) {
+      ctx.font = 'bold 22px system-ui'; ctx.fillStyle = m === '?' ? '#6fe08a' : '#ffd34a';
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
+      const y = n.y - n.radius - 10 + Math.sin(Game.time * 4) * 3;
+      ctx.strokeText(m, n.x, y); ctx.fillText(m, n.x, y);
+    }
+  },
+  pickups(seen) {
+    for (const pk of Game.pickups) {
+      if (!seen(pk, 6)) continue;
+      const bob = Math.sin(Game.time * 4 + pk.x) * 2;
+      if (pk.kind === 'gold') {
+        ctx.fillStyle = '#ffd34a'; ctx.beginPath(); ctx.arc(pk.x, pk.y + bob, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#a07a10'; ctx.lineWidth = 1; ctx.stroke();
+      } else {
+        const col = rarityColor(pk.item);
+        if (pk.item.rarity === 'rare' || pk.item.rarity === 'quest') {
+          ctx.fillStyle = col + '30'; ctx.fillRect(pk.x - 3, pk.y - 40, 6, 40);
+        }
+        ctx.fillStyle = col; ctx.fillRect(pk.x - 5, pk.y - 5 + bob, 10, 10);
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.strokeRect(pk.x - 5, pk.y - 5 + bob, 10, 10);
+      }
+    }
+  },
+  projectiles(seen) {
+    for (const p of Projectiles.list) {
+      if (p.team === 'player' && !seen(p, p.radius)) continue;   // incoming shots are always visible
+      if (p.arrow) {
+        const a = Math.atan2(p.vy, p.vx);
+        ctx.strokeStyle = p.color; ctx.lineWidth = 2; ctx.beginPath();
+        ctx.moveTo(p.x - Math.cos(a) * 10, p.y - Math.sin(a) * 10); ctx.lineTo(p.x, p.y); ctx.stroke();
+      } else {
+        ctx.fillStyle = p.color + '55'; ctx.beginPath(); ctx.arc(p.x, p.y, p.radius * 2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  },
+  debug() {
+    ctx.lineWidth = 1; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    for (const e of Game.enemies) {
+      if (e.dead) continue;
+      const ev = T.enemyVision, half = (e.def.visionAngle ?? ev.coneAngle) * DEG / 2;
+      ctx.strokeStyle = '#ff000060'; ctx.beginPath();
+      ctx.moveTo(e.x, e.y); ctx.arc(e.x, e.y, e.def.aggro, e.facing - half, e.facing + half); ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.def.hearRadius ?? ev.hearRadius, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#00ffff40'; ctx.beginPath(); ctx.arc(e.home.x, e.home.y, e.def.leash, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#0f0';
+      ctx.fillText(`${e.state} p${e.poise.toFixed(0)} ${e.region}${e.provoked ? ' PROVOKED' : ''}`, e.x, e.y + e.radius + 12);
+    }
+    const a = player.style.primary.combo?.[player.comboStep];
+    if (a) {
+      ctx.strokeStyle = '#ffff0060';
+      ctx.beginPath(); ctx.arc(player.x, player.y, a.range + player.radius, 0, Math.PI * 2); ctx.stroke();
+    }
+  },
+};
+
+// =====================================================================
+// Main loop
+// =====================================================================
+function handleInput() {
+  const P = Input.pressed;
+  if (!Game.started) { CharSelect.handleKeys(P); return; }
+  if (Dialogue.isOpen) {
+    for (let i = 1; i <= 9; i++) if (P.has('Digit' + i)) Dialogue.choose(i - 1);
+    if (P.has('Escape')) Dialogue.close();
+    return;
+  }
+  if (P.has('KeyI')) UI.toggle('inventory');
+  if (P.has('KeyC')) UI.toggle('character');
+  if (P.has('KeyJ')) UI.toggle('quests');
+  if (P.has('KeyH')) UI.toggle('help');
+  if (P.has('Escape')) UI.closeAll();
+  if (P.has('Backquote')) Game.debug = !Game.debug;
+  if (UI.blocking() || player.dead) return;
+
+  if (Game.debug) {
+    if (P.has('KeyK')) player.gainXp(xpToNext(player.level) - player.xp);
+    if (P.has('KeyG')) { player.inventory.gold += 100; UI.refresh(); }
+    if (P.has('KeyL')) {
+      const ids = Object.keys(DATA.items).filter(i => DATA.items[i].type === 'equipment');
+      spawnPickup(player.x + 30, player.y, { kind: 'item', item: makeItem(ids[randi(0, ids.length - 1)], DATA.lootTables.boss.rarity) });
+    }
+  }
+  if (P.has('Space')) player.tryDodge();
+  if (P.has('KeyX')) player.swapStyle();
+  if (P.has('Mouse0') || (Input.down.has('Mouse0') && !player.attack)) player.tryAttack();
+  player.abilities.ids.forEach((id, i) => { if (P.has('Digit' + (i + 1))) player.abilities.tryActivate(id); });
+  if (P.has('KeyQ')) player.drinkPotion();
+  if (P.has('KeyE')) { const n = nearestNpc(); if (n) Dialogue.open(n); }
+}
+
+function update(dt) {
+  handleInput();
+  if (!UI.blocking()) {
+    Game.time += dt;
+    if (player.dead) { Game.deathTimer -= dt; if (Game.deathTimer <= 0) player.respawn(); }
+    player.update(dt);
+    for (const e of Game.enemies) e.update(dt);
+    separate();
+    Encounters.update();
+    Projectiles.update(dt);
+    updatePickups(dt);
+    FX.update(dt);
+  }
+  Cam.update(dt);
+  Input.endFrame();
+}
+
+initWorld();
+CharSelect.render();
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  Game.fps = Game.fps * 0.95 + (1 / Math.max(dt, 0.001)) * 0.05;
+  update(dt);
+  Render.frame();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

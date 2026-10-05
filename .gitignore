@@ -1,0 +1,19 @@
+# Packaged game (play.ps1 -Package)
+Dist/
+
+# Unreal build output / caches
+unreal/Binaries/
+unreal/Intermediate/
+unreal/Saved/
+unreal/DerivedDataCache/
+unreal/.vs/
+unreal/*.sln
+unreal/*.slnx
+unreal/Platforms/
+*.VC.db
+*.opensdf
+*.sdf
+*.suo
+
+# Cooker-generated file order logs
+unreal/Build/*/FileOpenOrder/

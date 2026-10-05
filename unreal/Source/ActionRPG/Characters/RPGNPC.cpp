@@ -1,0 +1,36 @@
+#include "RPGNPC.h"
+#include "RPGData.h"
+#include "RPGStory.h"
+#include "RPGPlayerCharacter.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "AIController.h"
+
+ARPGNPC::ARPGNPC()
+{
+	Team = ERPGTeam::Villager;
+	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
+	AIControllerClass = AAIController::StaticClass();
+}
+
+void ARPGNPC::Init(const FString& InId)
+{
+	NpcId = InId;
+	const RPGJson::FObj Def = URPGData::Get(this).Entry(TEXT("npcs"), NpcId);
+	DisplayName = RPGJson::Str(Def, TEXT("name"), NpcId);
+	NameColor = RPGJson::Color(RPGJson::Str(Def, TEXT("color")), FLinearColor::White);
+	DialogueRoot = RPGJson::Str(Def, TEXT("dialogue"));
+	TalkKey = NpcId;
+	SetLookFromData(NpcId);
+	Stats->Base.Add(TEXT("hpFlat"), 100.f);
+	Stats->Fill();
+	GetCharacterMovement()->MaxWalkSpeed = 200.f;
+}
+
+void ARPGNPC::Tick(float Dt)
+{
+	Super::Tick(Dt);
+	const ARPGPlayerCharacter* P = URPGStory::Get(this)->Player();
+	if (!P || FVector::Dist2D(P->GetActorLocation(), GetActorLocation()) > 600.f) return;
+	const FRotator Want(0, (P->GetActorLocation() - GetActorLocation()).GetSafeNormal2D().Rotation().Yaw, 0);
+	SetActorRotation(FMath::RInterpTo(GetActorRotation(), Want, Dt, 4.f));
+}

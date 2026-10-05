@@ -1,0 +1,639 @@
+{
+  "tuning": {
+    "hpPerVitality": 10, "hpPerLevel": 5,
+    "staminaBase": 80, "staminaPerAgility": 4, "staminaRegen": 38, "staminaRegenDelay": 0.55,
+    "manaPerFocus": 5, "manaRegen": 2.5,
+    "critPctPerAgility": 1, "critMultiplier": 1.6,
+    "mightScaling": 0.06, "agilityScaling": 0.06, "focusScaling": 0.07,
+    "armorConstant": 100, "damageVariance": 0.1,
+    "staggerTime": 0.55, "poiseRegenDelay": 2.0, "playerHitIframes": 0.45,
+    "dodge": { "cost": 22, "speed": 430, "duration": 0.32, "iframes": 0.26 },
+    "xpBase": 40, "xpGrowth": 1.45, "pointsPerLevel": 3,
+    "vision": { "nearRadius": 60, "coneRange": 360, "coneAngle": 80, "edgeBlur": 14, "falloffStart": 0.45, "edgeFog": 0.65 },
+    "enemyVision": { "coneAngle": 120, "hearRadius": 70 },
+    "threatSense": { "range": 450, "revealAfterAttack": 1.5, "revealAlpha": 0.55 },
+    "interactRange": 48, "respawnMinDistance": 420, "deathGoldPenalty": 0.1
+  },
+
+  "world3d": {
+    "_doc": "Unreal-only presentation settings. Gameplay numbers stay in pixels (shared with the HTML prototype); unitsPerPx converts them to Unreal units.",
+    "tileSize": 300, "unitsPerPx": 3.5, "wallHeight": 380,
+    "camera": { "armLength": 430, "socketOffset": [0, 60, 75], "fov": 80, "lagSpeed": 12 },
+    "sun": { "pitch": -36, "yaw": 125, "intensityLux": 9 },
+    "mounts": {
+      "_doc": "Where weapon kits attach: a bone plus an offset in that bone's space. Weapon parts are authored with +Z pointing out of the fist.",
+      "_measured": "-RPGProbe, idle pose: hand_r +Z points forward, hand_l +X points down, lowerarm_l +Z points out to the left",
+      "hand_r":     { "loc": [-9, 1, 0], "rot": [0, 0, 0] },
+      "hand_l":     { "loc": [-8, 0, 0], "rot": [90, 0, 0] },
+      "lowerarm_l": { "loc": [13, 0, 7], "rot": [0, 0, 0] }
+    },
+    "styleKits": {
+      "sword_shield": ["sword", "shield"], "longsword": ["greatsword"], "staff": ["staff"],
+      "daggers_bow": ["dagger", "bow"], "dagger_shield": ["dagger", "buckler"]
+    },
+    "enemyKits": { "sword": ["sword"], "bow": ["bow"] },
+    "kits": {
+      "sword": { "bone": "hand_r", "parts": [
+        { "shape": "Cube", "mat": "M_Metal_Steel", "loc": [0, 0, 52], "size": [6, 1.4, 82] },
+        { "shape": "Cube", "mat": "M_Metal_Gold", "loc": [0, 0, 10], "size": [20, 3, 3] },
+        { "shape": "Cylinder", "mat": "M_Wood_Walnut", "loc": [0, 0, 0], "size": [3.2, 3.2, 18] } ] },
+      "greatsword": { "bone": "hand_r", "parts": [
+        { "shape": "Cube", "mat": "M_Metal_Steel", "loc": [0, 0, 72], "size": [8, 1.6, 120] },
+        { "shape": "Cube", "mat": "M_Metal_Burnished_Steel", "loc": [0, 0, 11], "size": [28, 4, 4] },
+        { "shape": "Cylinder", "mat": "M_Wood_Walnut", "loc": [0, 0, -4], "size": [3.4, 3.4, 30] } ] },
+      "dagger": { "bone": "hand_r",
+        "holster": { "bone": "pelvis", "loc": [-6, 4, 22], "x": [0, 1, 0], "z": [-1, 0, 0] },
+        "parts": [
+        { "shape": "Cube", "mat": "M_Metal_Chrome", "loc": [0, 0, 22], "size": [4, 1, 30] },
+        { "shape": "Cube", "mat": "M_Metal_Copper", "loc": [0, 0, 6], "size": [10, 2.5, 2.5] },
+        { "shape": "Cylinder", "mat": "M_Wood_Walnut", "loc": [0, 0, 0], "size": [2.8, 2.8, 12] } ] },
+      "staff": { "bone": "hand_r", "mountRot": [-90, 0, 0], "parts": [
+        { "shape": "Cylinder", "mat": "M_Wood_Oak", "loc": [0, 0, 35], "size": [5, 5, 205] },
+        { "shape": "Cylinder", "mat": "M_Metal_Gold", "loc": [0, 0, 128], "size": [8, 8, 6] },
+        { "shape": "Sphere", "glow": "#b9a4ff", "loc": [0, 0, 141], "size": [17, 17, 17] } ] },
+      "shield": { "bone": "lowerarm_l", "parts": [
+        { "shape": "Cylinder", "mat": "M_Wood_Oak", "loc": [0, 0, 0], "size": [62, 62, 4] },
+        { "shape": "Sphere", "mat": "M_Metal_Steel", "loc": [0, 0, 3], "size": [12, 12, 6] } ] },
+      "buckler": { "bone": "lowerarm_l", "parts": [
+        { "shape": "Cylinder", "mat": "M_Metal_Copper", "loc": [0, 0, 0], "size": [38, 38, 3] } ] },
+      "bow": { "bone": "hand_l", "mountRot": [0, 0, 0], "mountLoc": [7, 0, 0],
+        "holster": { "bone": "spine_05", "loc": [-8, -17, 0], "x": [0.7, 0, -0.7], "z": [0.7, 0, 0.7] },
+        "parts": [
+        { "shape": "Cylinder", "mat": "M_Wood_Walnut", "loc": [-7.5, 0, 31], "rot": [14, 0, 0], "size": [2.6, 2.6, 66] },
+        { "shape": "Cylinder", "mat": "M_Wood_Walnut", "loc": [-7.5, 0, -31], "rot": [-14, 0, 0], "size": [2.6, 2.6, 66] },
+        { "shape": "Cylinder", "mat": "M_Metal_Copper", "loc": [0, 0, 0], "size": [3.4, 3.4, 12] },
+        { "id": "string", "shape": "Cylinder", "mat": "M_Metal_Chrome", "loc": [-15, 0, 0], "size": [0.35, 0.35, 124] } ] }
+    },
+    "looks": {
+      "player":       { "male": "manny", "female": "quinn" },
+      "elder":        { "mesh": "quinn", "tint": "#e8c860" },
+      "merchant":     { "mesh": "manny", "tint": "#d09050" },
+      "brask_guard":  { "mesh": "manny", "tint": "#a04030", "scale": 1.12, "weapon": "sword" },
+      "slime":        { "mesh": "slime", "tint": "#6cc24a", "scale": 0.9 },
+      "archer":       { "mesh": "manny", "tint": "#ddd6c4", "weapon": "bow" },
+      "bandit":       { "mesh": "manny", "tint": "#b0563a", "weapon": "sword" },
+      "bandit_lt":    { "mesh": "quinn", "tint": "#d08a6a", "weapon": "bow" },
+      "bandit_captain": { "mesh": "manny", "tint": "#8a2e1e", "scale": 1.12, "weapon": "sword" },
+      "brute":        { "mesh": "manny", "tint": "#7a4630", "scale": 1.6 }
+    }
+  },
+
+  "player": {
+    "unarmedDamage": 4, "poise": 60, "radius": 12,
+    "startGold": 10, "inventorySize": 16
+  },
+
+  "sexes": {
+    "male":   { "name": "Male" },
+    "female": { "name": "Female" }
+  },
+
+  "classes": {
+    "knight": {
+      "name": "Knight", "color": "#8fb4d9", "title": { "male": "sir knight", "female": "dame knight" },
+      "tagline": "The wall. Takes the most punishment and holds the line.",
+      "attributes": { "might": 8, "agility": 4, "focus": 2, "vitality": 8, "presence": 3 },
+      "hpBase": 90, "manaBase": 30, "moveSpeed": 155, "critPct": 5,
+      "styles": ["sword_shield", "longsword"],
+      "abilities": ["shield_bash", "charge", "rallying_cry", "cleave"],
+      "weapons": "One-handed sword + shield, or a two-handed longsword.",
+      "defense": "Heaviest armor. Blocks with the shield; a perfect block staggers the attacker.",
+      "dialogue": { "style": "Honor", "desc": "Swear oaths, invoke rank, challenge foes to an honor duel." },
+      "startItems": [ { "item": "rusty_sword", "equip": true }, { "item": "leather_vest", "equip": true }, { "item": "potion", "qty": 2 } ]
+    },
+    "mage": {
+      "name": "Mage", "color": "#a07bff", "title": "mage",
+      "tagline": "Glass cannon behind a mana shield. Fights at range.",
+      "attributes": { "might": 2, "agility": 4, "focus": 9, "vitality": 4, "presence": 6 },
+      "hpBase": 45, "manaBase": 60, "manaRegen": 6, "moveSpeed": 165, "critPct": 5,
+      "styles": ["staff"],
+      "abilities": ["fireball", "frost_nova", "blink", "chain_lightning"],
+      "weapons": "Arcane bolts (free) and spells (mana).",
+      "defense": "Mana shield: damage drains mana first. When mana runs dry, the shield shatters.",
+      "dialogue": { "style": "Hypnotize", "desc": "Compel NPCs to agree. It works, but they may resent it later." },
+      "startItems": [ { "item": "oak_staff", "equip": true }, { "item": "potion", "qty": 2 } ]
+    },
+    "thief": {
+      "name": "Thief", "color": "#3fc28f", "title": "stranger",
+      "tagline": "Fragile but fast. Avoids damage instead of absorbing it.",
+      "attributes": { "might": 4, "agility": 9, "focus": 2, "vitality": 4, "presence": 6 },
+      "hpBase": 40, "manaBase": 30, "moveSpeed": 200, "critPct": 10,
+      "styles": ["daggers_bow"],
+      "abilities": ["volley", "smoke_bomb", "shadow_dash", "poison_blade"],
+      "dodge": { "cost": 14, "speed": 470, "duration": 0.36, "iframes": 0.32 },
+      "weapons": "Daggers (backstab x2) and a bow with unlimited arrows.",
+      "defense": "No shield. The fastest, cheapest dodge rolls in the game.",
+      "dialogue": { "style": "Intimidate", "desc": "Threaten and extort. Frightened people comply... for now." },
+      "startItems": [ { "item": "dagger", "equip": true }, { "item": "potion", "qty": 2 } ]
+    },
+    "scholar": {
+      "name": "Scholar", "color": "#e0b050", "title": "scholar",
+      "tagline": "Master negotiator. Weakest in a fight, strongest in a conversation.",
+      "attributes": { "might": 2, "agility": 4, "focus": 5, "vitality": 4, "presence": 10 },
+      "hpBase": 45, "manaBase": 40, "moveSpeed": 165, "critPct": 5,
+      "styles": ["dagger_shield"],
+      "abilities": ["mend", "ward", "silver_words", "insight"],
+      "weapons": "Dagger + small shield.",
+      "defense": "Lowest armor. Light shield block and self-healing (Mend).",
+      "dialogue": { "style": "Negotiate", "desc": "Can talk down almost anyone — for a price, or a promise." },
+      "startItems": [ { "item": "dagger", "equip": true }, { "item": "potion", "qty": 3 } ]
+    }
+  },
+
+  "combat": { "attackMoveMul": 0.35 },
+
+  "weaponStyles": {
+    "sword_shield": {
+      "name": "Sword & Shield", "hint": "LMB 3-hit combo · hold RMB to block (raise it just before a hit = perfect block)",
+      "comboWindow": 0.45,
+      "primary": { "type": "melee", "scaling": "might", "combo": [
+        { "mult": 1.0, "range": 44, "arc": 110, "windup": 0.07, "active": 0.08, "recover": 0.20, "stamina": 12, "poise": 15, "knockback": 140, "lunge": 120 },
+        { "mult": 1.1, "range": 44, "arc": 110, "windup": 0.07, "active": 0.08, "recover": 0.22, "stamina": 12, "poise": 15, "knockback": 140, "lunge": 120 },
+        { "mult": 1.7, "range": 52, "arc": 150, "windup": 0.16, "active": 0.10, "recover": 0.40, "stamina": 20, "poise": 35, "knockback": 320, "lunge": 200 } ] },
+      "secondary": { "type": "block", "reduction": 0.7, "arc": 130, "staminaPerDamage": 0.8, "perfectWindow": 0.15, "moveMul": 0.5, "staminaRegenMul": 0.35 }
+    },
+    "longsword": {
+      "name": "Longsword", "hint": "LMB slow, wide, heavy 2-hit combo · no block",
+      "comboWindow": 0.5, "damageMul": 1.4,
+      "primary": { "type": "melee", "scaling": "might", "combo": [
+        { "mult": 1.0, "range": 60, "arc": 150, "windup": 0.18, "active": 0.10, "recover": 0.35, "stamina": 18, "poise": 35, "knockback": 260, "lunge": 140 },
+        { "mult": 1.5, "range": 64, "arc": 170, "windup": 0.28, "active": 0.12, "recover": 0.55, "stamina": 26, "poise": 60, "knockback": 420, "lunge": 200 } ] }
+    },
+    "staff": {
+      "name": "Staff", "hint": "LMB arcane bolt (free, hold to keep firing) · damage drains mana before HP",
+      "primary": { "type": "bolt", "scaling": "focus", "damage": 5, "weaponRatio": 0.5, "cooldown": 0.45,
+                   "speed": 480, "radius": 5, "range": 440, "poise": 10, "knockback": 60, "color": "#b9a4ff" },
+      "passive": { "type": "manaShield", "damagePerMana": 1.0, "breakStagger": 0.6, "breakRegenLock": 3 }
+    },
+    "daggers_bow": {
+      "name": "Daggers & Bow", "hint": "LMB fast 4-hit daggers (hit from behind = backstab x2) · hold RMB to draw bow, release to fire",
+      "comboWindow": 0.35, "backstab": 2.0,
+      "primary": { "type": "melee", "scaling": "agility", "combo": [
+        { "mult": 0.7, "range": 34, "arc": 90,  "windup": 0.05, "active": 0.06, "recover": 0.12, "stamina": 8,  "poise": 8,  "knockback": 60,  "lunge": 140 },
+        { "mult": 0.7, "range": 34, "arc": 90,  "windup": 0.05, "active": 0.06, "recover": 0.12, "stamina": 8,  "poise": 8,  "knockback": 60,  "lunge": 140 },
+        { "mult": 0.8, "range": 34, "arc": 90,  "windup": 0.05, "active": 0.06, "recover": 0.14, "stamina": 8,  "poise": 10, "knockback": 80,  "lunge": 140 },
+        { "mult": 1.2, "range": 38, "arc": 100, "windup": 0.10, "active": 0.07, "recover": 0.30, "stamina": 12, "poise": 18, "knockback": 160, "lunge": 220 } ] },
+      "secondary": { "type": "bow", "scaling": "agility", "damage": 10, "weaponRatio": 0.5, "drawTime": 0.8, "minDraw": 0.12,
+                     "minMul": 0.35, "fullBonus": 1.3, "speed": 560, "range": 520, "poise": 20, "knockback": 120,
+                     "moveMul": 0.55, "color": "#e8d9b0" }
+    },
+    "dagger_shield": {
+      "name": "Dagger & Shield", "hint": "LMB 3-hit dagger combo · hold RMB to block (light shield, no perfect block)",
+      "comboWindow": 0.4,
+      "primary": { "type": "melee", "scaling": "might", "combo": [
+        { "mult": 0.8, "range": 36, "arc": 90,  "windup": 0.06, "active": 0.07, "recover": 0.16, "stamina": 10, "poise": 8,  "knockback": 80,  "lunge": 120 },
+        { "mult": 0.8, "range": 36, "arc": 90,  "windup": 0.06, "active": 0.07, "recover": 0.18, "stamina": 10, "poise": 8,  "knockback": 80,  "lunge": 120 },
+        { "mult": 1.2, "range": 40, "arc": 110, "windup": 0.12, "active": 0.08, "recover": 0.32, "stamina": 14, "poise": 18, "knockback": 180, "lunge": 160 } ] },
+      "secondary": { "type": "block", "reduction": 0.5, "arc": 100, "staminaPerDamage": 1.0, "perfectWindow": 0, "moveMul": 0.5, "staminaRegenMul": 0.35 }
+    }
+  },
+
+  "abilities": {
+    "shield_bash":     { "name": "Shield Bash", "type": "cone", "unlockLevel": 1, "stamina": 20, "cooldown": 5, "requires": "shield",
+                         "damage": 8, "scaling": "might", "range": 40, "arc": 90, "poise": 200, "stagger": 1.2, "knockback": 380,
+                         "color": "#c8d4e0", "desc": "Slam your shield forward. Always staggers what it hits. Needs Sword & Shield." },
+    "charge":          { "name": "Charge", "type": "dashStrike", "unlockLevel": 2, "stamina": 25, "cooldown": 6,
+                         "damage": 16, "scaling": "might", "distance": 220, "duration": 0.22, "poise": 50, "knockback": 300,
+                         "color": "#8fb4d9", "desc": "Charge toward the cursor, invulnerable, hitting everything in your path." },
+    "rallying_cry":    { "name": "Rallying Cry", "type": "buff", "unlockLevel": 3, "stamina": 30, "cooldown": 15,
+                         "duration": 8, "mods": { "armor": 25, "might": 3 },
+                         "color": "#ffd34a", "desc": "+25 armor and +3 Might for 8 seconds." },
+    "cleave":          { "name": "Cleave", "type": "aoe", "unlockLevel": 4, "stamina": 30, "cooldown": 6,
+                         "damage": 18, "scaling": "might", "radius": 80, "poise": 50, "knockback": 320,
+                         "color": "#dfe3ff", "desc": "A full spin that hits and knocks back everything around you." },
+
+    "fireball":        { "name": "Fireball", "type": "projectile", "unlockLevel": 1, "mana": 10, "cooldown": 1.2,
+                         "damage": 16, "scaling": "focus", "speed": 420, "radius": 7, "range": 420, "poise": 25, "knockback": 160,
+                         "color": "#ff8a3d", "desc": "Hurl a fireball toward the cursor." },
+    "frost_nova":      { "name": "Frost Nova", "type": "aoe", "unlockLevel": 2, "mana": 20, "cooldown": 8,
+                         "damage": 10, "scaling": "focus", "radius": 110, "poise": 20, "knockback": 80,
+                         "applyTag": { "tag": "Slowed", "duration": 3 },
+                         "color": "#9fd8ff", "desc": "Burst of frost around you. Enemies hit move at 40% speed for 3s." },
+    "blink":           { "name": "Blink", "type": "blink", "unlockLevel": 3, "mana": 15, "cooldown": 4,
+                         "distance": 170, "iframes": 0.15,
+                         "color": "#b9a4ff", "desc": "Teleport toward the cursor (can't pass walls or water)." },
+    "chain_lightning": { "name": "Chain Lightning", "type": "chain", "unlockLevel": 4, "mana": 25, "cooldown": 5,
+                         "damage": 20, "scaling": "focus", "range": 320, "jumps": 3, "jumpRange": 140, "falloff": 0.75, "poise": 30,
+                         "color": "#cfe8ff", "desc": "Strike the enemy nearest the cursor; arcs to 3 more nearby, weaker each jump." },
+
+    "volley":          { "name": "Volley", "type": "projectile", "unlockLevel": 1, "stamina": 18, "cooldown": 3,
+                         "count": 3, "spread": 14, "arrow": true,
+                         "damage": 9, "scaling": "agility", "speed": 560, "radius": 3, "range": 420, "poise": 12, "knockback": 90,
+                         "color": "#e8d9b0", "desc": "Loose three arrows in a fan." },
+    "smoke_bomb":      { "name": "Smoke Bomb", "type": "smoke", "unlockLevel": 2, "stamina": 20, "cooldown": 12,
+                         "radius": 120, "duration": 3,
+                         "color": "#9aa0a6", "desc": "Vanish for 3s. Enemies lose track of you — perfect for a backstab. Attacking reveals you." },
+    "shadow_dash":     { "name": "Shadow Dash", "type": "dashStrike", "unlockLevel": 3, "stamina": 20, "cooldown": 5,
+                         "damage": 18, "scaling": "agility", "distance": 190, "duration": 0.18, "poise": 35, "knockback": 120,
+                         "color": "#3fc28f", "desc": "Invulnerable dash toward the cursor, striking everything in the path." },
+    "poison_blade":    { "name": "Poison Blade", "type": "weaponBuff", "unlockLevel": 4, "stamina": 15, "cooldown": 14,
+                         "duration": 8, "poison": { "damage": 4, "scaling": "agility", "period": 0.5, "duration": 3 },
+                         "color": "#7fd07f", "desc": "For 8s, dagger hits poison: damage every 0.5s for 3s." },
+
+    "mend":            { "name": "Mend", "type": "heal", "unlockLevel": 1, "mana": 20, "cooldown": 12,
+                         "healPerTick": 7, "period": 0.5, "duration": 4, "scaling": "focus",
+                         "color": "#5fe08a", "desc": "Heal over 4 seconds." },
+    "ward":            { "name": "Ward", "type": "buff", "unlockLevel": 2, "mana": 20, "cooldown": 14,
+                         "duration": 10, "absorb": 30, "scaling": "focus",
+                         "color": "#ffe9a8", "desc": "A ward that absorbs ~40 damage for 10 seconds." },
+    "silver_words":    { "name": "Silver Words", "type": "daze", "unlockLevel": 3, "mana": 20, "cooldown": 15,
+                         "range": 260, "daze": 3,
+                         "color": "#e0b050", "desc": "Daze a thinking enemy for 3s. Some will stop and talk — mid-fight. Beasts and the dead don't listen." },
+    "insight":         { "name": "Insight", "type": "mark", "unlockLevel": 4, "mana": 15, "cooldown": 10,
+                         "range": 320, "duration": 8, "damageTakenMul": 1.25,
+                         "color": "#ffd34a", "desc": "Study an enemy: it takes +25% damage for 8s and its next move is revealed." }
+  },
+
+  "enemies": {
+    "slime": { "name": "Slime", "hp": 30, "armor": 0, "speed": 78, "radius": 12, "color": "#6cc24a", "poise": 15,
+      "xp": 12, "gold": [1, 4], "loot": "trash", "aggro": 170, "leash": 360, "respawn": 40,
+      "attacks": [
+        { "type": "melee", "range": 22, "arc": 100, "windup": 0.5, "recover": 0.7, "cooldown": 0.3,
+          "damage": 8, "poise": 20, "knockback": 200, "lunge": 180 }
+      ] },
+    "archer": { "name": "Skeleton Archer", "hp": 26, "armor": 5, "speed": 82, "radius": 11, "color": "#ddd6c4", "poise": 20,
+      "xp": 18, "gold": [3, 8], "loot": "archer", "aggro": 260, "leash": 480, "respawn": 50, "preferredDist": 190,
+      "attacks": [
+        { "type": "ranged", "range": 260, "windup": 0.75, "recover": 0.4, "cooldown": 1.3,
+          "damage": 10, "poise": 15, "knockback": 90,
+          "projectile": { "speed": 310, "radius": 4, "color": "#f0e6c8", "range": 420 } }
+      ] },
+    "bandit": { "name": "Red Hand Bandit", "faction": "bandits", "intelligent": true, "hp": 45, "armor": 8, "speed": 88, "radius": 12, "color": "#b0563a", "poise": 30,
+      "xp": 5, "gold": [4, 10], "loot": "trash", "aggro": 260, "leash": 520, "respawn": -1,
+      "attacks": [
+        { "type": "melee", "range": 26, "arc": 110, "windup": 0.45, "recover": 0.6, "cooldown": 0.4, "damage": 11, "poise": 25, "knockback": 200, "lunge": 160 }
+      ] },
+    "bandit_lt": { "name": "Wren", "faction": "bandits", "intelligent": true, "dialogue": "wren_root", "parleyDialogue": "wren_parley", "hp": 50, "armor": 5, "speed": 84, "radius": 11, "color": "#d08a6a", "poise": 25,
+      "xp": 5, "gold": [6, 12], "loot": "archer", "aggro": 270, "leash": 520, "respawn": -1, "preferredDist": 190,
+      "attacks": [
+        { "type": "ranged", "range": 270, "windup": 0.8, "recover": 0.5, "cooldown": 1.4, "damage": 13, "poise": 20, "knockback": 100,
+          "projectile": { "speed": 360, "radius": 4, "color": "#e0b090", "range": 440 } }
+      ] },
+    "bandit_captain": { "name": "Captain Brask", "boss": true, "faction": "bandits", "intelligent": true, "dialogue": "brask_root", "parleyDialogue": "brask_parley", "hp": 140, "armor": 15, "speed": 92,
+      "radius": 15, "color": "#8a2e1e", "poise": 70, "xp": 10, "gold": [20, 30], "loot": "stash", "aggro": 280, "leash": 520, "respawn": -1,
+      "knockbackMul": 0.5, "resolveOnDeath": "toll_bridge:killed", "yieldDialogue": "brask_yield",
+      "attacks": [
+        { "type": "melee", "range": 34, "arc": 120, "windup": 0.55, "recover": 0.6, "cooldown": 0.25, "damage": 16, "poise": 35, "knockback": 240, "lunge": 120 },
+        { "type": "melee", "range": 34, "arc": 120, "windup": 0.45, "recover": 0.9, "cooldown": 0.25, "damage": 16, "poise": 35, "knockback": 240, "lunge": 120 },
+        { "type": "melee", "range": 46, "arc": 160, "windup": 0.9, "recover": 1.0, "cooldown": 0.4, "damage": 26, "poise": 60, "knockback": 400, "lunge": 260 }
+      ] },
+    "brute": { "name": "Ruin Brute", "boss": true, "hp": 260, "armor": 30, "speed": 68, "radius": 20, "color": "#a0522d", "poise": 110,
+      "xp": 150, "gold": [30, 50], "loot": "boss", "aggro": 230, "leash": 420, "respawn": 90, "knockbackMul": 0.25,
+      "questDrop": { "quest": "lost_relic", "item": "relic" },
+      "attacks": [
+        { "type": "melee", "range": 40, "arc": 130, "windup": 0.8,  "recover": 0.8, "cooldown": 0.2, "damage": 22, "poise": 55, "knockback": 320 },
+        { "type": "melee", "range": 40, "arc": 130, "windup": 0.65, "recover": 0.9, "cooldown": 0.2, "damage": 22, "poise": 55, "knockback": 320 },
+        { "type": "slam",  "range": 60, "radius": 95, "windup": 1.1, "recover": 1.3, "cooldown": 0.4, "damage": 32, "poise": 80, "knockback": 480 }
+      ] }
+  },
+
+  "items": {
+    "rusty_sword":  { "name": "Rusty Sword",  "type": "equipment", "slot": "weapon",  "mods": { "weaponDamage": 8 } },
+    "dagger":       { "name": "Dagger",       "type": "equipment", "slot": "weapon",  "mods": { "weaponDamage": 6, "critPct": 5 } },
+    "oak_staff":    { "name": "Oak Staff",    "type": "equipment", "slot": "weapon",  "mods": { "weaponDamage": 5, "focus": 1 } },
+    "iron_sword":   { "name": "Iron Sword",   "type": "equipment", "slot": "weapon",  "mods": { "weaponDamage": 12 } },
+    "war_axe":      { "name": "War Axe",      "type": "equipment", "slot": "weapon",  "mods": { "weaponDamage": 17 } },
+    "leather_vest": { "name": "Leather Vest", "type": "equipment", "slot": "armor",   "mods": { "armor": 10 } },
+    "chain_mail":   { "name": "Chain Mail",   "type": "equipment", "slot": "armor",   "mods": { "armor": 24, "agility": -2 } },
+    "ring":         { "name": "Ring",         "type": "equipment", "slot": "trinket", "mods": {}, "minAffixes": 1 },
+    "potion":       { "name": "Health Potion","type": "consumable", "stackable": true, "heal": 45 },
+    "relic":        { "name": "Ashford Relic","type": "quest" },
+    "bridge_charter": { "name": "Bridge Charter", "type": "quest" },
+    "brask_sabre":  { "name": "Brask's Sabre", "type": "equipment", "slot": "weapon", "rarity": "rare", "mods": { "weaponDamage": 14, "might": 2 } }
+  },
+
+  "rarities": {
+    "common": { "affixes": 0, "color": "#d8d8d8", "salvage": 3 },
+    "magic":  { "affixes": 1, "color": "#6aa8ff", "salvage": 10 },
+    "rare":   { "affixes": 2, "color": "#ffd34a", "salvage": 25 }
+  },
+
+  "affixes": [
+    { "stat": "might",    "min": 1, "max": 3, "label": "of Might" },
+    { "stat": "agility",  "min": 1, "max": 3, "label": "of Swiftness" },
+    { "stat": "focus",    "min": 1, "max": 3, "label": "of Insight" },
+    { "stat": "vitality", "min": 1, "max": 3, "label": "of Vigor" },
+    { "stat": "presence", "min": 1, "max": 3, "label": "of Charm" },
+    { "stat": "armor",    "min": 3, "max": 8, "label": "of Warding" },
+    { "stat": "critPct",  "min": 2, "max": 5, "label": "of Precision" }
+  ],
+
+  "lootTables": {
+    "trash":  { "dropChance": 0.4, "rolls": 1, "rarity": { "common": 65, "magic": 28, "rare": 7 },
+                "entries": [ { "item": "potion", "weight": 50 }, { "item": "iron_sword", "weight": 8 },
+                             { "item": "leather_vest", "weight": 12 }, { "item": "ring", "weight": 10 } ] },
+    "archer": { "dropChance": 0.55, "rolls": 1, "rarity": { "common": 55, "magic": 33, "rare": 12 },
+                "entries": [ { "item": "potion", "weight": 40 }, { "item": "iron_sword", "weight": 10 },
+                             { "item": "leather_vest", "weight": 12 }, { "item": "chain_mail", "weight": 5 },
+                             { "item": "ring", "weight": 12 } ] },
+    "stash":  { "dropChance": 1.0, "rolls": 2, "gold": [40, 60], "rarity": { "common": 30, "magic": 50, "rare": 20 },
+                "entries": [ { "item": "potion", "weight": 40 }, { "item": "iron_sword", "weight": 15 },
+                             { "item": "leather_vest", "weight": 15 }, { "item": "ring", "weight": 15 } ] },
+    "boss":   { "dropChance": 1.0, "rolls": 3, "rarity": { "common": 10, "magic": 50, "rare": 40 },
+                "entries": [ { "item": "war_axe", "weight": 30 }, { "item": "chain_mail", "weight": 30 },
+                             { "item": "ring", "weight": 25 }, { "item": "potion", "weight": 15 } ] }
+  },
+
+  "quests": {
+    "toll_bridge": { "name": "The Toll Bridge", "giver": "Elder Maren",
+      "desc": "The Red Hands bandits hold the south bridge and toll anyone who crosses. Deal with them — however you see fit.",
+      "objective": { "type": "flag", "flag": "bridge_resolved", "text": "Deal with the bandits at the south bridge" },
+      "reward": { "xp": 120, "gold": 40 } },
+    "lost_relic": { "name": "The Lost Relic", "giver": "Elder Maren",
+      "desc": "Recover the village relic from the Ruin Brute in the south-east ruins.",
+      "objective": { "type": "collect", "item": "relic", "count": 1 },
+      "reward": { "xp": 200, "gold": 80 } },
+    "slime_cull": { "name": "Slime Trouble", "giver": "Tobin the Trader",
+      "desc": "Slimes keep eating Tobin's stock. Cull five of them in the meadow.",
+      "objective": { "type": "kill", "target": "slime", "count": 5 },
+      "reward": { "xp": 50, "gold": 25, "item": "iron_sword", "rarity": "magic" } }
+  },
+
+  "npcs": {
+    "elder":       { "name": "Elder Maren",      "color": "#e8c860", "dialogue": "elder_root" },
+    "merchant":    { "name": "Tobin the Trader", "color": "#d09050", "dialogue": "merchant_root" },
+    "brask_guard": { "name": "Guard Brask",      "color": "#a04030", "dialogue": "brask_guard_root", "spawnAt": [14, 8] }
+  },
+
+  "dialogueVerbs": {
+    "persuade":   { "label": "Persuade",   "stat": "presence" },
+    "leverage":   { "label": "Leverage",   "stat": "presence", "bonus": 30 },
+    "honor":      { "label": "Honor",      "stat": "presence", "secondary": "might", "class": "knight",  "bonus": 15 },
+    "hypnotize":  { "label": "Hypnotize",  "stat": "focus",                          "class": "mage",    "bonus": 10, "mana": 20 },
+    "intimidate": { "label": "Intimidate", "stat": "presence", "secondary": "might", "class": "thief",   "bonus": 10 },
+    "negotiate":  { "label": "Negotiate",  "stat": "presence",                       "class": "scholar", "bonus": 30 }
+  },
+
+  "encounters": {
+    "toll_bridge": { "leader": "bandit_captain", "faction": "bandits", "parleyRange": 150, "crossRow": 12,
+                     "metFlag": "brask_spoke", "flag": "bridge_resolved", "outcomeFlag": "toll_outcome",
+                     "crossBark": "Oi! Nobody crosses without paying! Get them!" }
+  },
+
+  "dialogue": {
+    "elder_root": {
+      "text": [
+        { "if": { "flag": "met_elder" }, "text": "What do you need, {title}?" },
+        { "if": { "class": "knight" },  "text": "A knight! The crown hasn't sent one of yours to Ashford in years. Please — we need help." },
+        { "if": { "class": "mage" },    "text": "A mage... Folk here don't trust spellcraft. But Ashford can't afford to be choosy right now." },
+        { "if": { "class": "thief" },   "text": "Keep your hands where I can see them, stranger. ...Still. You look like someone who gets things done." },
+        { "if": { "class": "scholar" }, "text": "A scholar! Gods be thanked — someone who can actually read. You may be exactly who we need." }
+      ],
+      "do": [ { "setFlag": "met_elder" } ],
+      "choices": [
+        { "text": "What's troubling the village?", "if": { "quest": "toll_bridge", "is": "none" }, "next": "elder_bridge_offer", "marker": "!" },
+        { "verb": "honor", "text": "By my oath, Ashford is under my protection.", "if": { "not": { "flag": "sworn_elder" } }, "next": "elder_sworn" },
+        { "verb": "hypnotize", "text": "(Slip into her thoughts) What are you not telling me?", "if": { "not": { "flag": "elder_read" } },
+          "check": { "resolve": 6, "success": "elder_hypno_ok", "fail": "elder_hypno_fail" } },
+        { "verb": "intimidate", "text": "Before I risk my neck for your bridge, let's talk about my fee.", "if": { "quest": "toll_bridge", "is": "active" },
+          "check": { "resolve": 5, "success": "elder_extort_ok", "fail": "elder_extort_fail" } },
+        { "verb": "negotiate", "text": "Does Ashford keep any old records about that bridge?", "if": { "quest": "toll_bridge", "is": "active" },
+          "check": { "resolve": 4, "success": "elder_charter_ok", "fail": "elder_charter_fail" } },
+        { "text": "About the bridge...", "if": { "quest": "toll_bridge", "is": "active" }, "next": "elder_bridge_progress" },
+        { "text": "The bridge is open.", "if": { "quest": "toll_bridge", "is": "complete" },
+          "do": [ { "turnIn": "toll_bridge" }, { "if": { "flag": "double_reward" }, "gold": 40 } ], "next": "elder_bridge_done", "marker": "?" },
+        { "text": "Is there anything else I can do?", "if": [ { "quest": "toll_bridge", "is": "turnedIn" }, { "quest": "lost_relic", "is": "none" } ], "next": "elder_relic_offer", "marker": "!" },
+        { "text": "About the relic...", "if": { "quest": "lost_relic", "is": "active" }, "next": "elder_relic_progress" },
+        { "text": "I recovered the relic.", "if": { "quest": "lost_relic", "is": "complete" }, "do": [ { "turnIn": "lost_relic" } ], "next": "elder_relic_done", "marker": "?" },
+        { "text": "I need to rest.", "do": [ { "restore": true } ], "next": "elder_rest" },
+        { "text": "Farewell." }
+      ] },
+
+    "elder_bridge_offer": {
+      "text": [
+        { "if": { "class": "knight" }, "text": "Bandits — the Red Hands — hold the south bridge and toll every soul who crosses. A knight could end that. However you see fit." },
+        { "if": { "class": "thief" },  "text": "Bandits hold the south bridge. The Red Hands. I suppose you'd know their kind. Clear them off and there's coin in it." },
+        { "text": "Bandits — the Red Hands — have taken the south bridge and toll anyone who crosses. Our traders can't reach the road. Deal with them... however you must." }
+      ],
+      "choices": [
+        { "text": "It shall be done, by my honor.", "if": { "class": "knight" }, "do": [ { "startQuest": "toll_bridge" } ] },
+        { "text": "Coin first, questions never. I'll handle it.", "if": { "class": "thief" }, "do": [ { "startQuest": "toll_bridge" } ] },
+        { "text": "I'll see what can be done.", "if": { "not": { "class": ["knight", "thief"] } }, "do": [ { "startQuest": "toll_bridge" } ] },
+        { "text": "Not yet.", "next": "elder_root" }
+      ] },
+    "elder_bridge_progress": { "text": "The bridge is east of here, where the road meets the river. Brask leads them — proud, greedy, and not as stupid as he looks.",
+      "choices": [ { "text": "I'll deal with him." } ] },
+    "elder_sworn": { "do": [ { "setFlag": "sworn_elder" }, { "disposition": 20 }, { "giveItem": "potion" } ],
+      "text": "Then Ashford is in your debt, {title}. Take this — it isn't much, but it's what we have.",
+      "choices": [ { "text": "(Bow)", "next": "elder_root" } ] },
+    "elder_hypno_ok": { "do": [ { "setFlag": "elder_read" }, { "setFlag": "knows_relic" }, { "disposition": -10 } ],
+      "text": "(Her thoughts unspool) ...the relic. A brute carried the Ashford relic into the south ruins, and with the bridge held, no one can go after it... Why did I just tell you that?",
+      "choices": [ { "text": "(Withdraw quietly)", "next": "elder_root" } ] },
+    "elder_hypno_fail": { "do": [ { "setFlag": "elder_read" }, { "disposition": -30 } ],
+      "text": "Stop that! I can feel you in my head! ...Try it again and you'll find no welcome in Ashford.",
+      "choices": [ { "text": "My apologies.", "next": "elder_root" } ] },
+    "elder_extort_ok": { "do": [ { "setFlag": "double_reward" }, { "disposition": -10 } ],
+      "text": "...Fine! Double the reward. Just get it done.",
+      "choices": [ { "text": "Pleasure doing business.", "next": "elder_root" } ] },
+    "elder_extort_fail": { "do": [ { "disposition": -20 } ],
+      "text": "I won't be extorted in my own village. The reward stands as offered.",
+      "choices": [ { "text": "Suit yourself.", "next": "elder_root" } ] },
+    "elder_charter_ok": { "do": [ { "setFlag": "knows_charter" }, { "giveItem": "bridge_charter" }, { "disposition": 10 } ],
+      "text": "Records? ...The old charter! The bridge was granted to Ashford by royal decree. Here — if anyone can make use of it, it's you.",
+      "choices": [ { "text": "This will help. Thank you.", "next": "elder_root" } ] },
+    "elder_charter_fail": { "text": "Records? I'm afraid whatever we had burned with the old hall.",
+      "choices": [ { "text": "A pity.", "next": "elder_root" } ] },
+    "elder_bridge_done": {
+      "text": [
+        { "if": { "flag": "toll_outcome", "is": "honor" },      "text": "They say you beat Brask in fair combat and his men simply walked away. A true knight. Ashford won't forget it." },
+        { "if": { "flag": "toll_outcome", "is": "hypnotized" }, "text": "The bandits just... walked away? Glassy-eyed, I heard. I won't ask how. I'm not sure I want to know." },
+        { "if": { "flag": "toll_outcome", "is": "scared" },     "text": "Brask ran like a kicked dog, they say, and left his loot behind. Remind me never to cross you." },
+        { "if": { "flag": "toll_outcome", "is": "recruited" },  "text": "Brask... as our town guard? You may be mad. But if it works, Ashford owes you twice over." },
+        { "if": { "flag": "toll_outcome", "is": "charter" },    "text": "You read them the royal charter and they fled? Ha! The pen and the sword, indeed." },
+        { "if": { "flag": "toll_outcome", "is": "truce" },      "text": "They say you talked Brask down in the middle of a sword fight. In the middle of one! Remarkable." },
+        { "if": { "flag": "toll_outcome", "is": "bargain" },    "text": "Thirty gold to end it? Cheaper than a funeral. Well bargained." },
+        { "if": { "flag": "toll_outcome", "is": "blackmail" },  "text": "Gone, just like that. Whatever you said to Brask, it worked." },
+        { "if": { "flag": "toll_outcome", "is": "paid" },       "text": "You paid them? Well... the road is open for you, at least. They're still there for the rest of us." },
+        { "if": { "flag": "toll_outcome", "is": "persuaded" },  "text": "They let you pass, but they still hold the bridge. It's a start, I suppose." },
+        { "text": "The bandits are dead. Harsh — but the road is open." }
+      ],
+      "choices": [ { "text": "Glad to help.", "next": "elder_root" } ] },
+
+    "elder_relic_offer": {
+      "text": [
+        { "if": { "flag": "knows_relic" }, "text": "You already know, don't you... The relic. The brute in the south-east ruins has it. Please, bring it home." },
+        { "text": "There is one more thing. A brute has made its lair in the old ruins to the south-east, and it took our village relic. Bring it back... carefully." }
+      ],
+      "choices": [ { "text": "I'll get it back.", "do": [ { "startQuest": "lost_relic" } ] }, { "text": "Not yet.", "next": "elder_root" } ] },
+    "elder_relic_progress": { "text": "The ruins lie to the south-east, past the archers' woods. The brute hits hard — watch its wind-up and roll away.",
+      "choices": [ { "text": "I'll be careful." } ] },
+    "elder_relic_done": { "text": "The relic! Ashford owes you a great debt. (End of prototype content — thanks for testing!)",
+      "choices": [ { "text": "Farewell." } ] },
+    "elder_rest": { "text": "Sit by the fire a while... You feel fully restored.",
+      "choices": [ { "text": "Thanks.", "next": "elder_root" } ] },
+
+    "brask_root": {
+      "text": [
+        { "if": { "flag": "duel_lost" },   "text": "Back for another lesson, {title}? Fifty gold — or another round on your back." },
+        { "if": { "flag": "brask_spoke" }, "text": "Made up your mind? Fifty gold." },
+        { "if": { "sex": "male" },         "text": "Halt. This bridge belongs to the Red Hands. Toll's fifty gold. ...You've the look of my little brother about you, lad. Doesn't change the price." },
+        { "text": "Halt. This bridge belongs to the Red Hands now. Toll's fifty gold — or turn around." }
+      ],
+      "do": [ { "setFlag": "brask_spoke" } ],
+      "choices": [
+        { "text": "[Pay 50 gold] Fine. Here.", "if": { "gold": 50 }, "do": [ { "takeGold": 50 }, { "resolve": "toll_bridge:paid" } ], "next": "brask_paid" },
+        { "verb": "persuade", "text": "The people of Ashford can't pay this. Let them through.",
+          "check": { "resolve": 7, "bonus": [ { "if": { "sex": "male" }, "add": 25 } ], "success": "brask_persuaded", "fail": "brask_persuade_fail" } },
+        { "verb": "honor", "text": "I am a knight of the realm. I challenge you to single combat — your men stand aside.",
+          "check": { "resolve": 4, "success": "brask_duel", "fail": "brask_duel_refused" } },
+        { "verb": "hypnotize", "text": "(Reach into his mind) You're tired of this cold bridge, Brask. Send your men home.",
+          "check": { "resolve": 6, "success": "brask_hypno_ok", "fail": "brask_hypno_fail" } },
+        { "verb": "intimidate", "text": "(Spin a dagger) I've cut deeper purses than yours, Brask. Walk away while you still can.",
+          "check": { "resolve": 6, "success": "brask_scared", "fail": "brask_laughs" } },
+        { "verb": "negotiate", "text": "Ashford needs guards, and guards get paid — honestly, every week. I can arrange it.",
+          "check": { "resolve": 6, "success": "brask_recruit", "fail": "brask_counter" } },
+        { "verb": "negotiate", "text": "(Unroll the charter) This bridge is Ashford's by royal decree. Tolling it is a hanging offence.", "if": { "hasItem": "bridge_charter" },
+          "check": { "resolve": 1, "success": "brask_charter", "fail": "brask_counter" } },
+        { "verb": "leverage", "text": "Westmarch still pays 200 gold for your head, Brask. I'd hate for them to learn where you are.", "if": { "flag": "knows_bounty" },
+          "check": { "resolve": 3, "success": "brask_blackmail", "fail": "brask_laughs" } },
+        { "text": "(Draw your weapon) Then we do this the hard way.", "do": [ { "hostile": "bandits" } ] },
+        { "text": "I'll be back." }
+      ] },
+    "brask_paid": { "text": "Pleasure doing business. Off you go — and mind the planks.", "choices": [ { "text": "(Leave)" } ] },
+    "brask_persuaded": { "do": [ { "resolve": "toll_bridge:persuaded" } ],
+      "text": [
+        { "if": { "sex": "male" }, "text": "(He looks at you a long moment) ...Gods, you sound just like him. Fine. You can pass. Just you, mind." },
+        { "text": "...Fine. You can pass. Just you, mind — and don't make a habit of it." }
+      ],
+      "choices": [ { "text": "(Cross the bridge)" } ] },
+    "brask_persuade_fail": { "text": "Nice speech. Fifty gold.", "choices": [ { "text": "...", "next": "brask_root" } ] },
+    "brask_duel": { "text": "Ha! A proper challenge. Lads — stand back. Nobody touches the knight. Steel, then!",
+      "choices": [ { "text": "(Raise your weapon)", "do": [ { "duel": true } ] } ] },
+    "brask_duel_refused": { "text": "I don't duel tin cans. Get them, boys!", "choices": [ { "text": "(Fight)", "do": [ { "hostile": "bandits" } ] } ] },
+    "brask_yield": { "text": "Enough! Enough... I yield. You fight like a demon, {title}. A deal's a deal — Red Hands, we're done here. Take my sabre. I won't be needing it.",
+      "choices": [ { "text": "(Accept the sabre)", "do": [ { "giveItem": "brask_sabre" }, { "resolve": "toll_bridge:honor" }, { "setFlag": "brask_respect" }, { "leave": "bandits" } ] } ] },
+    "brask_hypno_ok": { "text": "(His eyes glaze over) ...Tired. So tired of this bridge. Lads... pack it up. We're going home.",
+      "choices": [ { "text": "(Release him)", "do": [ { "resolve": "toll_bridge:hypnotized" }, { "setFlag": "brask_resentment" }, { "leave": "bandits" } ] } ] },
+    "brask_hypno_fail": { "text": "(He shakes his head violently) Get out of my head, sorcerer! KILL THEM!",
+      "choices": [ { "text": "(Fight)", "do": [ { "hostile": "bandits" } ] } ] },
+    "brask_scared": { "text": "(He goes pale) ...Keep that blade away from me. It's not worth it. Lads, we're leaving. NOW.",
+      "choices": [ { "text": "(Watch them run)", "do": [ { "resolve": "toll_bridge:scared" }, { "setFlag": "brask_fear" }, { "dropStash": true }, { "leave": "bandits" } ] } ] },
+    "brask_laughs": { "text": "(He laughs) You? Boys, show this one what happens to people who threaten the Red Hands.",
+      "choices": [ { "text": "(Fight)", "do": [ { "hostile": "bandits" } ] } ] },
+    "brask_recruit": { "text": "Paid work. Honest work... You'd vouch for us? ...Gods help me, I'm tired of sleeping in the mud. Deal. Red Hands — we're going to Ashford.",
+      "choices": [ { "text": "(Shake his hand)", "do": [ { "resolve": "toll_bridge:recruited" }, { "setFlag": "brask_trust" }, { "recruit": "brask_guard" }, { "leave": "bandits" } ] } ] },
+    "brask_charter": { "text": "A royal charter? ...Hanging offence. Right. Lads — we were never here.",
+      "choices": [ { "text": "(Roll up the charter)", "do": [ { "resolve": "toll_bridge:charter" }, { "leave": "bandits" } ] } ] },
+    "brask_counter": { "text": "Clever tongue. Fine — thirty gold and we pack up. Final offer.",
+      "choices": [
+        { "text": "[Pay 30 gold] Deal.", "if": { "gold": 30 }, "do": [ { "takeGold": 30 }, { "resolve": "toll_bridge:bargain" }, { "leave": "bandits" } ] },
+        { "text": "Not today." } ] },
+    "brask_blackmail": { "text": "...You wouldn't. (He studies your face.) You would. Fine. Red Hands — we're moving on.",
+      "choices": [ { "text": "(Watch them go)", "do": [ { "resolve": "toll_bridge:blackmail" }, { "leave": "bandits" } ] } ] },
+
+    "brask_parley": { "text": "(Brask staggers, blinking) ...Words. Fine — talk, before I change my mind.",
+      "choices": [
+        { "verb": "negotiate", "text": "There's no profit in dying on a bridge, Brask. Walk away and keep your men alive.",
+          "check": { "resolve": 6, "success": "brask_truce", "fail": "brask_parley_fail" } },
+        { "verb": "negotiate", "text": "(Unroll the charter) This bridge is Ashford's by royal decree. Stop now, or hang later.", "if": { "hasItem": "bridge_charter" },
+          "check": { "resolve": 1, "success": "brask_charter", "fail": "brask_parley_fail" } },
+        { "verb": "leverage", "text": "Westmarch still pays 200 gold for your head. Keep swinging and they'll hear where you died.", "if": { "flag": "knows_bounty" },
+          "check": { "resolve": 3, "success": "brask_blackmail", "fail": "brask_parley_fail" } },
+        { "text": "(Keep fighting)" }
+      ] },
+    "brask_truce": { "text": "...Fine. FINE. Truce. Red Hands — we're done here. Nobody pays us enough for this.",
+      "choices": [ { "text": "(Lower your weapon)", "do": [ { "resolve": "toll_bridge:truce" }, { "leave": "bandits" } ] } ] },
+    "brask_parley_fail": { "text": "(He shakes it off) Talk's over!", "choices": [ { "text": "(Fight on)" } ] },
+    "wren_parley": { "text": "(Wren lowers her crossbow, dazed) ...Why are we even fighting for him?",
+      "choices": [
+        { "verb": "negotiate", "text": "You don't have to. Walk away, Wren — and tell me what you know about Brask.",
+          "check": { "resolve": 3, "success": "wren_walks", "fail": "wren_shuts" } },
+        { "text": "(Keep fighting)" }
+      ] },
+    "wren_walks": { "do": [ { "setFlag": "knows_bounty" } ],
+      "text": "(She drops the crossbow) ...Westmarch. 200 gold on his head. He's terrified of it. I'm done here.",
+      "choices": [ { "text": "Go home, Wren.", "do": [ { "leaveSelf": true } ] } ] },
+    "wren_root": {
+      "text": [
+        { "if": { "flag": "knows_bounty" }, "text": "I've told you what I know. Now go." },
+        { "if": { "flag": "wren_talked" },  "text": "Still here?" },
+        { "text": "(The crossbowwoman doesn't look up) Talk to the captain, not me." }
+      ],
+      "do": [ { "setFlag": "wren_talked" } ],
+      "choices": [
+        { "text": "You don't look like you want to be here either.", "if": [ { "sex": "female" }, { "not": { "flag": "knows_bounty" } } ], "next": "wren_opens" },
+        { "verb": "persuade", "text": "What's Brask got over you? You could just walk away.", "if": { "not": { "flag": "knows_bounty" } },
+          "check": { "resolve": 8, "success": "wren_opens", "fail": "wren_shuts" } },
+        { "verb": "honor", "text": "Lower your crossbow and you have my word no harm comes to you.", "if": { "not": { "flag": "knows_bounty" } },
+          "check": { "resolve": 6, "success": "wren_opens", "fail": "wren_shuts" } },
+        { "verb": "hypnotize", "text": "(Brush against her mind) What do you know about Brask?", "if": { "not": { "flag": "knows_bounty" } },
+          "check": { "resolve": 3, "success": "wren_opens", "fail": "wren_shuts" } },
+        { "verb": "intimidate", "text": "Tell me something useful, or you're first.", "if": { "not": { "flag": "knows_bounty" } },
+          "check": { "resolve": 4, "success": "wren_scared", "fail": "wren_shuts" } },
+        { "verb": "negotiate", "text": "I could find you honest work in Ashford. What would it take?", "if": { "not": { "flag": "knows_bounty" } },
+          "check": { "resolve": 4, "success": "wren_opens", "fail": "wren_shuts" } },
+        { "text": "Never mind." }
+      ] },
+    "wren_opens": { "do": [ { "setFlag": "knows_bounty" }, { "disposition": 20 } ],
+      "text": "(She glances at Brask, then lowers her voice) ...He promised us coin. All we got is mud and his temper. You want leverage? Westmarch has a 200-gold bounty on him. He's terrified of it.",
+      "choices": [ { "text": "Thank you, Wren." } ] },
+    "wren_scared": { "do": [ { "setFlag": "knows_bounty" }, { "disposition": -20 } ],
+      "text": "Alright, alright! Westmarch. There's a 200-gold bounty on him there. Use it — just leave me out of it.",
+      "choices": [ { "text": "Smart choice." } ] },
+    "wren_shuts": { "text": "I've nothing to say to you.", "choices": [ { "text": "(Leave her be)" } ] },
+
+    "brask_guard_root": {
+      "text": [
+        { "if": { "flag": "brask_resentment" }, "text": "You. I remember everything, you know. Every second you were in my head." },
+        { "text": "Honest work. Strange feeling. ...Thank you, {title}. The Red Hands won't trouble Ashford again." }
+      ],
+      "choices": [ { "text": "Keep the village safe, Brask." } ] },
+
+    "merchant_root": { "text": "Potions, blades, armor! Coin up front, no refunds. (You have {gold} gold.)",
+      "choices": [
+        { "text": "Buy Health Potion (15g)", "if": { "gold": 15 }, "do": [ { "buy": { "item": "potion", "cost": 15 } } ], "next": "merchant_root" },
+        { "text": "Buy Iron Sword (60g)", "if": { "gold": 60 }, "do": [ { "buy": { "item": "iron_sword", "cost": 60 } } ], "next": "merchant_root" },
+        { "text": "Buy Leather Vest (40g)", "if": { "gold": 40 }, "do": [ { "buy": { "item": "leather_vest", "cost": 40 } } ], "next": "merchant_root" },
+        { "text": "Need any help around here?", "if": { "quest": "slime_cull", "is": "none" }, "next": "tobin_slime_offer", "marker": "!" },
+        { "text": "About those slimes...", "if": { "quest": "slime_cull", "is": "active" }, "next": "tobin_slime_progress" },
+        { "text": "The slimes are dealt with.", "if": { "quest": "slime_cull", "is": "complete" }, "do": [ { "turnIn": "slime_cull" } ], "next": "tobin_slime_done", "marker": "?" },
+        { "text": "Just looking." }
+      ] },
+    "tobin_slime_offer": { "text": "Slimes keep oozing into my storehouse and eating the stock. Cull five of them in the meadow and I'll give you a proper blade.",
+      "choices": [ { "text": "Deal.", "do": [ { "startQuest": "slime_cull" } ] }, { "text": "Not now.", "next": "merchant_root" } ] },
+    "tobin_slime_progress": { "text": "Five slimes. So far you've squashed {quest:slime_cull}.", "choices": [ { "text": "Back to it." } ] },
+    "tobin_slime_done": { "text": "My stock thanks you! Here — as promised.", "choices": [ { "text": "Thanks, Tobin.", "next": "merchant_root" } ] }
+  },
+
+  "map": {
+    "legend": "# wall  T tree  H house  ~ water  = bridge  . grass  , path  r ruins floor",
+    "regions": [ { "id": "north", "name": "Ashford side", "maxRow": 13 },
+                 { "id": "south", "name": "South bank",   "maxRow": 999 } ],
+    "spawns": { "P": "player", "E": "npc:elder", "M": "npc:merchant", "s": "enemy:slime", "a": "enemy:archer", "B": "enemy:brute",
+                "C": "enemy:bandit_captain", "W": "enemy:bandit_lt", "x": "enemy:bandit" },
+    "rows": [
+      "################################################",
+      "#TT..........T......T..........T.........T...TT#",
+      "#T..HHH..HHH..T.........s.............s.......T#",
+      "#...HHH..HHH......................s............#",
+      "#....,....,..T..........s......................#",
+      "#..,,,,E,,,,,.......T..............T.....s.....#",
+      "#..,......,..T.............s...................#",
+      "#..,..HHH.,M.T.......................s.........#",
+      "#..,..HHH.,..T..........T......................#",
+      "#..,,,,P,,,,,,,,,,,,,,,,,,,,,,,............T...#",
+      "#TT..........T...............x,..W.............#",
+      "#TTTTTTTTTTTTT......T.......x.C.x..............#",
+      "#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~==~~~~~~~~~~~~~~~#",
+      "#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~==~~~~~~~~~~~~~~~#",
+      "#~~~~~~~..........TTT.....................TT...#",
+      "#~~~~~~...........TTT.......a.........a........#",
+      "#~~~~~...........................T.............#",
+      "#~~~~.......T..........a.................T.....#",
+      "#~~~.................TT........................#",
+      "#~~......T...........TT.......T.......a........#",
+      "#...........................................T..#",
+      "#......T..............a........................#",
+      "#.........T...............####..################",
+      "#.........................#rrrrrrrrrrrrrrrrrrrr#",
+      "#....T....................#rrrrrr#rrrrrrr#rrrrr#",
+      "#.........................#rrsrrrrrrrrrrrrrrarr#",
+      "#..........T..............#rrrrrr#rrrrrrr#rrrrr#",
+      "#..............s..........#rrrrrrrrrrrrBrrrrrrr#",
+      "#....T....................#rrarrrrrrrrrrrrrrrrr#",
+      "#.........................#rrrrrrrrrrrrrrrrrrrr#",
+      "#.......T.................#rrrrrrrrrrrrrrrrrrrr#",
+      "################################################"
+    ]
+  }
+}
