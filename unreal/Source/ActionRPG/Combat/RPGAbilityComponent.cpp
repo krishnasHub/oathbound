@@ -125,11 +125,23 @@ bool URPGAbilityComponent::Run(const RPGJson::FObj& D)
 		const FVector Dir = P->AimDirection(From);
 		const int32 N = int32(RPGJson::Num(D, TEXT("count"), 1));
 		const float Spread = float(RPGJson::Num(D, TEXT("spread"), 0));
+		const bool bArrows = RPGJson::Bool(D, TEXT("arrow"));
+		const float Range = Data.Px(RPGJson::Num(D, TEXT("range"), 420));
+		const FVector Land = bArrows ? P->ArrowTarget(From, Range) : FVector::ZeroVector;
 		for (int32 I = 0; I < N; ++I)
 		{
-			const FVector ShotDir = Dir.RotateAngleAxis((I - (N - 1) * 0.5f) * Spread, FVector::UpVector);
-			ARPGProjectile::Fire(P, From + ShotDir * 15.f, ShotDir, Data.Px(RPGJson::Num(D, TEXT("speed"), 400)), Data.Px(RPGJson::Num(D, TEXT("range"), 420)),
-				Data.Px(RPGJson::Num(D, TEXT("radius"), 6)), Color, RPGJson::Bool(D, TEXT("arrow")), MakeHit(float(RPGJson::Num(D, TEXT("damage"), 10))));
+			const float Angle = (I - (N - 1) * 0.5f) * Spread;
+			const FVector ShotDir = Dir.RotateAngleAxis(Angle, FVector::UpVector);
+			if (bArrows)
+			{
+				// Arrows arc: fan the landing points around the aim point.
+				const FVector To = From + (Land - From).RotateAngleAxis(Angle, FVector::UpVector);
+				ARPGProjectile::FireArrow(P, From + ShotDir * 15.f, To, Data.Px(RPGJson::Num(D, TEXT("speed"), 400)),
+					Data.Px(RPGJson::Num(D, TEXT("radius"), 6)), Color, MakeHit(float(RPGJson::Num(D, TEXT("damage"), 10))));
+				continue;
+			}
+			ARPGProjectile::Fire(P, From + ShotDir * 15.f, ShotDir, Data.Px(RPGJson::Num(D, TEXT("speed"), 400)), Range,
+				Data.Px(RPGJson::Num(D, TEXT("radius"), 6)), Color, false, MakeHit(float(RPGJson::Num(D, TEXT("damage"), 10))));
 		}
 		return true;
 	}
@@ -236,16 +248,24 @@ bool URPGAbilityComponent::Run(const RPGJson::FObj& D)
 	if (Type == TEXT("smoke"))   // Smoke Bomb
 	{
 		const float R = Data.Px(RPGJson::Num(D, TEXT("radius"), 120));
-		ARPGFX::Smoke(W, Ground, R);
-		P->Tags.Add(TEXT("Hidden"), float(RPGJson::Num(D, TEXT("duration"), 3)));
+		const float Duration = float(RPGJson::Num(D, TEXT("duration"), 3));
+		const float StaggerTime = float(RPGJson::Num(D, TEXT("stagger"), 0));
+		ARPGFX::Smoke(W, Ground, R, Duration);
+		P->Tags.Add(TEXT("Hidden"), Duration);
 		for (ARPGCharacterBase* C : RPGCombat::Opponents(P))
 		{
 			ARPGEnemy* E = Cast<ARPGEnemy>(C);
-			if (E && FVector::Dist2D(E->GetActorLocation(), P->GetActorLocation()) < R * 3.f &&
-				(E->State == ERPGEnemyState::Chase || E->State == ERPGEnemyState::Windup || E->State == ERPGEnemyState::Recover))
+			if (!E) continue;
+			const float Dist = FVector::Dist2D(E->GetActorLocation(), P->GetActorLocation());
+			// Caught in the blast: staggered (neutral factions are left alone - it isn't an attack).
+			if (StaggerTime > 0.f && Dist < R + E->Radius() && !E->IsPassive())
 			{
-				E->State = ERPGEnemyState::Idle;
+				E->Stagger(StaggerTime);
+				URPGStory::Get(P)->Float(E->Head() + FVector(0, 0, 30), TEXT("Staggered"), FLinearColor(0.75f, 0.78f, 0.82f), 0.8f);
 			}
+			// Further out, anyone hunting you loses track.
+			if (Dist < R * 3.f && (E->State == ERPGEnemyState::Chase || E->State == ERPGEnemyState::Windup || E->State == ERPGEnemyState::Recover))
+				E->State = ERPGEnemyState::Idle;
 		}
 		return true;
 	}

@@ -20,7 +20,8 @@ public class ActionRPG : ModuleRules
 			"SlateCore",                // all UI is Slate, built in code
 			"UMG",
 			"RenderCore",               // GWhiteTexture for HUD triangles
-			"AIModule"                  // AAIController possesses enemies so CharacterMovement runs
+			"AIModule",                 // AAIController possesses enemies so CharacterMovement runs
+			"NavigationSystem"          // runtime navmesh for click-to-move
 		});
 
 		// Sub-folders are include roots so headers can be included by name.

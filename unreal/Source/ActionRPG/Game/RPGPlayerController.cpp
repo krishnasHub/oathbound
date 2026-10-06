@@ -3,6 +3,7 @@
 #include "RPGStory.h"
 #include "RPGPlayerCharacter.h"
 #include "SRPGWidgets.h"
+#include "RPGLook.h"
 
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -10,6 +11,8 @@
 #include "Engine/Engine.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "GameFramework/GameModeBase.h"
 #include "Misc/CommandLine.h"
 #include "Widgets/SWeakWidget.h"
 
@@ -30,8 +33,16 @@ void ARPGPlayerController::BeginPlay()
 	GEngine->GameViewport->AddViewportWidgetContent(Hud.ToSharedRef(), 10);
 	GEngine->GameViewport->AddViewportWidgetContent(Dialogue.ToSharedRef(), 20);
 	GEngine->GameViewport->AddViewportWidgetContent(Panel.ToSharedRef(), 30);
+	SAssignNew(PauseMenu, SRPGPauseMenu)
+		.OnResume(FSimpleDelegate::CreateUObject(this, &ARPGPlayerController::ResumeGame))
+		.OnNewGame(FSimpleDelegate::CreateUObject(this, &ARPGPlayerController::NewGame))
+		.OnQuit(FSimpleDelegate::CreateUObject(this, &ARPGPlayerController::QuitGame));
+	GEngine->GameViewport->AddViewportWidgetContent(PauseMenu.ToSharedRef(), 50);
+	SAssignNew(Cursor, SRPGCursor).World(W);
+	GEngine->GameViewport->AddViewportWidgetContent(Cursor.ToSharedRef(), 100);   // on top of everything
 	Dialogue->SetVisibility(EVisibility::Collapsed);
 	Panel->SetVisibility(EVisibility::Collapsed);
+	PauseMenu->SetVisibility(EVisibility::Collapsed);
 
 	if (URPGStory* S = URPGStory::Get(this)) S->OnDialogueChanged.AddUObject(this, &ARPGPlayerController::OnDialogueChanged);
 	ARPGPlayerCharacter* P = Cast<ARPGPlayerCharacter>(GetPawn());
@@ -41,16 +52,36 @@ void ARPGPlayerController::BeginPlay()
 	bNoInput = FParse::Param(FCommandLine::Get(), TEXT("RPGNoInput"));
 	if (P) P->bInputLocked = bNoInput;
 
+	// Boot: the title screen. New Game from the pause menu reopens the level with ?RPGNewGame and goes straight
+	// to character select; -RPGClass= (automated runs) skips both.
 	FString Class;
-	if (FParse::Value(FCommandLine::Get(), TEXT("RPGClass="), Class)) EnterGameplay();
-	else ShowCharSelect();
+	const AGameModeBase* GM = GetWorld()->GetAuthGameMode();
+	const bool bNewGame = GM && UGameplayStatics::HasOption(GM->OptionsString, TEXT("RPGNewGame"));
+	if (!bNewGame && FParse::Value(FCommandLine::Get(), TEXT("RPGClass="), Class)) EnterGameplay();
+	else if (bNewGame) ShowCharSelect();
+	else ShowTitle();
+	// Automated runs: -RPGAutoSelect[=class] goes to character select at 2 s and stays (screenshots);
+	// -RPGAutoBegin walks title -> character select (at 2 s) -> Begin (at 6 s).
+	if (bTitle && (FParse::Param(FCommandLine::Get(), TEXT("RPGAutoSelect")) || FCommandLine::Get() && FCString::Strifind(FCommandLine::Get(), TEXT("RPGAutoSelect="))))
+	{
+		FString Show;
+		FParse::Value(FCommandLine::Get(), TEXT("RPGAutoSelect="), Show);
+		FTimerHandle H;
+		GetWorldTimerManager().SetTimer(H, [this, Show]() { if (bTitle) ShowCharSelect(); if (CharSelect && !Show.IsEmpty()) CharSelect->ShowClass(Show); }, 2.f, false);
+	}
+	if ((bTitle || bCharSelect) && FParse::Param(FCommandLine::Get(), TEXT("RPGAutoBegin")))
+	{
+		FTimerHandle H1, H2;
+		GetWorldTimerManager().SetTimer(H1, [this]() { if (bTitle) ShowCharSelect(); }, 2.f, false);
+		GetWorldTimerManager().SetTimer(H2, [this]() { if (bCharSelect) BeginGame(TEXT("knight"), TEXT("male")); }, 6.f, false);
+	}
 }
 
 void ARPGPlayerController::EndPlay(const EEndPlayReason::Type Reason)
 {
 	if (GEngine && GEngine->GameViewport)
 	{
-		for (TSharedPtr<SWidget> Wd : TArray<TSharedPtr<SWidget>>{ Hud, Dialogue, CharSelect, Panel })
+		for (TSharedPtr<SWidget> Wd : TArray<TSharedPtr<SWidget>>{ Hud, Dialogue, CharSelect, Panel, PauseMenu, Title, Cursor })
 			if (Wd) GEngine->GameViewport->RemoveViewportWidgetContent(Wd.ToSharedRef());
 	}
 	Super::EndPlay(Reason);
@@ -58,6 +89,17 @@ void ARPGPlayerController::EndPlay(const EEndPlayReason::Type Reason)
 
 void ARPGPlayerController::EnterGameplay()
 {
+	if (ARPGPlayerCharacter::IsTopDown(this))
+	{
+		// Top-down: the cursor stays visible (it aims) and is kept inside the window.
+		FInputModeGameAndUI Mode;
+		Mode.SetHideCursorDuringCapture(false);
+		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::LockAlways);
+		SetInputMode(Mode);
+		bShowMouseCursor = true;
+		CurrentMouseCursor = DefaultMouseCursor = EMouseCursor::None;   // the game draws its own (SRPGCursor)
+		return;
+	}
 	SetInputMode(FInputModeGameOnly());
 	bShowMouseCursor = false;
 }
@@ -70,6 +112,7 @@ void ARPGPlayerController::EnterUI(TSharedPtr<SWidget> FocusWidget)
 	Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 	SetInputMode(Mode);
 	bShowMouseCursor = true;
+	CurrentMouseCursor = DefaultMouseCursor = EMouseCursor::Default;   // menus use the normal pointer
 	// The game never sees button releases while UI is up, so drop anything held (attack, block, bow, movement).
 	if (ARPGPlayerCharacter* P = Cast<ARPGPlayerCharacter>(GetPawn())) P->ClearHeldInput();
 }
@@ -78,26 +121,91 @@ void ARPGPlayerController::EnterUI(TSharedPtr<SWidget> FocusWidget)
 // Character select
 // ---------------------------------------------------------------------------------------------
 
-void ARPGPlayerController::ShowCharSelect()
+void ARPGPlayerController::SetHeroHidden(bool bHide)
 {
-	ARPGPlayerCharacter* P = Cast<ARPGPlayerCharacter>(GetPawn());
-	if (!P) return;
-	bCharSelect = true;
+	if (APawn* P = GetPawn()) P->SetActorHiddenInGame(bHide);
+}
 
-	// Preview camera: in front of the hero, slightly to the side so the panel on the right doesn't cover them.
-	const FVector Fwd = P->GetActorForwardVector(), Right = P->GetActorRightVector();
-	const FVector CamAt = P->GetActorLocation() + Fwd * 330.f + Right * 160.f + FVector(0, 0, 35.f);
-	PreviewCam = GetWorld()->SpawnActor<ACameraActor>(CamAt, (P->Chest() + Right * 120.f - CamAt).Rotation());
-	PreviewCam->GetCameraComponent()->SetFieldOfView(55.f);
-	PreviewCam->GetCameraComponent()->bConstrainAspectRatio = false;
+void ARPGPlayerController::ShowTitle()
+{
+	bTitle = true;
+	SetHeroHidden(true);
+	Hud->SetVisibility(EVisibility::Collapsed);
+
+	// A slow drift over the village at the game's own angle (and tilt-shift), behind the title.
+	TitleFrom = GetPawn() ? GetPawn()->GetActorLocation() : FVector::ZeroVector;
+	TitleT = 0.f;
+	PreviewCam = GetWorld()->SpawnActor<ACameraActor>(TitleFrom, RPGLook::CameraRotation());
+	UCameraComponent* Cam = PreviewCam->GetCameraComponent();
+	Cam->bConstrainAspectRatio = false;
+	if (const ARPGPlayerCharacter* PC = Cast<ARPGPlayerCharacter>(GetPawn()))
+	{
+		Cam->SetFieldOfView(PC->Camera->FieldOfView);
+		Cam->PostProcessSettings = PC->Camera->PostProcessSettings;
+		Cam->PostProcessBlendWeight = 1.f;
+	}
 	bAutoManageActiveCameraTarget = false;
 	SetViewTarget(PreviewCam);
+
+	SAssignNew(Title, SRPGTitle).World(GetWorld())
+		.OnStart(FSimpleDelegate::CreateLambda([this]() { if (!bNoInput) ShowCharSelect(); }))
+		.OnQuit(FSimpleDelegate::CreateUObject(this, &ARPGPlayerController::QuitGame));
+	GEngine->GameViewport->AddViewportWidgetContent(Title.ToSharedRef(), 45);
+	FInputModeUIOnly Mode;
+	Mode.SetWidgetToFocus(Title);
+	SetInputMode(Mode);
+	bShowMouseCursor = true;
+	CurrentMouseCursor = DefaultMouseCursor = EMouseCursor::Default;
+}
+
+void ARPGPlayerController::HideTitle()
+{
+	if (!Title) return;
+	GEngine->GameViewport->RemoveViewportWidgetContent(Title.ToSharedRef());
+	Title.Reset();
+	bTitle = false;
+}
+
+void ARPGPlayerController::Tick(float Dt)
+{
+	Super::Tick(Dt);
+	// Title drift: a slow sweep east over the village and back.
+	if (bTitle && PreviewCam)
+	{
+		TitleT += Dt;
+		const float Arm = 4300.f;
+		const FVector Pan(FMath::Sin(TitleT * 0.05f) * 1800.f + 700.f, FMath::Sin(TitleT * 0.031f) * 300.f, 0.f);
+		PreviewCam->SetActorLocation(TitleFrom + Pan - RPGLook::CameraRotation().Vector() * Arm);
+	}
+}
+
+void ARPGPlayerController::ShowCharSelect()
+{
+	if (!GetPawn()) return;
+	HideTitle();
+	bCharSelect = true;
+	SetHeroHidden(true);
+	if (!PreviewCam)   // straight here (New Game): the select screen is opaque, so any camera will do
+	{
+		bAutoManageActiveCameraTarget = true;
+		SetViewTarget(GetPawn());
+	}
 
 	SAssignNew(CharSelect, SRPGCharSelect).World(GetWorld())
 		.OnBegin(SRPGCharSelect::FOnBegin::CreateLambda([this](const FString& C, const FString& S) { if (!bNoInput) BeginGame(C, S); }))
 		.OnPreview(SRPGCharSelect::FOnPreview::CreateLambda([this](const FString& C, const FString& S)
 		{
 			if (ARPGPlayerCharacter* PP = Cast<ARPGPlayerCharacter>(GetPawn())) PP->ApplyClass(C, S);
+		}))
+		.OnBack(FSimpleDelegate::CreateLambda([this]()
+		{
+			if (bNoInput) return;
+			// Back to the title.
+			GEngine->GameViewport->RemoveViewportWidgetContent(CharSelect.ToSharedRef());
+			CharSelect.Reset();
+			bCharSelect = false;
+			if (PreviewCam) { PreviewCam->Destroy(); PreviewCam = nullptr; }
+			ShowTitle();
 		}));
 	GEngine->GameViewport->AddViewportWidgetContent(CharSelect.ToSharedRef(), 40);
 	Hud->SetVisibility(EVisibility::Collapsed);
@@ -106,6 +214,7 @@ void ARPGPlayerController::ShowCharSelect()
 	Mode.SetWidgetToFocus(CharSelect);
 	SetInputMode(Mode);
 	bShowMouseCursor = true;
+	CurrentMouseCursor = DefaultMouseCursor = EMouseCursor::Default;
 }
 
 void ARPGPlayerController::BeginGame(const FString& ClassId, const FString& Sex)
@@ -116,9 +225,11 @@ void ARPGPlayerController::BeginGame(const FString& ClassId, const FString& Sex)
 		SetControlRotation(P->GetActorRotation());
 	}
 	bCharSelect = false;
-	GEngine->GameViewport->RemoveViewportWidgetContent(CharSelect.ToSharedRef());
+	HideTitle();
+	if (CharSelect) GEngine->GameViewport->RemoveViewportWidgetContent(CharSelect.ToSharedRef());
 	CharSelect.Reset();
 	if (PreviewCam) { PreviewCam->Destroy(); PreviewCam = nullptr; }
+	SetHeroHidden(false);
 	bAutoManageActiveCameraTarget = true;
 	SetViewTarget(GetPawn());
 	Hud->SetVisibility(EVisibility::SelfHitTestInvisible);
@@ -150,8 +261,13 @@ void ARPGPlayerController::OnDialogueChanged()
 
 void ARPGPlayerController::HandleKey(FName Key)
 {
-	if (bCharSelect) return;
-	if (Key == TEXT("Escape")) { if (bPanelOpen) ClosePanel(); return; }
+	if (bCharSelect || bTitle) return;
+	if (Key == TEXT("Escape"))
+	{
+		if (bPanelOpen) ClosePanel();
+		else if (!bPauseMenu && !URPGStory::Get(this)->IsDialogueOpen()) OpenPauseMenu();
+		return;
+	}
 	if (Key == TEXT("Inventory") || Key == TEXT("Character") || Key == TEXT("Quests") || Key == TEXT("Help")) TogglePanel(Key);
 }
 
@@ -164,6 +280,39 @@ void ARPGPlayerController::TogglePanel(FName Mode)
 	UGameplayStatics::SetGamePaused(this, true);
 	EnterUI(Panel);
 	FSlateApplication::Get().SetKeyboardFocus(Panel);
+}
+
+void ARPGPlayerController::OpenPauseMenu()
+{
+	if (bPauseMenu || bCharSelect || bTitle) return;
+	bPauseMenu = true;
+	PauseMenu->Open();
+	PauseMenu->SetVisibility(EVisibility::Visible);
+	UGameplayStatics::SetGamePaused(this, true);
+	EnterUI(PauseMenu);
+	FSlateApplication::Get().SetKeyboardFocus(PauseMenu);
+}
+
+void ARPGPlayerController::ResumeGame()
+{
+	if (!bPauseMenu) return;
+	bPauseMenu = false;
+	PauseMenu->SetVisibility(EVisibility::Collapsed);
+	UGameplayStatics::SetGamePaused(this, false);
+	EnterGameplay();
+}
+
+void ARPGPlayerController::NewGame()
+{
+	// No saves yet: a new game is a fresh world (story, quests, enemies all reset), starting at character select.
+	UGameplayStatics::SetGamePaused(this, false);
+	UGameplayStatics::SetGlobalTimeDilation(this, 1.f);
+	UGameplayStatics::OpenLevel(this, FName(TEXT("/Engine/Maps/Entry")), true, TEXT("RPGNewGame"));
+}
+
+void ARPGPlayerController::QuitGame()
+{
+	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);
 }
 
 void ARPGPlayerController::ClosePanel()

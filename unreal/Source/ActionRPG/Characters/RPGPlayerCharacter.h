@@ -20,7 +20,8 @@ class URPGPoseMesh;
  * The player. Prototype equivalent: `Player`.
  *
  *   class + sex      from character select (stats, Manny/Quinn, weapon styles, abilities)
- *   camera           third-person boom; ranged attacks aim at the screen centre
+ *   camera           top-down 3/4 view aimed with the cursor (mouse wheel zooms), or the third-person boom
+ *                    aimed at the screen centre (world3d.camera.mode)
  *   input            Enhanced Input, actions + mapping context created in code
  *   primary (LMB)    melee combo on the template's combat montage, or the Mage's arcane bolt
  *   secondary (RMB)  hold to block (perfect block window) or to draw the bow (release fires)
@@ -78,17 +79,24 @@ public:
 	virtual void DoAttackTrace(FName SourceBone) override;
 	virtual void CheckCombo() override;
 
-	/** Where the crosshair points (trace from the camera); used to aim projectiles and abilities. */
+	/** Top-down camera (world3d.camera.mode): fixed 3/4 view, the mouse cursor aims, WASD is screen-relative. */
+	static bool IsTopDown(const UObject* WorldContext);
+	/** Where the crosshair (third person) or the cursor (top-down) points; used to aim projectiles and abilities. */
 	FVector AimPoint(float MaxDistance = 6000.f) const;
 	/** Direction from a point (default: the chest) to what the crosshair is on (with light aim assist). */
 	FVector AimDirection() const { return AimDirection(Chest()); }
 	FVector AimDirection(const FVector& From) const;
 	/** Where shots leave from: the staff orb (Mage), the bow (Thief, bow out), otherwise the chest. */
 	FVector Muzzle() const;
+	/** Where an arrow from From should land: the foe you're aiming at (chest), else the ground at the cursor,
+	 *  no further than MaxRange. */
+	FVector ArrowTarget(const FVector& From, float MaxRange) const;
 	/** Called by the ability component after a successful cast, to play the matching pose. */
 	void OnAbilityUsed(const RPGJson::FObj& Ability);
-	/** Turn to face the camera direction (yaw only). */
+	/** Turn to face the aim (camera direction, or the cursor when top-down; yaw only). */
 	void FaceAim();
+	/** While blocking: turn toward the nearest foe coming at you (else the aim). */
+	void FaceThreat();
 
 	/** Nearest character you can talk to (villager, or a neutral enemy with dialogue), if in range. */
 	ARPGCharacterBase* TalkTarget() const;
@@ -105,8 +113,38 @@ public:
 
 	/** Self-test hook: drives exactly the same handlers as real input ("Attack", "Secondary", "Dodge", or any OnKey name). */
 	void TestPress(FName Action, bool bDown);
+	/** Self-test hook for click-to-move: a click on a character (attack or talk) or, with none, on the ground at Point. */
+	void TestClick(const FVector& Point, ARPGCharacterBase* On = nullptr);
+
+	// Top-down click-to-move: LMB on the ground walks there (hold to follow the cursor), on an enemy walks
+	// into range and attacks, on a villager (or a foe willing to talk) walks up and opens the dialogue.
+	enum class EClickGoal : uint8 { None, Move, Attack, Talk };
+	EClickGoal GetClickGoal() const { return Goal; }
+	/** Where a click-to-move is heading (for the HUD marker). */
+	bool ClickDestination(FVector& Out) const;
+	/** The character under the mouse cursor, if any (bHostile: it would be attacked rather than talked to). */
+	ARPGCharacterBase* UnderCursor(bool& bHostile) const;
+	/** The current path (navmesh corners), for tests and debug drawing. */
+	const TArray<FVector>& GetPath() const { return Path; }
+
+	/** The cursor for what a click would do now: "sword" / "dagger" / "wand" / "arrow" (attack), "talk", "talk_off"
+	 *  (talk mode with nobody to talk to), "pointer", or NAME_None (no game cursor: UI, cutscenes, third person). */
+	FName CursorIcon() const;
+
+	/** Talk mode (E): the next click on a character walks up and talks instead of attacking. */
+	bool IsTalkMode() const { return bTalkMode; }
+	/** Why the hero can't talk to C right now (empty = they can). */
+	FString TalkBlocker(const ARPGCharacterBase* C) const;
+	/** Walk up to C and open the dialogue, or say why not. */
+	void TryTalk(ARPGCharacterBase* C);
+
+	/** Ability picker (Shift + mouse wheel; slow motion while open): the highlighted slot, -1 when closed. */
+	int32 PickerSlot() const { return Picker; }
+	/** Self-test hook: open the picker, move it Steps slots, then cast (or cancel). */
+	void TestPicker(int32 Steps, bool bOpenOnly);
+	void TestPickerRelease(bool bCast) { ClosePicker(bCast); }
 	/** Drop held buttons (UI opened: the game will not see their release). */
-	void ClearHeldInput() { bAttackHeld = false; bGuardHeld = false; bDrawing = false; MoveInput = FVector2D::ZeroVector; }
+	void ClearHeldInput() { bAttackHeld = false; bGuardHeld = false; bDrawing = false; MoveInput = FVector2D::ZeroVector; ClearGoal(); ClosePicker(false); SetTalkMode(false); }
 	bool bInputLocked = false;     // -RPGNoInput: ignore the real keyboard/mouse (automated runs)
 
 protected:
@@ -119,6 +157,11 @@ private:
 	void CreateInput();
 	void OnMove(const FInputActionValue& V);
 	void OnLook(const FInputActionValue& V);
+	void OnZoom(const FInputActionValue& V);
+	/** Top-down: the ray under the mouse cursor. False in third person, automated runs, or with no cursor. */
+	bool CursorRay(FVector& Origin, FVector& Dir) const;
+	/** The yaw WASD moves relative to: the camera's. */
+	FRotator MoveFrame() const;
 	void OnAttack();
 	void OnAttackReleased();
 	void OnSecondary();
@@ -140,14 +183,52 @@ private:
 	UPROPERTY() TObjectPtr<UAnimMontage> ComboMontage;
 	TArray<FName> ComboSections;
 
-	UPROPERTY() TObjectPtr<UStaticMeshComponent> ShieldBubble;    // mana shield
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> ShieldBubble;    // the Mage's barrier (held RMB)
+	float BarrierPulse = 0.f;
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> GuardArc;        // raised guard
-	UPROPERTY() TObjectPtr<UStaticMeshComponent> AimLine;         // bow draw
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> AimLine;         // bow draw (unused: the arc preview replaced it)
+	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> ArcDots; // bow draw: dots along the arrow's arc
+	UPROPERTY() TObjectPtr<class UPointLightComponent> NightGlow; // a soft light around the hero after dark
+	void UpdateArcPreview();
 	UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> BubbleMat;
 	UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> GuardMat;
 	UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> AimMat;
 
 	TFunction<void(FName)> UIHandler;
+
+	bool bTopDown = false;
+	bool bScripted = false;   // inside TestPress: handlers must not read the real mouse cursor
+	float ZoomTarget = 0.f, MinArm = 0.f, MaxArm = 0.f, ZoomStep = 0.f;
+
+	// Click-to-move
+	EClickGoal Goal = EClickGoal::None;
+	FVector GoalPoint = FVector::ZeroVector;
+	TWeakObjectPtr<ARPGCharacterBase> GoalActor;
+	bool bMoveHeld = false;          // LMB held after a ground click: keep walking toward the cursor
+	TArray<FVector> Path;
+	int32 PathIndex = 0;
+	float RepathIn = 0.f;
+	void Click(ARPGCharacterBase* On, bool bHostile, const FVector& Ground);
+	void ClearGoal() { Goal = EClickGoal::None; GoalActor = nullptr; Path.Reset(); bMoveHeld = false; }
+	void Repath(const FVector& To);
+	/** The ground point under the cursor. */
+	bool CursorGround(FVector& Out) const;
+	/** Steps click-to-move: arrives, attacks or talks when in range; returns the direction to walk (zero to stand). */
+	FVector UpdateClickGoal(float Dt);
+	/** How close a primary attack must be to reach Target (melee swing reach, or bolt range). */
+	bool InAttackRange(const ARPGCharacterBase* Target) const;
+	/** LMB attack in place (third person, Shift+LMB top-down, or the end of a click-to-attack walk). */
+	void PrimaryAttack();
+	float TalkRange() const;
+
+	// Talk mode + ability picker
+	bool bTalkMode = false;
+	void SetTalkMode(bool bOn);
+	int32 Picker = -1, LastPicked = 0;
+	void OnPickReleased();
+	void OpenPicker();
+	void CyclePicker(int32 Step);
+	void ClosePicker(bool bCast);
 
 	FVector2D MoveInput = FVector2D::ZeroVector;
 	bool bAttackHeld = false;

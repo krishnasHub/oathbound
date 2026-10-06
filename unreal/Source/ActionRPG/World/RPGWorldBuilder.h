@@ -43,6 +43,22 @@ public:
 	/** Ground height at a world XY (follows the generated terrain). */
 	float GroundZ(float X, float Y) const;
 
+	/** Day/night: the hour of the day (0-24) and "14:30  Afternoon" for the HUD clock. */
+	static float Hour();
+	static FString ClockText();
+	/** 0 by day, 1 at night (follows the sun). */
+	static float Night();
+
+	// Deep night: only what's near the hero or near a fire / torch can be seen (world3d.dayNight.nightVision).
+	/** How strongly the dark swallows everything out of reach (0 by day, up to ~1 in deep night). */
+	static float Darkness();
+	/** How far the hero sees in the dark (uu). */
+	static float HeroSight();
+	/** The fires and torches: (x, y, radius it lights). */
+	static const TArray<FVector> & NightLights();
+	/** Can a point be seen right now (daylight, or near the hero, or near a light)? */
+	static bool IsLit(const FVector& At, const FVector& Hero);
+
 private:
 	void BuildTerrain(const URPGData& D);
 	void BuildWater(const URPGData& D);
@@ -53,6 +69,8 @@ private:
 	void BuildBridge(const URPGData& D);
 	void BuildProps(const URPGData& D);
 	void BuildSky();
+	void BuildNavigation();
+	void BuildFlat2D();
 
 	float BaseHeight(int32 TX, int32 TY) const;   // per-tile target height
 	float NoiseAt(float X, float Y) const;
@@ -66,8 +84,33 @@ private:
 
 	UPROPERTY() TObjectPtr<UProceduralMeshComponent> Terrain;
 
+	// Day/night cycle (world3d.dayNight): the sun crosses the sky, dusk warms it, the moon lights the night.
+	UPROPERTY() TObjectPtr<class UDirectionalLightComponent> SunLight;
+	UPROPERTY() TObjectPtr<class UDirectionalLightComponent> MoonLight;
+	UPROPERTY() TObjectPtr<class APostProcessVolume> Grade;   // time-of-day exposure and colour
+	UPROPERTY() TObjectPtr<class UExponentialHeightFogComponent> Fog;
+	UPROPERTY() TObjectPtr<class USkyLightComponent> SkyFill;
+	UPROPERTY() TObjectPtr<class UDirectionalLightComponent> FillLight;   // shadowless fill from above: dusk shadows aren't black
+	float FogDay = 0.012f, FogDusk = 0.03f, FogNight = 0.05f;
+	bool bFog = true;   // dayNight.fog.enabled
+	bool bDayCycle = false;
+	float NightExposure = -2.2f, ExposureMinEV = 2.f, ExposureMaxEV = 5.f;
+	float SecondsPerHour = 30.f, SunLux = 9.f, MoonLux = 0.6f;
+	void UpdateSky();
+
 	struct FFlicker { TObjectPtr<UPointLightComponent> Light; float Base = 0; float Phase = 0; };
 	TArray<FFlicker> Flickers;
+
+	/** A cottage that cuts away (walls + roof hidden, low cut walls shown) while it hides the player from the camera. */
+	struct FHouse { FBox Bounds; TArray<TObjectPtr<UStaticMeshComponent>> Full, Cut; float Hold = 0; bool bCut = false; };
+	TArray<FHouse> Houses;
+	/** A tree's crown instances: hidden (shrunk away) while they hide the player. */
+	struct FTreeCrown { FBox Bounds; TArray<int32> Instances; TArray<FTransform> Transforms; float Hold = 0; bool bCut = false; };
+	TArray<FTreeCrown> TreeCrowns;
+	UPROPERTY() TObjectPtr<UHierarchicalInstancedStaticMeshComponent> Crowns;
+	void UpdateCutaways(float Dt);
+	/** While set, AddMesh also appends what it creates here (to group a house's parts). */
+	TArray<TObjectPtr<UStaticMeshComponent>>* Collect = nullptr;
 
 	// cached height grid (for GroundZ)
 	TArray<float> Heights;

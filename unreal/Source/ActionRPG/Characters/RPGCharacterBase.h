@@ -58,7 +58,8 @@ public:
 
 	void Stagger(float Duration) { Tags.Add(TEXT("Staggered"), Duration); OnStaggered(); }
 	FVector Chest() const { return GetActorLocation() + FVector(0, 0, 30.f * GetActorScale3D().Z); }
-	FVector Head() const { return GetActorLocation() + FVector(0, 0, 80.f * GetActorScale3D().Z); }
+	FVector Head() const { return GetActorLocation() + FVector(0, 0, HeadZ * GetActorScale3D().Z); }
+	float HeadZ = 80.f;        // top of the head above the actor centre (a sprite is taller than the mannequin)
 	float Radius() const;
 
 	UPROPERTY(VisibleAnywhere, Category = "RPG")
@@ -106,6 +107,15 @@ public:
 
 	/** The mesh that is actually rendered (weapons attach here). The player renders a posed copy. */
 	virtual USkinnedMeshComponent* BodyMesh() const { return GetMesh(); }
+
+	// ---- 2D looks (RPGLook): a pixel-art sprite instead of the 3D body ----
+	/** Show sprite sheet SPR_<Sheet> instead of the 3D body (no-op in the 3D look). */
+	void UseSprite(const FString& Sheet);
+	/** Hide the 3D body, weapons and blob (they keep animating, so hit timing is unchanged). */
+	void HideBody();
+	float SpriteAttackAt = -100.f;   // when the last attack/cast/shot started (sprite plays its swing frames)
+	bool bSpriteHold = false;        // hold the wind-up frame (drawing a bow)
+	UPROPERTY() TObjectPtr<class URPGSpriteComponent> Sprite;
 
 	UAnimInstance* Anim() const;
 	float PlayMontage(UAnimMontage* Montage, float Rate = 1.f, FName Section = NAME_None);

@@ -34,14 +34,14 @@ Starting attributes (each class totals 25):
 ### Knight — the wall
 - **HP base 90**, starts with medium armor. Move speed 155 (slowest).
 - **Loadout choice** (prototype: press X anytime; final game: at camp/merchant):
-  - *Sword + Shield:* fast 3-hit combo; **hold right-click to block** (−70% frontal damage, costs stamina per hit absorbed; a perfect block within 0.15s of impact staggers the attacker).
+  - *Sword + Shield:* fast 3-hit combo; **hold right-click to block**: the shield turns toward the nearest attacker and stops **100%** of a frontal hit. Holding it drains stamina (and each blocked hit costs a little more); out of stamina, the guard breaks. A perfect block within 0.15s of impact staggers the attacker.
   - *Longsword:* slow, wide, heavy 2-hit combo, +40% damage, no block.
 - Abilities: **Shield Bash** (L1, huge poise damage) · **Charge** (L2, dash strike) · **Rallying Cry** (L3, +armor buff) · **Cleave** (L4, spin AoE).
 - Dialogue style **Honor**: invoke rank and oaths, swear protection, **challenge to a duel** (a 1v1 fight; the enemy's allies stand down).
 
 ### Mage — glass cannon behind a barrier
 - **HP base 45** (fragile), **mana base 60**.
-- **Mana Shield (passive):** damage is taken from mana first (1 mana absorbs 1 damage; mage mana regen is 6/s vs 2.5/s for others). When mana hits 0 the shield **shatters**: the mage is staggered and gets no mana regen for 3s. Tanky while topped up, very exposed when drained.
+- **Arcane Barrier (hold right-click):** a bubble engulfs the mage and stops **80%** of damage from **every** side, but it drains stamina while held (it drops when stamina runs out). Nothing is on by default: the mage is fragile unless he chooses to shield. *(Replaced the earlier passive mana shield, 2026-10-06.)*
 - **Basic attack:** Arcane Bolt, a ranged projectile with no mana cost (Focus-scaled). Spells are the mana sink, so attacking always competes with keeping the shield up.
 - Abilities: **Fireball** (L1) · **Frost Nova** (L2, AoE slow) · **Blink** (L3, short teleport, replaces the roll's i-frames) · **Chain Lightning** (L4).
 - Dialogue style **Hypnotize** (Focus): compel an NPC to agree, costs mana. It's very effective, but the NPC **resents** it when it wears off, and some NPCs are immune (strong-willed, warded, undead).
@@ -54,7 +54,7 @@ Starting attributes (each class totals 25):
 - Dialogue style **Intimidate** (Presence + Might): threaten and extort. It works fast, but it creates **fear**. Frightened NPCs comply now but may betray you, tip off others or flee later.
 
 ### Scholar — the negotiator
-- **HP base 45, armor 0** (lowest defense). Dagger + small shield (block −50%).
+- **HP base 45, armor 0** (lowest defense). Dagger + small shield (block −50% from the front; drains stamina while held).
 - **Mend** (self heal over time) from Lv1.
 - Abilities: **Mend** (L1) · **Ward** (L2, damage-absorb buff) · **Silver Words** (L3, briefly dazes an intelligent enemy **and opens dialogue mid-fight**) · **Insight** (L4, marks an enemy to take +25% damage and reveals its weakness).
 - Dialogue style **Negotiate** (Presence, +30% class bonus): the strongest social skill, and it gets unique deal outcomes (recruit, bargain, buy someone off).
@@ -65,7 +65,7 @@ Starting attributes (each class totals 25):
 | | HP | Defense mechanic | Range | Speed |
 |---|---|---|---|---|
 | Knight | ★★★★ | Block / armor | Melee | ★ |
-| Mage | ★ | Mana shield | Ranged | ★★ |
+| Mage | ★ | Barrier (hold, all sides) | Ranged | ★★ |
 | Thief | ★ | Evasion | Both | ★★★★ |
 | Scholar | ★ | Small block, heal | Melee (weak) | ★★ |
 
@@ -114,7 +114,7 @@ Each NPC tracks **disposition** (−100…100) plus flags:
 - `trust` (Negotiate, kept promises) → unlocks deeper quests
 
 ### Talking to enemies
-- Intelligent enemies (bandits, guards, cultists) have a `parley` dialogue. When they spot you, there's a ~2s window to press **E** before combat starts.
+- Intelligent enemies (bandits, guards, cultists) have a `parley` dialogue. Nobody stops you to talk: you choose to talk (**E** + click) or to fight. Walking past a guarded crossing without doing either turns the faction hostile.
 - The Scholar's **Silver Words** can open parley in the middle of combat.
 - Mindless enemies (slimes, beasts, undead) can't be talked to.
 
@@ -211,7 +211,11 @@ Costs: Knight and Thief abilities use **stamina**; Mage and Scholar abilities us
 
 ## 7c. Animation plan (Unreal)
 
-**Have today** (UE5 mannequin, from the Third Person template):
+> **Superseded (2026-10-05):** the game went HD-2D: characters are pixel-art sprite sheets (3 directions x idle 2,
+> walk 4, attack 4, hurt 1, plus dead and guard frames), drawn in code by `tools/pixelart/characters.py`. The
+> mannequin still runs underneath, hidden, so montage hit timing is unchanged. The plan below is kept for the record.
+
+**Had** (UE5 mannequin, from the Third Person template):
 - idle / walk / jog blendspace, jump / fall / land, dash, deaths
 - 3-hit unarmed combo + charged attack (montages)
 - pistol/rifle aim and fire sets

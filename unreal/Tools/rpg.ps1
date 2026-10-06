@@ -16,7 +16,7 @@ param(
     [string] $Sex = "",
     [string] $Name = "shot",
     [string] $Cam = "",
-    [int] $At = 25,
+    [double] $At = 25,
     [string] $Extra = "",
     [string] $Scenario = "combat"
 )
@@ -47,7 +47,7 @@ switch ($Command) {
         Start-Process -FilePath $Editor -ArgumentList "`"$Proj`""
     }
     "prepare" {
-        foreach ($script in @("fix_material_usage.py", "create_materials.py")) {
+        foreach ($script in @("fix_material_usage.py", "create_materials.py", "import_pixel.py")) {
             & "$UE\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "$Proj" -run=pythonscript -script="$PSScriptRoot\$script" -unattended -nosplash -nullrhi
         }
     }
@@ -59,9 +59,10 @@ switch ($Command) {
         Write-Host "Screenshot: $ProjDir\Saved\Screenshots\RPG\$Name.png"
     }
     "test" {
-        $cls = if ($Class) { $Class } else { @{ combat = "knight"; bridge = "knight"; mage = "mage"; thief = "thief"; elder = "knight"; block = "knight"; pose = "mage" }[$Scenario] }
+        $cls = if ($Class) { $Class } else { @{ combat = "knight"; bridge = "knight"; mage = "mage"; thief = "thief"; elder = "knight"; block = "knight"; pose = "mage"; walk = "knight"; picker = "mage"; smoke = "thief"; pause = "knight"; click = "knight" }[$Scenario] }
         $a = @("`"$Proj`"", "-game", "-windowed", "-ResX=1280", "-ResY=720", "-log", "-RPGNoInput", "-RPGTest=$Scenario", "-RPGClass=$cls")
-        if ($At -ne 25) { $a += @("-RPGShot=$At", "-RPGShotName=$Scenario") }
+        if ($At -ne 25) { $a += @("-RPGShot=$At", "-RPGShotName=$(if ($Name -ne "shot") { $Name } else { $Scenario })") }
+        if ($Extra) { $a += $Extra }
         $p = Start-Process -FilePath $Editor -ArgumentList $a -PassThru
         $p.WaitForExit()
         Select-String -Path (Join-Path $ProjDir "Saved\Logs\ActionRPG.log") -Pattern "\[TEST" | ForEach-Object { $_.Line -replace "^\[.*?\]\[.*?\]LogRPG: Display: ", "" }

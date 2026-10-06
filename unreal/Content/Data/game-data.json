@@ -1,4 +1,5 @@
 {
+  "title": { "_doc": "Title screen text (placeholder name until the game has one).", "name": "Action RPG", "tagline": "Talking matters as much as fighting." },
   "tuning": {
     "hpPerVitality": 10, "hpPerLevel": 5,
     "staminaBase": 80, "staminaPerAgility": 4, "staminaRegen": 38, "staminaRegenDelay": 0.55,
@@ -18,8 +19,32 @@
   "world3d": {
     "_doc": "Unreal-only presentation settings. Gameplay numbers stay in pixels (shared with the HTML prototype); unitsPerPx converts them to Unreal units.",
     "tileSize": 300, "unitsPerPx": 3.5, "wallHeight": 380,
-    "camera": { "armLength": 430, "socketOffset": [0, 60, 75], "fov": 80, "lagSpeed": 12 },
+    "camera": {
+      "_doc": "mode 'topdown': fixed 3/4 view, north up (like the HTML map), mouse wheel zooms, the cursor aims. mode 'third': the old over-the-shoulder camera.",
+      "mode": "topdown",
+      "topdown": { "pitch": -58, "yaw": -90, "armLength": 4800, "minArm": 3800, "maxArm": 5800, "zoomStep": 250, "fov": 32, "lagSpeed": 10 },
+      "abilityPicker": { "_doc": "Shift + mouse wheel opens it; the world runs at timeScale while you choose.", "timeScale": 0.2 },
+      "armLength": 430, "socketOffset": [0, 60, 75], "fov": 80, "lagSpeed": 12
+    },
+    "look": "hd2d",
+    "dialoguePortraits": false,
+    "looks2d": {
+      "_doc": "Look tests. 'mesh3d' = mannequins + Starter Content. 'hd2d' = pixel-art sprite cards standing in the lit 3D world with pixel textures (Octopath style). 'flat2d' = orthographic top-down pixel map with flat sprites. Override per run with -RPGLook=hd2d|flat2d. Art: tools/pixelart, imported by unreal/Tools/import_pixel.py.",
+      "spriteUnits": { "hd2d": 6.5, "flat2d": 9.375 },
+      "hd2dCamera": { "pitch": -40, "armLength": 6600, "minArm": 5400, "maxArm": 7800, "fov": 30, "tiltShift": false, "focusFstop": 0.5, "sensorWidth": 400 },
+      "flatCamera": { "orthoWidth": 3800, "minWidth": 2800, "maxWidth": 5200 },
+      "pixelSize": 200,
+      "pixelMaterials": {
+        "M_Ground_Grass": "grass", "M_Ground_Gravel": "dirt", "M_CobbleStone_Pebble": "cobble", "M_CobbleStone_Rough": "cobble",
+        "M_Concrete_Poured": "plaster", "M_Wood_Walnut": "timber", "M_Wood_Oak": "door", "M_Brick_Clay_Old": "roof",
+        "M_Brick_Cut_Stone": "stone", "M_Brick_Hewn_Stone": "stone", "M_Rock_Slate": "rock", "M_Wood_Floor_Walnut_Worn": "planks", "M_Water_Lake": "water"
+      },
+      "sheets": { "brask_guard": "bandit_captain" }
+    },
+    "arrows": { "_doc": "Arrows fly a parabola: peak height above the straight line = distance x heightPerDistance (uu), clamped.", "heightPerDistance": 0.16, "minHeight": 30, "maxHeight": 320 },
     "sun": { "pitch": -36, "yaw": 125, "intensityLux": 9 },
+    "dayNight": { "_doc": "The sun moves from startHour; secondsPerHour of real time per game hour (30 = afternoon to night in ~3.5 min). -RPGHour=21 starts at that hour; -RPGSun= freezes the sun.", "enabled": true, "startHour": 14, "secondsPerHour": 30, "moonLux": 0.6, "nightExposure": -0.4, "exposureMinEV": -1.2, "exposureMaxEV": 4.0, "fog": { "_doc": "Height + volumetric fog, thickening toward night.", "enabled": true, "day": 0.015, "dusk": 0.045, "night": 0.1 },
+      "nightVision": { "_doc": "Deep night: beyond heroSight (uu) and the reach of fires / torches (lightReach x their light radius) the world falls to near black; foes there leave the minimap and lose their labels.", "heroSight": 1000, "lightReach": 1.0, "strength": 0.97 } },
     "mounts": {
       "_doc": "Where weapon kits attach: a bone plus an offset in that bone's space. Weapon parts are authored with +Z pointing out of the fist.",
       "_measured": "-RPGProbe, idle pose: hand_r +Z points forward, hand_l +X points down, lowerarm_l +Z points out to the left",
@@ -109,7 +134,7 @@
       "styles": ["staff"],
       "abilities": ["fireball", "frost_nova", "blink", "chain_lightning"],
       "weapons": "Arcane bolts (free) and spells (mana).",
-      "defense": "Mana shield: damage drains mana first. When mana runs dry, the shield shatters.",
+      "defense": "Hold right click for an arcane barrier all around you: 80% less damage from any side, but it drains stamina while held.",
       "dialogue": { "style": "Hypnotize", "desc": "Compel NPCs to agree. It works, but they may resent it later." },
       "startItems": [ { "item": "oak_staff", "equip": true }, { "item": "potion", "qty": 2 } ]
     },
@@ -144,13 +169,13 @@
 
   "weaponStyles": {
     "sword_shield": {
-      "name": "Sword & Shield", "hint": "LMB 3-hit combo · hold RMB to block (raise it just before a hit = perfect block)",
+      "name": "Sword & Shield", "hint": "LMB 3-hit combo · hold RMB to block (raise it just before a hit = perfect block; drains stamina)",
       "comboWindow": 0.45,
       "primary": { "type": "melee", "scaling": "might", "combo": [
         { "mult": 1.0, "range": 44, "arc": 110, "windup": 0.07, "active": 0.08, "recover": 0.20, "stamina": 12, "poise": 15, "knockback": 140, "lunge": 120 },
         { "mult": 1.1, "range": 44, "arc": 110, "windup": 0.07, "active": 0.08, "recover": 0.22, "stamina": 12, "poise": 15, "knockback": 140, "lunge": 120 },
         { "mult": 1.7, "range": 52, "arc": 150, "windup": 0.16, "active": 0.10, "recover": 0.40, "stamina": 20, "poise": 35, "knockback": 320, "lunge": 200 } ] },
-      "secondary": { "type": "block", "reduction": 0.7, "arc": 130, "staminaPerDamage": 0.8, "perfectWindow": 0.15, "moveMul": 0.5, "staminaRegenMul": 0.35 }
+      "secondary": { "type": "block", "reduction": 1.0, "arc": 130, "staminaPerDamage": 0.8, "staminaDrain": 6, "perfectWindow": 0.15, "moveMul": 0.5, "staminaRegenMul": 0 }
     },
     "longsword": {
       "name": "Longsword", "hint": "LMB slow, wide, heavy 2-hit combo · no block",
@@ -160,10 +185,10 @@
         { "mult": 1.5, "range": 64, "arc": 170, "windup": 0.28, "active": 0.12, "recover": 0.55, "stamina": 26, "poise": 60, "knockback": 420, "lunge": 200 } ] }
     },
     "staff": {
-      "name": "Staff", "hint": "LMB arcane bolt (free, hold to keep firing) · damage drains mana before HP",
+      "name": "Staff", "hint": "LMB arcane bolt (free, hold to keep firing) · hold RMB for a barrier all around you (-80% damage, drains stamina)",
       "primary": { "type": "bolt", "scaling": "focus", "damage": 5, "weaponRatio": 0.5, "cooldown": 0.45,
                    "speed": 480, "radius": 5, "range": 440, "poise": 10, "knockback": 60, "color": "#b9a4ff" },
-      "passive": { "type": "manaShield", "damagePerMana": 1.0, "breakStagger": 0.6, "breakRegenLock": 3 }
+      "secondary": { "type": "block", "barrier": true, "reduction": 0.8, "arc": 360, "staminaPerDamage": 0.4, "staminaDrain": 12, "perfectWindow": 0, "moveMul": 0.5, "staminaRegenMul": 0 }
     },
     "daggers_bow": {
       "name": "Daggers & Bow", "hint": "LMB fast 4-hit daggers (hit from behind = backstab x2) · hold RMB to draw bow, release to fire",
@@ -178,13 +203,13 @@
                      "moveMul": 0.55, "color": "#e8d9b0" }
     },
     "dagger_shield": {
-      "name": "Dagger & Shield", "hint": "LMB 3-hit dagger combo · hold RMB to block (light shield, no perfect block)",
+      "name": "Dagger & Shield", "hint": "LMB 3-hit dagger combo · hold RMB to block (light shield: -50%, drains stamina)",
       "comboWindow": 0.4,
       "primary": { "type": "melee", "scaling": "might", "combo": [
         { "mult": 0.8, "range": 36, "arc": 90,  "windup": 0.06, "active": 0.07, "recover": 0.16, "stamina": 10, "poise": 8,  "knockback": 80,  "lunge": 120 },
         { "mult": 0.8, "range": 36, "arc": 90,  "windup": 0.06, "active": 0.07, "recover": 0.18, "stamina": 10, "poise": 8,  "knockback": 80,  "lunge": 120 },
         { "mult": 1.2, "range": 40, "arc": 110, "windup": 0.12, "active": 0.08, "recover": 0.32, "stamina": 14, "poise": 18, "knockback": 180, "lunge": 160 } ] },
-      "secondary": { "type": "block", "reduction": 0.5, "arc": 100, "staminaPerDamage": 1.0, "perfectWindow": 0, "moveMul": 0.5, "staminaRegenMul": 0.35 }
+      "secondary": { "type": "block", "reduction": 0.5, "arc": 100, "staminaPerDamage": 1.0, "staminaDrain": 6, "perfectWindow": 0, "moveMul": 0.5, "staminaRegenMul": 0 }
     }
   },
 
@@ -221,8 +246,8 @@
                          "damage": 9, "scaling": "agility", "speed": 560, "radius": 3, "range": 420, "poise": 12, "knockback": 90,
                          "color": "#e8d9b0", "desc": "Loose three arrows in a fan." },
     "smoke_bomb":      { "name": "Smoke Bomb", "type": "smoke", "unlockLevel": 2, "stamina": 20, "cooldown": 12,
-                         "radius": 120, "duration": 3,
-                         "color": "#9aa0a6", "desc": "Vanish for 3s. Enemies lose track of you — perfect for a backstab. Attacking reveals you." },
+                         "radius": 120, "duration": 3, "stagger": 1.5,
+                         "color": "#9aa0a6", "desc": "Vanish for 3s. Foes caught in the blast are staggered; others nearby lose track of you — perfect for a backstab. Attacking reveals you." },
     "shadow_dash":     { "name": "Shadow Dash", "type": "dashStrike", "unlockLevel": 3, "stamina": 20, "cooldown": 5,
                          "damage": 18, "scaling": "agility", "distance": 190, "duration": 0.18, "poise": 35, "knockback": 120,
                          "color": "#3fc28f", "desc": "Invulnerable dash toward the cursor, striking everything in the path." },

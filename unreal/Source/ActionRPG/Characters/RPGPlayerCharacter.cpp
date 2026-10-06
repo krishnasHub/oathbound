@@ -10,6 +10,10 @@
 #include "RPGInventoryComponent.h"
 #include "RPGAbilityComponent.h"
 #include "RPGPoseMesh.h"
+#include "RPGLook.h"
+#include "RPGSprite.h"
+#include "Components/PointLightComponent.h"
+#include "RPGWorldBuilder.h"
 
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -28,6 +32,9 @@
 #include "InputModifiers.h"
 #include "Engine/LocalPlayer.h"
 #include "EngineUtils.h"
+#include "NavigationSystem.h"
+#include "NavigationPath.h"
+#include "Kismet/GameplayStatics.h"
 #include "UObject/ConstructorHelpers.h"
 
 ARPGPlayerCharacter::ARPGPlayerCharacter()
@@ -123,6 +130,67 @@ void ARPGPlayerCharacter::BeginPlay()
 	if (Off.Num() == 3) CameraBoom->SocketOffset = FVector(Off[0]->AsNumber(), Off[1]->AsNumber(), Off[2]->AsNumber());
 	Camera->FieldOfView = float(RPGJson::Num(Cam, TEXT("fov"), 80));
 
+	// Top-down: a fixed 3/4 view that follows the hero but never turns, so the screen matches the map.
+	bTopDown = IsTopDown(this);
+	if (bTopDown)
+	{
+		const RPGJson::FObj Td = RPGJson::Obj(Cam, TEXT("topdown"));
+		CameraBoom->bUsePawnControlRotation = false;
+		CameraBoom->SetUsingAbsoluteRotation(true);
+		CameraBoom->SetWorldRotation(FRotator(float(RPGJson::Num(Td, TEXT("pitch"), -55)), float(RPGJson::Num(Td, TEXT("yaw"), -90)), 0.f));
+		CameraBoom->bDoCollisionTest = false;   // walls and roofs get cut away instead (ARPGWorldBuilder)
+		CameraBoom->SocketOffset = FVector::ZeroVector;
+		CameraBoom->TargetArmLength = ZoomTarget = float(RPGJson::Num(Td, TEXT("armLength"), 2000));
+		CameraBoom->CameraLagSpeed = float(RPGJson::Num(Td, TEXT("lagSpeed"), 10));
+		MinArm = float(RPGJson::Num(Td, TEXT("minArm"), 1100));
+		MaxArm = float(RPGJson::Num(Td, TEXT("maxArm"), 3000));
+		ZoomStep = float(RPGJson::Num(Td, TEXT("zoomStep"), 220));
+		Camera->FieldOfView = float(RPGJson::Num(Td, TEXT("fov"), 50));
+
+		// 2D look tests: HD-2D frames lower and tighter; Flat 2D looks straight down through an orthographic lens.
+		const RPGJson::FObj L2 = RPGJson::Obj(D.World3D(), TEXT("looks2d"));
+		CameraBoom->SetWorldRotation(RPGLook::CameraRotation());
+		if (RPGLook::Mode() == RPGLook::EMode::HD2D)
+		{
+			const RPGJson::FObj H = RPGJson::Obj(L2, TEXT("hd2dCamera"));
+			CameraBoom->TargetArmLength = ZoomTarget = float(RPGJson::Num(H, TEXT("armLength"), 3000));
+			MinArm = float(RPGJson::Num(H, TEXT("minArm"), 2400));
+			MaxArm = float(RPGJson::Num(H, TEXT("maxArm"), 3800));
+			Camera->FieldOfView = float(RPGJson::Num(H, TEXT("fov"), 30));
+			// Tilt-shift: focus on the hero, so the top and bottom of the screen go soft (a big virtual sensor makes
+			// the depth of field shallow enough to show at this distance).
+			FPostProcessSettings& PP = Camera->PostProcessSettings;
+			// (Off by default: the user preferred everything crisp. hd2dCamera.tiltShift = true brings it back.)
+			PP.bOverride_DepthOfFieldFocalDistance = RPGJson::Bool(H, TEXT("tiltShift"), false) && !FParse::Param(FCommandLine::Get(), TEXT("RPGNoDOF"));
+			PP.DepthOfFieldFocalDistance = CameraBoom->TargetArmLength;
+			PP.bOverride_DepthOfFieldFstop = true;         PP.DepthOfFieldFstop = float(RPGJson::Num(H, TEXT("focusFstop"), 0.5));
+			PP.bOverride_DepthOfFieldMinFstop = true;      PP.DepthOfFieldMinFstop = 0.f;
+			PP.bOverride_DepthOfFieldSensorWidth = true;   PP.DepthOfFieldSensorWidth = float(RPGJson::Num(H, TEXT("sensorWidth"), 400));
+			Camera->PostProcessBlendWeight = 1.f;
+		}
+		else if (RPGLook::Mode() == RPGLook::EMode::Flat2D)
+		{
+			const RPGJson::FObj Fc = RPGJson::Obj(L2, TEXT("flatCamera"));
+			Camera->SetProjectionMode(ECameraProjectionMode::Orthographic);
+			Camera->SetOrthoWidth(ZoomTarget = float(RPGJson::Num(Fc, TEXT("orthoWidth"), 3800)));
+			MinArm = float(RPGJson::Num(Fc, TEXT("minWidth"), 2800));
+			MaxArm = float(RPGJson::Num(Fc, TEXT("maxWidth"), 5200));
+			ZoomStep = 300.f;
+			CameraBoom->TargetArmLength = 4000.f;
+		}
+	}
+
+	// After dark a soft, warm light follows the hero (faded in by the day/night cycle) so you never lose yourself.
+	NightGlow = NewObject<UPointLightComponent>(this, TEXT("NightGlow"));
+	NightGlow->SetupAttachment(RootComponent);
+	NightGlow->SetRelativeLocation(FVector(0, 0, 260.f));
+	NightGlow->SetIntensityUnits(ELightUnits::Candelas);
+	NightGlow->SetIntensity(0.f);
+	NightGlow->SetAttenuationRadius(1100.f);
+	NightGlow->SetLightColor(FLinearColor(0.62f, 0.74f, 1.f));   // cool, moonlit: the night around you reads blue
+	NightGlow->SetCastShadows(false);
+	NightGlow->RegisterComponent();
+
 	ComboMontage = RPGAssets::Load<UAnimMontage>(RPGAssets::ComboMontage);
 	if (ComboMontage) for (const FCompositeSection& S : ComboMontage->CompositeSections) ComboSections.Add(S.SectionName);
 
@@ -160,6 +228,7 @@ void ARPGPlayerCharacter::ApplyClass(const FString& InClassId, const FString& In
 
 	const RPGJson::FObj PlayerLook = RPGJson::Obj(RPGJson::Obj(D.World3D(), TEXT("looks")), TEXT("player"));
 	SetLook(RPGJson::Str(PlayerLook, Sex, Sex == TEXT("female") ? TEXT("quinn") : TEXT("manny")), FString(), 1.f);
+	UseSprite(ClassId + (Sex == TEXT("female") ? TEXT("_f") : TEXT("_m")));
 	// Render the posed copy; the animated mesh keeps animating (and firing notifies) while hidden.
 	PoseMesh->SetSkinnedAssetAndUpdate(GetMesh()->GetSkeletalMeshAsset());
 	PoseMesh->Source = GetMesh();
@@ -265,10 +334,17 @@ void ARPGPlayerCharacter::CreateInput()
 	MapMove(EKeys::D, false, false); MapMove(EKeys::A, false, true);
 
 	InputContext->MapKey(Make(TEXT("Look"), EInputActionValueType::Axis2D), EKeys::Mouse2D);
+	InputContext->MapKey(Make(TEXT("Zoom"), EInputActionValueType::Axis1D), EKeys::MouseWheelAxis);
 	InputContext->MapKey(Make(TEXT("Attack"), EInputActionValueType::Boolean), EKeys::LeftMouseButton);
 	InputContext->MapKey(Make(TEXT("Secondary"), EInputActionValueType::Boolean), EKeys::RightMouseButton);
-	InputContext->MapKey(Make(TEXT("Dodge"), EInputActionValueType::Boolean), EKeys::LeftShift);
-	InputContext->MapKey(Make(TEXT("Jump"), EInputActionValueType::Boolean), EKeys::SpaceBar);
+	// Top-down: Space dodges (Shift is the attack-in-place modifier) and there's no jump.
+	const bool bTD = IsTopDown(this);
+	InputContext->MapKey(Make(TEXT("Dodge"), EInputActionValueType::Boolean), bTD ? EKeys::SpaceBar : EKeys::LeftShift);
+	UInputAction* JumpAction = Make(TEXT("Jump"), EInputActionValueType::Boolean);
+	if (!bTD) InputContext->MapKey(JumpAction, EKeys::SpaceBar);
+	// Top-down: Shift + wheel opens the ability picker; letting go of Shift casts the highlighted one.
+	UInputAction* PickAction = Make(TEXT("Pick"), EInputActionValueType::Boolean);
+	if (bTD) InputContext->MapKey(PickAction, EKeys::LeftShift);
 
 	// Simple key presses, all routed through OnKey(Name).
 	const TPair<FName, FKey> Keys[] = {
@@ -279,6 +355,7 @@ void ARPGPlayerCharacter::CreateInput()
 		{ TEXT("CheatLevel"), EKeys::K }, { TEXT("CheatGold"), EKeys::G },
 	};
 	for (const TPair<FName, FKey>& K : Keys) InputContext->MapKey(Make(K.Key, EInputActionValueType::Boolean), K.Value);
+	InputContext->MapKey(Actions[TEXT("Escape")], EKeys::Gamepad_Special_Right);   // a controller's Start button pauses too
 }
 
 void ARPGPlayerCharacter::PawnClientRestart()
@@ -298,6 +375,8 @@ void ARPGPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PIC)
 	EIC->BindAction(Actions[TEXT("Move")], ETriggerEvent::Triggered, this, &ARPGPlayerCharacter::OnMove);
 	EIC->BindAction(Actions[TEXT("Move")], ETriggerEvent::Completed, this, &ARPGPlayerCharacter::OnMove);
 	EIC->BindAction(Actions[TEXT("Look")], ETriggerEvent::Triggered, this, &ARPGPlayerCharacter::OnLook);
+	EIC->BindAction(Actions[TEXT("Zoom")], ETriggerEvent::Triggered, this, &ARPGPlayerCharacter::OnZoom);
+	EIC->BindAction(Actions[TEXT("Pick")], ETriggerEvent::Completed, this, &ARPGPlayerCharacter::OnPickReleased);
 	EIC->BindAction(Actions[TEXT("Attack")], ETriggerEvent::Started, this, &ARPGPlayerCharacter::OnAttack);
 	EIC->BindAction(Actions[TEXT("Attack")], ETriggerEvent::Completed, this, &ARPGPlayerCharacter::OnAttackReleased);
 	EIC->BindAction(Actions[TEXT("Secondary")], ETriggerEvent::Started, this, &ARPGPlayerCharacter::OnSecondary);
@@ -307,14 +386,16 @@ void ARPGPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PIC)
 	EIC->BindAction(Actions[TEXT("Jump")], ETriggerEvent::Completed, this, &ARPGPlayerCharacter::StopJumping);
 	for (const auto& KV : Actions)
 	{
-		static const TSet<FName> Handled = { TEXT("Move"), TEXT("Look"), TEXT("Attack"), TEXT("Secondary"), TEXT("Dodge"), TEXT("Jump") };
+		static const TSet<FName> Handled = { TEXT("Move"), TEXT("Look"), TEXT("Zoom"), TEXT("Pick"), TEXT("Attack"), TEXT("Secondary"), TEXT("Dodge"), TEXT("Jump") };
 		if (!Handled.Contains(KV.Key)) EIC->BindAction(KV.Value, ETriggerEvent::Started, this, &ARPGPlayerCharacter::OnKey, KV.Key);
 	}
 }
 
 void ARPGPlayerCharacter::TestPress(FName Action, bool bDown)
 {
+	// Scripted presses run the real handlers, but never read the real mouse cursor.
 	const bool bLocked = bInputLocked;
+	TGuardValue<bool> NoCursor(bScripted, true);
 	bInputLocked = false;
 	if (Action == TEXT("Attack")) bDown ? OnAttack() : OnAttackReleased();
 	else if (Action == TEXT("Secondary")) bDown ? OnSecondary() : OnSecondaryReleased();
@@ -335,17 +416,173 @@ void ARPGPlayerCharacter::OnMove(const FInputActionValue& V) { MoveInput = bInpu
 
 void ARPGPlayerCharacter::OnLook(const FInputActionValue& V)
 {
-	if (bInputLocked) return;
+	if (bInputLocked || bTopDown) return;   // top-down: the mouse moves the cursor, not the camera
 	const FVector2D L = V.Get<FVector2D>();
 	AddControllerYawInput(L.X * 0.6f);
 	AddControllerPitchInput(-L.Y * 0.6f);
+}
+
+void ARPGPlayerCharacter::OnZoom(const FInputActionValue& V)
+{
+	if (bInputLocked || !bTopDown || bDead) return;
+	const float Wheel = V.Get<float>();
+	// Shift + wheel: the ability picker. Plain wheel: zoom (within limits).
+	const APlayerController* PC = Cast<APlayerController>(Controller);
+	if (PC && PC->IsInputKeyDown(EKeys::LeftShift))
+	{
+		if (Picker < 0) OpenPicker();
+		else CyclePicker(Wheel > 0.f ? -1 : 1);
+		return;
+	}
+	ZoomTarget = FMath::Clamp(ZoomTarget - Wheel * ZoomStep, MinArm, MaxArm);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Ability picker: Shift + wheel, slow motion while choosing, release Shift (or click) to cast
+// ---------------------------------------------------------------------------------------------
+
+void ARPGPlayerCharacter::OpenPicker()
+{
+	int32 Start = INDEX_NONE;
+	for (int32 I = 0; I < Abilities->Ids.Num() && Start == INDEX_NONE; ++I)
+	{
+		const int32 S = (LastPicked + I) % Abilities->Ids.Num();
+		if (Abilities->Unlocked(Abilities->Ids[S])) Start = S;
+	}
+	if (Start == INDEX_NONE)
+	{
+		URPGStory::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No abilities yet"), FLinearColor(0.8f, 0.8f, 0.8f), 0.8f);
+		return;
+	}
+	Picker = Start;
+	const RPGJson::FObj Cfg = RPGJson::Obj(RPGJson::Obj(URPGData::Get(this).World3D(), TEXT("camera")), TEXT("abilityPicker"));
+	UGameplayStatics::SetGlobalTimeDilation(this, float(RPGJson::Num(Cfg, TEXT("timeScale"), 0.2)));
+}
+
+void ARPGPlayerCharacter::CyclePicker(int32 Step)
+{
+	const int32 N = Abilities->Ids.Num();
+	for (int32 I = 1; I <= N; ++I)
+	{
+		const int32 S = ((Picker + Step * I) % N + N) % N;   // wraps, skipping locked slots
+		if (Abilities->Unlocked(Abilities->Ids[S])) { Picker = S; return; }
+	}
+}
+
+void ARPGPlayerCharacter::ClosePicker(bool bCast)
+{
+	if (Picker < 0) return;
+	const int32 Slot = Picker;
+	Picker = -1;
+	UGameplayStatics::SetGlobalTimeDilation(this, 1.f);
+	if (!bCast) return;
+	LastPicked = Slot;
+	Abilities->TryActivate(Slot);
+}
+
+void ARPGPlayerCharacter::OnPickReleased() { if (!bInputLocked) ClosePicker(true); }
+
+void ARPGPlayerCharacter::TestPicker(int32 Steps, bool bOpenOnly)
+{
+	if (Picker < 0) OpenPicker();
+	for (int32 I = 0; I < FMath::Abs(Steps); ++I) CyclePicker(Steps > 0 ? 1 : -1);
+	if (!bOpenOnly) ClosePicker(true);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Talk mode (E): the cursor talks instead of attacking
+// ---------------------------------------------------------------------------------------------
+
+void ARPGPlayerCharacter::SetTalkMode(bool bOn)
+{
+	bTalkMode = bOn;   // (the cursor shows it: CursorIcon)
+}
+
+FName ARPGPlayerCharacter::CursorIcon() const
+{
+	FVector O, R;
+	if (!CursorRay(O, R) || bDead) return NAME_None;
+	bool bHostile = false;
+	const ARPGCharacterBase* On = UnderCursor(bHostile);
+	if (bTalkMode) return On && TalkBlocker(On).IsEmpty() ? FName(TEXT("talk")) : FName(TEXT("talk_off"));
+	// The weapon this class attacks with right now.
+	auto Weapon = [this]() -> FName
+	{
+		if (bDrawing || BowOut > 0.f) return TEXT("arrow");
+		if (RPGJson::Str(RPGJson::Obj(Style(), TEXT("primary")), TEXT("type")) == TEXT("bolt")) return TEXT("wand");
+		return ClassId == TEXT("knight") ? FName(TEXT("sword")) : FName(TEXT("dagger"));
+	};
+	if (bDrawing) return TEXT("arrow");
+	if (On) return bHostile ? Weapon() : FName(TEXT("talk"));
+	const APlayerController* PC = Cast<APlayerController>(Controller);
+	if (PC && PC->IsInputKeyDown(EKeys::LeftShift) && Picker < 0) return Weapon();   // attack in place
+	return TEXT("pointer");
+}
+
+float ARPGPlayerCharacter::TalkRange() const
+{
+	const URPGData& D = URPGData::Get(this);
+	return D.Px(D.Tuning(TEXT("interactRange"), 48)) + 60.f;
+}
+
+FString ARPGPlayerCharacter::TalkBlocker(const ARPGCharacterBase* C) const
+{
+	if (!C || C->IsDead() || C->IsLeaving()) return TEXT("...");
+	const ARPGEnemy* E = Cast<ARPGEnemy>(C);
+	if (C->DialogueRoot.IsEmpty())
+		return E && !RPGJson::Bool(E->Def, TEXT("intelligent")) ? TEXT("It can't be reasoned with.") : TEXT("They have nothing to say.");
+	// Foes talk only while their faction is still neutral; mid-fight it takes Silver Words.
+	if (C->Team == ERPGTeam::Enemy && !C->IsPassive()) return TEXT("They're past talking.");
+	return FString();
+}
+
+void ARPGPlayerCharacter::TryTalk(ARPGCharacterBase* C)
+{
+	SetTalkMode(false);
+	const FString Why = TalkBlocker(C);
+	if (!Why.IsEmpty())
+	{
+		if (C) URPGStory::Get(this)->Float(C->Head() + FVector(0, 0, 40), Why, FLinearColor(0.85f, 0.85f, 0.8f), 0.9f);
+		return;
+	}
+	Click(C, false, C->GetActorLocation());
+}
+
+bool ARPGPlayerCharacter::IsTopDown(const UObject* WorldContext)
+{
+	return RPGJson::Str(RPGJson::Obj(URPGData::Get(WorldContext).World3D(), TEXT("camera")), TEXT("mode")) == TEXT("topdown");
+}
+
+FRotator ARPGPlayerCharacter::MoveFrame() const
+{
+	if (bTopDown) return FRotator(0, CameraBoom->GetComponentRotation().Yaw, 0);
+	return FRotator(0, Controller ? Controller->GetControlRotation().Yaw : GetActorRotation().Yaw, 0);
+}
+
+bool ARPGPlayerCharacter::CursorRay(FVector& Origin, FVector& Dir) const
+{
+	const APlayerController* PC = Cast<APlayerController>(Controller);
+	return bTopDown && !bInputLocked && !bScripted && PC && PC->DeprojectMousePositionToWorld(Origin, Dir);
 }
 
 void ARPGPlayerCharacter::OnKey(FName Key)
 {
 	if (bInputLocked) return;
 	URPGStory* Story = URPGStory::Get(this);
-	if (Key == TEXT("Interact")) { if (ARPGCharacterBase* T = TalkTarget()) Story->OpenDialogue(T); return; }
+	if (Key == TEXT("Interact"))
+	{
+		// Top-down: E on someone talks to them; otherwise it toggles talk mode for the next click.
+		FVector O, R;
+		if (CursorRay(O, R))
+		{
+			bool bHostile = false;
+			if (ARPGCharacterBase* C = UnderCursor(bHostile)) TryTalk(C);
+			else SetTalkMode(!bTalkMode);
+			return;
+		}
+		if (ARPGCharacterBase* T = TalkTarget()) Story->OpenDialogue(T);
+		return;
+	}
 	if (Key == TEXT("Potion")) { DrinkPotion(); return; }
 	if (Key == TEXT("Swap")) { SwapStyle(); return; }
 	if (Key == TEXT("Ability1")) { Abilities->TryActivate(0); return; }
@@ -355,7 +592,9 @@ void ARPGPlayerCharacter::OnKey(FName Key)
 	if (Key == TEXT("Debug")) { Story->bDebug = !Story->bDebug; return; }
 	if (Key == TEXT("CheatLevel")) { if (Story->bDebug) GainXp(XpToNext(this, Level()) - Xp); return; }
 	if (Key == TEXT("CheatGold")) { if (Story->bDebug) { Inventory->Gold += 100; Inventory->OnChanged.Broadcast(); } return; }
-	if (UIHandler) UIHandler(Key);   // Inventory / Character / Quests / Help / Escape
+	if (Key == TEXT("Escape") && Picker >= 0) { ClosePicker(false); return; }   // Esc backs out of what you're doing first
+	if (Key == TEXT("Escape") && bTalkMode) { SetTalkMode(false); return; }
+	if (UIHandler) UIHandler(Key);   // Inventory / Character / Quests / Help / Escape (pause menu)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -364,6 +603,17 @@ void ARPGPlayerCharacter::OnKey(FName Key)
 
 FVector ARPGPlayerCharacter::AimPoint(float MaxDistance) const
 {
+	if (bTopDown)
+	{
+		// The point under the cursor, level with the chest (where shots fly). Without a cursor (automated
+		// runs) aim along the controller's yaw, which the self-tests set.
+		if (Goal == EClickGoal::Attack && GoalActor.IsValid()) return GoalActor->Chest();   // the enemy you clicked
+		const FVector C = Chest();
+		FVector O, R;
+		if (CursorRay(O, R) && R.Z < -0.01f) return O + R * ((C.Z - O.Z) / R.Z);
+		const float Yaw = Controller ? Controller->GetControlRotation().Yaw : GetActorRotation().Yaw;
+		return C + FRotator(0, Yaw, 0).Vector() * MaxDistance;
+	}
 	const FVector Start = Camera->GetComponentLocation();
 	const FVector End = Start + Camera->GetForwardVector() * MaxDistance;
 	FHitResult H;
@@ -374,13 +624,31 @@ FVector ARPGPlayerCharacter::AimPoint(float MaxDistance) const
 FVector ARPGPlayerCharacter::AimDirection(const FVector& From) const
 {
 	// Aim assist: an opponent within ~12 degrees of the crosshair (and in sight) gets the shot.
-	const FVector CamPos = Camera->GetComponentLocation(), CamFwd = Camera->GetForwardVector();
+	// Top-down with a cursor: the opponent the cursor is on (or nearest to it).
+	if (Goal == EClickGoal::Attack && GoalActor.IsValid()) return (GoalActor->Chest() - From).GetSafeNormal();
+	FVector CamPos = Camera->GetComponentLocation(), CamFwd = Camera->GetForwardVector();
+	FVector RayO, RayDir;
+	const bool bCursor = CursorRay(RayO, RayDir);
+	if (bTopDown && !bCursor) { CamPos = Chest(); CamFwd = (AimPoint() - CamPos).GetSafeNormal2D(); }
 	const ARPGCharacterBase* Best = nullptr;
 	float BestDot = FMath::Cos(FMath::DegreesToRadians(12.f));
+	float BestMiss = 0.f;
 	for (ARPGCharacterBase* E : RPGCombat::Opponents(this))
 	{
+		if (FVector::Dist(E->Chest(), Chest()) > 3000.f) continue;
+		if (bCursor)
+		{
+			const float Miss = FMath::PointDistToLine(E->Chest(), RayDir, RayO) - E->Radius();
+			if (Miss > 70.f || (Best && Miss >= BestMiss)) continue;
+			FHitResult H;
+			FCollisionQueryParams Q(SCENE_QUERY_STAT(AimAssist), false, this);
+			Q.AddIgnoredActor(E);
+			if (GetWorld()->LineTraceSingleByChannel(H, Chest(), E->Chest(), ECC_Visibility, Q)) continue;
+			BestMiss = Miss;
+			Best = E;
+			continue;
+		}
 		const FVector To = E->Chest() - CamPos;
-		if (To.Size() > 3000.f) continue;
 		const float Dot = FVector::DotProduct(CamFwd, To.GetSafeNormal());
 		if (Dot <= BestDot) continue;
 		FHitResult H;
@@ -406,9 +674,43 @@ FVector ARPGPlayerCharacter::Muzzle() const
 	return Chest() + GetActorForwardVector() * 50.f;
 }
 
+FVector ARPGPlayerCharacter::ArrowTarget(const FVector& From, float MaxRange) const
+{
+	// A foe along the aim (the clicked one, the one under the cursor, or aim assist): its chest.
+	const FVector Dir = AimDirection(From);
+	const ARPGCharacterBase* Best = nullptr;
+	float BestAlong = MaxRange;
+	if (Goal == EClickGoal::Attack && GoalActor.IsValid()) { Best = GoalActor.Get(); BestAlong = FVector::Dist2D(From, Best->Chest()); }
+	else
+	{
+		for (ARPGCharacterBase* E : RPGCombat::Opponents(this))
+		{
+			const FVector To = E->Chest() - From;
+			const float Along = FVector::DotProduct(To, Dir);
+			if (Along <= 0.f || Along > BestAlong) continue;
+			if ((To - Dir * Along).Size2D() > E->Radius() + 45.f) continue;
+			Best = E;
+			BestAlong = Along;
+		}
+	}
+	if (Best && FVector::Dist2D(From, Best->Chest()) <= MaxRange) return Best->Chest();
+
+	// Otherwise the ground under the cursor (or straight ahead), no further than the range.
+	FVector Point = AimPoint();
+	FVector Flat = FVector(Point.X - From.X, Point.Y - From.Y, 0.f);
+	if (Flat.Size() > MaxRange || Flat.IsNearlyZero()) Flat = (Flat.IsNearlyZero() ? FVector(Dir.X, Dir.Y, 0.f).GetSafeNormal() : Flat.GetSafeNormal()) * MaxRange;
+	FVector Land = From + Flat;
+	FHitResult H;
+	FCollisionQueryParams Q(SCENE_QUERY_STAT(ArrowLand), false, this);
+	Land.Z = GetWorld()->LineTraceSingleByChannel(H, Land + FVector(0, 0, 600.f), Land - FVector(0, 0, 1500.f), ECC_Visibility, Q)
+		? H.ImpactPoint.Z : GetActorLocation().Z - GetSimpleCollisionHalfHeight();
+	return Land;
+}
+
 void ARPGPlayerCharacter::PlayCast()
 {
 	CastKick = 0.16f;
+	SpriteAttackAt = GetWorld()->GetTimeSeconds();
 	CastHold = 0.7f;
 	OrbFlash = 1.f;
 }
@@ -416,6 +718,7 @@ void ARPGPlayerCharacter::PlayCast()
 void ARPGPlayerCharacter::PlayBowShot()
 {
 	BowRelease = 0.2f;
+	SpriteAttackAt = GetWorld()->GetTimeSeconds();
 	BowOut = 1.2f;
 }
 
@@ -500,8 +803,73 @@ void ARPGPlayerCharacter::UpdatePoses(float Dt)
 	SetKitGlow(TEXT("staff"), OrbFlash);
 }
 
+void ARPGPlayerCharacter::UpdateArcPreview()
+{
+	// While drawing the bow: dots along the arc the arrow will fly, fading in with the draw.
+	constexpr int32 N = 14;
+	const bool bShow = bDrawing && !bDead;
+	if (bShow && ArcDots.Num() < N)
+	{
+		while (ArcDots.Num() < N)
+		{
+			UStaticMeshComponent* Dot = NewObject<UStaticMeshComponent>(this);
+			Dot->SetStaticMesh(RPGAssets::Shape(TEXT("Sphere")));
+			Dot->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Dot->SetCastShadow(false);
+			Dot->SetMaterial(0, AimMat);
+			Dot->SetUsingAbsoluteLocation(true);
+			Dot->SetUsingAbsoluteScale(true);
+			Dot->SetupAttachment(RootComponent);
+			Dot->RegisterComponent();
+			ArcDots.Add(Dot);
+		}
+	}
+	for (UStaticMeshComponent* Dot : ArcDots) Dot->SetVisibility(bShow);
+	if (!bShow) return;
+
+	const URPGData& D = URPGData::Get(this);
+	const RPGJson::FObj B = RPGJson::Obj(Style(), TEXT("secondary"));
+	const float K = DrawFraction();
+	const FVector From = Muzzle();
+	const FVector To = ArrowTarget(From, D.Px(RPGJson::Num(B, TEXT("range"), 520)) * (0.5f + 0.5f * K));
+	FVector V;
+	float G = 0.f, T = 1.f;
+	ARPGProjectile::ArcLaunch(this, From, To, D.Px(RPGJson::Num(B, TEXT("speed"), 560)) * (0.6f + 0.4f * K), V, G, T);
+	for (int32 I = 0; I < ArcDots.Num(); ++I)
+	{
+		const float t = T * float(I + 1) / float(ArcDots.Num());
+		ArcDots[I]->SetWorldLocation(From + V * t - FVector(0, 0, 0.5f * G * t * t));
+		ArcDots[I]->SetWorldScale3D(FVector(I + 1 == ArcDots.Num() ? 0.16f : 0.09f));
+	}
+	AimMat->SetScalarParameterValue(TEXT("Opacity"), 0.2f + 0.6f * K);
+}
+
+void ARPGPlayerCharacter::FaceThreat()
+{
+	// Blocking: face the nearest foe that's after you (chasing, winding up or recovering), so the shield covers the
+	// danger even when the cursor is elsewhere. Nobody close: face the cursor as usual.
+	const ARPGCharacterBase* Best = nullptr;
+	float BestD = 1400.f;
+	for (ARPGCharacterBase* C : RPGCombat::Opponents(this))
+	{
+		const ARPGEnemy* E = Cast<ARPGEnemy>(C);
+		if (!E || E->IsPassive() || !(E->State == ERPGEnemyState::Chase || E->State == ERPGEnemyState::Windup || E->State == ERPGEnemyState::Recover)) continue;
+		const float Dist = FVector::Dist2D(E->GetActorLocation(), GetActorLocation());
+		if (Dist < BestD) { BestD = Dist; Best = E; }
+	}
+	if (!Best) { FaceAim(); return; }
+	const FVector To = Best->GetActorLocation() - GetActorLocation();
+	if (To.SizeSquared2D() > 1.f) SetActorRotation(FRotator(0, To.Rotation().Yaw, 0));
+}
+
 void ARPGPlayerCharacter::FaceAim()
 {
+	if (bTopDown)
+	{
+		const FVector To = AimPoint() - GetActorLocation();
+		if (To.SizeSquared2D() > 1.f) SetActorRotation(FRotator(0, To.Rotation().Yaw, 0));
+		return;
+	}
 	if (Controller) SetActorRotation(FRotator(0, Controller->GetControlRotation().Yaw, 0));
 }
 
@@ -528,6 +896,27 @@ ARPGCharacterBase* ARPGPlayerCharacter::TalkTarget() const
 void ARPGPlayerCharacter::OnAttack()
 {
 	if (bInputLocked) return;
+	if (Picker >= 0) { ClosePicker(true); return; }   // click while choosing: cast it now
+	// Top-down: LMB on the ground walks, on a foe fights, on a villager talks; in talk mode (E) it talks to
+	// whoever it's on. Shift+LMB attacks in place.
+	const APlayerController* PC = Cast<APlayerController>(Controller);
+	FVector O, R;
+	if (CursorRay(O, R) && !(PC && PC->IsInputKeyDown(EKeys::LeftShift)))
+	{
+		bool bHostile = false;
+		ARPGCharacterBase* On = UnderCursor(bHostile);
+		if (On && (bTalkMode || !bHostile)) { TryTalk(On); return; }
+		SetTalkMode(false);
+		FVector Ground = GetActorLocation();
+		CursorGround(Ground);
+		Click(On, bHostile, Ground);
+		return;
+	}
+	PrimaryAttack();
+}
+
+void ARPGPlayerCharacter::PrimaryAttack()
+{
 	bAttackHeld = true;
 	LastAttackInput = GetWorld()->GetTimeSeconds();
 	if (bDead || IsDodging() || Tags.Has(TEXT("Staggered"))) return;
@@ -537,7 +926,160 @@ void ARPGPlayerCharacter::OnAttack()
 	if (!bAttacking) StartCombo();
 }
 
-void ARPGPlayerCharacter::OnAttackReleased() { bAttackHeld = false; }
+void ARPGPlayerCharacter::OnAttackReleased() { bAttackHeld = false; bMoveHeld = false; }
+
+// ---------------------------------------------------------------------------------------------
+// Click-to-move (top-down)
+// ---------------------------------------------------------------------------------------------
+
+void ARPGPlayerCharacter::TestClick(const FVector& Point, ARPGCharacterBase* On)
+{
+	const bool bHostile = On && RPGCombat::Opponents(this).Contains(On);
+	Click(On, bHostile, Point);
+	bAttackHeld = bMoveHeld = false;   // a single click, not a hold
+}
+
+bool ARPGPlayerCharacter::CursorGround(FVector& Out) const
+{
+	FVector O, R;
+	if (!CursorRay(O, R)) return false;
+	FHitResult H;
+	FCollisionQueryParams Q(SCENE_QUERY_STAT(CursorGround), false, this);
+	if (GetWorld()->LineTraceSingleByChannel(H, O, O + R * 30000.f, ECC_Visibility, Q)) { Out = H.ImpactPoint; return true; }
+	if (R.Z >= -0.01f) return false;
+	Out = O + R * ((GetActorLocation().Z - O.Z) / R.Z);
+	return true;
+}
+
+ARPGCharacterBase* ARPGPlayerCharacter::UnderCursor(bool& bHostile) const
+{
+	bHostile = false;
+	FVector O, R;
+	if (!CursorRay(O, R)) return nullptr;
+	const TArray<ARPGCharacterBase*> Foes = RPGCombat::Opponents(this);
+	ARPGCharacterBase* Best = nullptr;
+	float BestMiss = 0.f;
+	for (TActorIterator<ARPGCharacterBase> It(GetWorld()); It; ++It)
+	{
+		ARPGCharacterBase* C = *It;
+		if (C == this || C->IsDead() || C->IsLeaving()) continue;
+		const bool bFoe = Foes.Contains(C);
+		if (!bFoe && C->DialogueRoot.IsEmpty()) continue;
+		// Generous: anywhere on the body, plus a little slack around it.
+		float Miss = FMath::Min(FMath::PointDistToLine(C->Chest(), R, O), FMath::PointDistToLine(C->GetActorLocation() - FVector(0, 0, 40), R, O));
+		if (RPGLook::IsSprite())
+		{
+			// A sprite is drawn on a card standing at the feet: test points up the card, where its body is drawn.
+			const FVector Up = -FRotationMatrix(RPGLook::CardRotation()).GetUnitAxis(EAxis::Y);
+			const FVector Feet = C->GetActorLocation() - FVector(0, 0, C->GetSimpleCollisionHalfHeight());
+			for (const float H : { 30.f, 90.f, 150.f })
+				Miss = FMath::Min(Miss, FMath::PointDistToLine(Feet + Up * H * C->GetActorScale3D().Z, R, O));
+		}
+		Miss -= C->Radius();
+		if (Miss > 45.f || (Best && Miss >= BestMiss)) continue;
+		Best = C;
+		BestMiss = Miss;
+		bHostile = bFoe;
+	}
+	return Best;
+}
+
+void ARPGPlayerCharacter::Click(ARPGCharacterBase* On, bool bHostile, const FVector& Ground)
+{
+	if (bDead) return;
+	Path.Reset();
+	RepathIn = 0.f;
+	if (On)
+	{
+		Goal = bHostile ? EClickGoal::Attack : EClickGoal::Talk;
+		GoalActor = On;
+		GoalPoint = On->GetActorLocation();
+		bAttackHeld = bHostile;   // held LMB keeps attacking once in range
+		bMoveHeld = false;
+		return;
+	}
+	Goal = EClickGoal::Move;
+	GoalActor = nullptr;
+	GoalPoint = Ground;
+	bMoveHeld = true;
+	bAttackHeld = false;
+}
+
+bool ARPGPlayerCharacter::ClickDestination(FVector& Out) const
+{
+	if (Goal != EClickGoal::Move) return false;
+	Out = GoalPoint;
+	return true;
+}
+
+void ARPGPlayerCharacter::Repath(const FVector& To)
+{
+	Path.Reset();
+	PathIndex = 1;
+	RepathIn = 0.3f;
+	if (const UNavigationPath* P = UNavigationSystemV1::FindPathToLocationSynchronously(GetWorld(), GetActorLocation(), To, this))
+		if (P->IsValid() && P->PathPoints.Num() >= 2) { Path = P->PathPoints; return; }
+	Path = { GetActorLocation(), To };   // no navmesh (yet): straight line
+}
+
+bool ARPGPlayerCharacter::InAttackRange(const ARPGCharacterBase* T) const
+{
+	const URPGData& D = URPGData::Get(this);
+	const RPGJson::FObj Primary = RPGJson::Obj(Style(), TEXT("primary"));
+	const float Dist = FVector::Dist2D(T->GetActorLocation(), GetActorLocation()) - T->Radius();
+	if (RPGJson::Str(Primary, TEXT("type")) == TEXT("bolt"))
+	{
+		if (Dist > D.Px(RPGJson::Num(Primary, TEXT("range"), 440)) * 0.8f) return false;
+		FHitResult H;
+		FCollisionQueryParams Q(SCENE_QUERY_STAT(ClickLOS), false, this);
+		Q.AddIgnoredActor(T);
+		return !GetWorld()->LineTraceSingleByChannel(H, Chest(), T->Chest(), ECC_Visibility, Q);
+	}
+	const TArray<TSharedPtr<FJsonValue>> Combo = RPGJson::Arr(Primary, TEXT("combo"));
+	const double Reach = Combo.IsEmpty() ? 44 : RPGJson::Num(Combo[0]->AsObject(), TEXT("range"), 44);
+	return Dist <= (D.Px(Reach) + Radius()) * 0.85f;
+}
+
+FVector ARPGPlayerCharacter::UpdateClickGoal(float Dt)
+{
+	if (Goal == EClickGoal::None) return FVector::ZeroVector;
+	ARPGCharacterBase* T = GoalActor.Get();
+	if (Goal != EClickGoal::Move && (!T || T->IsDead() || T->IsLeaving())) { ClearGoal(); bAttackHeld = false; return FVector::ZeroVector; }
+
+	if (Goal == EClickGoal::Attack)
+	{
+		if (InAttackRange(T))
+		{
+			// In range: swing / shoot. Holding LMB keeps the goal (and the attacks) going; a single click attacks once.
+			Path.Reset();
+			const bool bHeld = bAttackHeld;
+			if (!bAttacking) PrimaryAttack();
+			if (!bHeld) { bAttackHeld = false; ClearGoal(); }
+			return FVector::ZeroVector;
+		}
+		if (bAttacking) return FVector::ZeroVector;   // finish the swing before chasing
+	}
+	if (Goal == EClickGoal::Talk && FVector::Dist2D(T->GetActorLocation(), GetActorLocation()) - T->Radius() <= TalkRange())
+	{
+		ClearGoal();
+		if (TalkBlocker(T).IsEmpty()) URPGStory::Get(this)->OpenDialogue(T);   // (they may have turned hostile on the way)
+		return FVector::ZeroVector;
+	}
+
+	// Holding LMB after a ground click: the destination follows the cursor.
+	if (Goal == EClickGoal::Move && bMoveHeld) { FVector G; if (CursorGround(G)) GoalPoint = G; }
+	if (T) GoalPoint = T->GetActorLocation();
+
+	RepathIn -= Dt;
+	if (Path.IsEmpty() || RepathIn <= 0.f) Repath(GoalPoint);
+	while (PathIndex < Path.Num() && FVector::Dist2D(Path[PathIndex], GetActorLocation()) < 45.f) ++PathIndex;
+	if (PathIndex >= Path.Num())
+	{
+		if (Goal == EClickGoal::Move && !bMoveHeld) ClearGoal();
+		return FVector::ZeroVector;
+	}
+	return (Path[PathIndex] - GetActorLocation()).GetSafeNormal2D();
+}
 
 void ARPGPlayerCharacter::StartCombo()
 {
@@ -555,6 +1097,7 @@ void ARPGPlayerCharacter::StartCombo()
 	// Heavier styles swing slower, daggers faster (until style-specific animations arrive).
 	const float Rate = float(RPGJson::Num(Style(), TEXT("animRate"), 1.0));
 	PlayMontage(ComboMontage, Rate);
+	SpriteAttackAt = GetWorld()->GetTimeSeconds();
 	FOnMontageEnded Ended;
 	Ended.BindUObject(this, &ARPGPlayerCharacter::OnComboEnded);
 	Anim()->Montage_SetEndDelegate(Ended, ComboMontage);
@@ -571,6 +1114,7 @@ void ARPGPlayerCharacter::CheckCombo()
 	ComboStep = Next;
 	FaceAim();
 	Anim()->Montage_JumpToSection(ComboSections[ComboStep % ComboSections.Num()], ComboMontage);
+	SpriteAttackAt = GetWorld()->GetTimeSeconds();
 }
 
 void ARPGPlayerCharacter::DoAttackTrace(FName SourceBone)
@@ -651,6 +1195,9 @@ void ARPGPlayerCharacter::FireBolt()
 void ARPGPlayerCharacter::OnSecondary()
 {
 	if (bInputLocked) return;
+	// RMB cancels the ability picker or talk mode before it blocks / draws.
+	if (Picker >= 0) { ClosePicker(false); return; }
+	if (bTalkMode) { SetTalkMode(false); return; }
 	if (bDead) return;
 	const FString Type = RPGJson::Str(RPGJson::Obj(Style(), TEXT("secondary")), TEXT("type"));
 	if (Type == TEXT("block")) { bGuardHeld = true; GuardTime = 0.f; }
@@ -698,8 +1245,10 @@ void ARPGPlayerCharacter::FireArrow(float Held)
 	H.Scaling = FName(RPGJson::Str(B, TEXT("scaling"), TEXT("agility")));
 	H.Poise = float(RPGJson::Num(B, TEXT("poise"), 20)) * Mul;
 	H.Knockback = float(RPGJson::Num(B, TEXT("knockback"), 120)) * Mul;
-	ARPGProjectile::Fire(this, From + Dir * 20.f, Dir, D.Px(RPGJson::Num(B, TEXT("speed"), 560)) * (0.6f + 0.4f * K), D.Px(RPGJson::Num(B, TEXT("range"), 520)),
-		6.f, bFull ? FLinearColor(1.f, 0.95f, 0.75f) : RPGJson::Color(RPGJson::Str(B, TEXT("color"), TEXT("#e8d9b0"))), true, H);
+	// A partial draw flies slower and not as far; the arrow arcs to land on its target.
+	const float Range = D.Px(RPGJson::Num(B, TEXT("range"), 520)) * (0.5f + 0.5f * K);
+	ARPGProjectile::FireArrow(this, From + Dir * 20.f, ArrowTarget(From, Range), D.Px(RPGJson::Num(B, TEXT("speed"), 560)) * (0.6f + 0.4f * K),
+		6.f, bFull ? FLinearColor(1.f, 0.85f, 0.3f) : RPGJson::Color(RPGJson::Str(B, TEXT("color"), TEXT("#e8d9b0"))), H);
 	if (bFull) URPGStory::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("Full draw!"), FLinearColor(1.f, 0.95f, 0.75f), 0.8f);
 }
 
@@ -720,9 +1269,16 @@ void ARPGPlayerCharacter::OnDodge()
 		URPGStory::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No stamina"), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
 		return;
 	}
-	const FRotator Yaw(0, Controller ? Controller->GetControlRotation().Yaw : GetActorRotation().Yaw, 0);
+	const FRotator Yaw = MoveFrame();
 	const FVector Wish = FRotationMatrix(Yaw).GetUnitAxis(EAxis::X) * MoveInput.Y + FRotationMatrix(Yaw).GetUnitAxis(EAxis::Y) * MoveInput.X;
-	const FVector Dir = Wish.IsNearlyZero() ? GetActorForwardVector() : Wish.GetSafeNormal();
+	// No WASD: top-down rolls toward the cursor (or along a click-to-move path), third person forward.
+	FVector Fallback = GetActorForwardVector();
+	if (bTopDown)
+	{
+		if (Goal != EClickGoal::None && Path.IsValidIndex(PathIndex)) Fallback = (Path[PathIndex] - GetActorLocation()).GetSafeNormal2D();
+		else if (const FVector To = (AimPoint() - GetActorLocation()).GetSafeNormal2D(); !To.IsNearlyZero()) Fallback = To;
+	}
+	const FVector Dir = Wish.IsNearlyZero() ? Fallback : Wish.GetSafeNormal();
 	Tags.Add(TEXT("Invulnerable"), float(Get(TEXT("iframes"), 0.26)));
 	StartDash(Dir, D.Px(Get(TEXT("speed"), 430)), float(Get(TEXT("duration"), 0.32)), nullptr);
 	if (UAnimSequenceBase* Dash = RPGAssets::Load<UAnimSequenceBase>(RPGAssets::DashAnim))
@@ -797,6 +1353,9 @@ void ARPGPlayerCharacter::Die(AActor* Killer)
 {
 	if (bDead) return;
 	Super::Die(Killer);
+	ClearGoal();
+	ClosePicker(false);
+	SetTalkMode(false);
 	DeathTimer = 3.f;
 	ShieldBubble->SetVisibility(false);
 	GuardArc->SetVisibility(false);
@@ -826,14 +1385,22 @@ void ARPGPlayerCharacter::Respawn()
 
 void ARPGPlayerCharacter::UpdateVisuals(float Dt)
 {
-	// Mana shield bubble: brighter with more mana.
-	const RPGJson::FObj Passive = PassiveStyle();
-	const bool bShield = !bDead && Passive && RPGJson::Str(Passive, TEXT("type")) == TEXT("manaShield") && Stats->Mana >= 1.f;
+	// The Mage's barrier (held RMB): a bubble engulfs him, fading as his stamina runs down.
+	const RPGJson::FObj Guarding = GuardStyle();
+	const bool bShield = !bDead && Guarding && RPGJson::Bool(Guarding, TEXT("barrier"));
 	ShieldBubble->SetVisibility(bShield);
 	if (bShield)
 	{
-		BubbleMat->SetScalarParameterValue(TEXT("Opacity"), 0.05f + 0.18f * Stats->Mana / FMath::Max(1.f, Stats->MaxMana()));
-		BubbleMat->SetScalarParameterValue(TEXT("Intensity"), 2.f);
+		// Fully around the hero: centred on the drawn sprite (taller than the old mannequin), sized to enclose it.
+		if (Sprite)
+		{
+			ShieldBubble->SetWorldLocation(Sprite->GetComponentLocation());
+			const float D = Sprite->GetComponentScale().Y * 100.f * 1.25f;   // the card's height, plus a margin
+			ShieldBubble->SetWorldScale3D(FVector(D / 100.f));
+		}
+		BarrierPulse += Dt;
+		BubbleMat->SetScalarParameterValue(TEXT("Opacity"), 0.12f + 0.2f * Stats->Stamina / FMath::Max(1.f, Stats->MaxStamina()) + 0.04f * FMath::Sin(BarrierPulse * 6.f));
+		BubbleMat->SetScalarParameterValue(TEXT("Intensity"), 3.f);
 	}
 
 	// Raised guard: the left arm comes up into a guard pose (procedural, until real block
@@ -849,7 +1416,8 @@ void ARPGPlayerCharacter::UpdateVisuals(float Dt)
 	}
 
 	// Bow draw: an aim line that grows with the draw.
-	AimLine->SetVisibility(bDrawing && !bDead);
+	AimLine->SetVisibility(false);   // (the straight aim line is replaced by the dotted arc below)
+	UpdateArcPreview();
 	if (bDrawing)
 	{
 		const float K = DrawFraction();
@@ -869,6 +1437,11 @@ void ARPGPlayerCharacter::Tick(float Dt)
 	// Camera shake from hits.
 	ShakeOffset = Story->ShakeAmount > 0.2f ? FVector(0, FMath::FRandRange(-1.f, 1.f), FMath::FRandRange(-1.f, 1.f)) * Story->ShakeAmount : FVector::ZeroVector;
 	Camera->SetRelativeLocation(ShakeOffset);
+	if (bTopDown && RPGLook::Mode() == RPGLook::EMode::Flat2D) Camera->SetOrthoWidth(FMath::FInterpTo(Camera->OrthoWidth, ZoomTarget, Dt, 8.f));
+	else if (bTopDown) CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, ZoomTarget, Dt, 8.f);
+	if (bTopDown) Camera->PostProcessSettings.DepthOfFieldFocalDistance = CameraBoom->TargetArmLength;   // keep the hero in focus while zooming
+	if (NightGlow) NightGlow->SetIntensity(5.f * ARPGWorldBuilder::Night());
+
 
 	if (bDead)
 	{
@@ -884,6 +1457,7 @@ void ARPGPlayerCharacter::Tick(float Dt)
 	CastSlow -= Dt;
 	if (bGuardHeld) GuardTime += Dt;
 	if (bDrawing) DrawTime += Dt;
+	bSpriteHold = bDrawing;
 	UpdateVisuals(Dt);
 	UpdatePoses(Dt);
 
@@ -912,8 +1486,9 @@ void ARPGPlayerCharacter::Tick(float Dt)
 	}
 	if (Tags.Has(TEXT("Staggered"))) return;
 
-	// Hold LMB to keep attacking (bolt fires on cooldown; melee restarts the combo).
-	if (bAttackHeld && !bAttacking)
+	// Hold LMB to keep attacking (bolt fires on cooldown; melee restarts the combo). A click-to-attack
+	// goal does its own attacking once in range.
+	if (bAttackHeld && !bAttacking && Goal == EClickGoal::None)
 	{
 		const RPGJson::FObj Primary = RPGJson::Obj(Style(), TEXT("primary"));
 		if (RPGJson::Str(Primary, TEXT("type")) == TEXT("bolt")) { if (BoltCooldown <= 0.f) FireBolt(); }
@@ -924,17 +1499,40 @@ void ARPGPlayerCharacter::Tick(float Dt)
 	const RPGJson::FObj Sec = RPGJson::Obj(Style(), TEXT("secondary"));
 	const bool bAiming = GuardStyle().IsValid() || bDrawing || CastSlow > 0.f;
 	GetCharacterMovement()->bOrientRotationToMovement = !bAiming && !bAttacking;
-	if (bAiming) FaceAim();
-	if (GuardStyle().IsValid()) Stats->StaminaRegenMul = float(RPGJson::Num(Sec, TEXT("staminaRegenMul"), 0.35));
+	if (bAiming && GuardStyle().IsValid() && !bDrawing) FaceThreat();   // the shield turns toward who's coming at you
+	else if (bAiming) FaceAim();
+	if (const RPGJson::FObj G = GuardStyle())
+	{
+		// Holding a shield (or the Mage's barrier) wears you out: stamina drains, and when it's gone the guard drops.
+		Stats->StaminaRegenMul = float(RPGJson::Num(G, TEXT("staminaRegenMul"), 0.35));
+		const float Drain = float(RPGJson::Num(G, TEXT("staminaDrain"), 0)) * Dt;
+		if (Drain > 0.f)
+		{
+			Stats->Stamina = FMath::Max(0.f, Stats->Stamina - Drain);
+			Stats->StaminaDelay = FMath::Max(Stats->StaminaDelay, 0.3f);
+			if (Stats->Stamina <= 0.f)
+			{
+				bGuardHeld = false;
+				URPGStory::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("Too tired to block"), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
+			}
+		}
+	}
 
-	if (Controller && !MoveInput.IsNearlyZero())
+	// Movement: WASD / stick (cancels any click-to-move), or the click-to-move path.
+	if (!MoveInput.IsNearlyZero()) ClearGoal();
+	const FVector ClickDir = UpdateClickGoal(Dt);
+	if (Controller && (!MoveInput.IsNearlyZero() || !ClickDir.IsNearlyZero()))
 	{
 		float Mul = 1.f;
 		if (bAttacking) Mul = float(RPGJson::Num(URPGData::Get(this).Section(TEXT("combat")), TEXT("attackMoveMul"), 0.35));
 		else if (bAiming && (GuardStyle().IsValid() || bDrawing)) Mul = float(RPGJson::Num(Sec, TEXT("moveMul"), 0.5));
 		else if (CastSlow > 0.f) Mul = 0.6f;
-		const FRotator Yaw(0, Controller->GetControlRotation().Yaw, 0);
-		AddMovementInput(FRotationMatrix(Yaw).GetUnitAxis(EAxis::X), MoveInput.Y * Mul);
-		AddMovementInput(FRotationMatrix(Yaw).GetUnitAxis(EAxis::Y), MoveInput.X * Mul);
+		if (!ClickDir.IsNearlyZero()) AddMovementInput(ClickDir, Mul);
+		else
+		{
+			const FRotator Yaw = MoveFrame();
+			AddMovementInput(FRotationMatrix(Yaw).GetUnitAxis(EAxis::X), MoveInput.Y * Mul);
+			AddMovementInput(FRotationMatrix(Yaw).GetUnitAxis(EAxis::Y), MoveInput.X * Mul);
+		}
 	}
 }

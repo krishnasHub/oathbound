@@ -14,7 +14,7 @@
   .\play.ps1                          # play (full-screen, starts at character select)
   .\play.ps1 -Windowed                # play in a 1600x900 window
   .\play.ps1 -Class mage -Sex female  # skip character select
-  .\play.ps1 -Test                    # run every automated scenario and report PASS/FAIL
+  .\play.ps1 -Test                    # run every automated scenario (as many at once as this PC allows; -Parallel N) and report PASS/FAIL
   .\play.ps1 -Package                 # build a standalone game (Dist\Windows\ActionRPG.exe) and run it
   .\play.ps1 -Rebuild                 # force a full recompile first
 #>
@@ -24,7 +24,8 @@ param(
     [string] $Sex = "",
     [switch] $Test,
     [switch] $Package,
-    [switch] $Rebuild
+    [switch] $Rebuild,
+    [int] $Parallel = 0        # -Test: scenarios running at once (0 = decide from this PC; 1 = one by one)
 )
 
 $ErrorActionPreference = "Stop"
@@ -92,10 +93,10 @@ if ($needBuild) {
 # ------------------------------------------------------------------------------------------------
 # 4. Generated assets (materials) - first run only
 # ------------------------------------------------------------------------------------------------
-if (-not (Test-Path (Join-Path $ProjDir "Content\RPG\Materials\M_RPG_Glow.uasset"))) {
+if (-not (Test-Path (Join-Path $ProjDir "Content\RPG\Materials\M_RPG_Glow.uasset")) -or -not (Test-Path (Join-Path $ProjDir "Content\RPG\Materials\M_RPG_Sprite.uasset"))) {
     Step "Generating game materials (first run only)"
     $cmd = Join-Path $UE "Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
-    foreach ($script in @("fix_material_usage.py", "create_materials.py")) {
+    foreach ($script in @("fix_material_usage.py", "create_materials.py", "import_pixel.py")) {
         & $cmd "$Proj" -run=pythonscript -script="$(Join-Path $ProjDir "Tools\$script")" -unattended -nosplash -nullrhi | Out-Null
     }
 }
@@ -104,19 +105,53 @@ if (-not (Test-Path (Join-Path $ProjDir "Content\RPG\Materials\M_RPG_Glow.uasset
 # Test mode: every scenario, PASS / FAIL
 # ------------------------------------------------------------------------------------------------
 if ($Test) {
-    $scenarios = [ordered]@{ combat = "knight"; block = "knight"; elder = "knight"; bridge = "knight"; mage = "mage"; thief = "thief" }
+    # Each scenario is its own game process with its own log (-abslog), so several run at once.
+    $scenarios = [ordered]@{ combat = "knight"; block = "knight"; elder = "knight"; bridge = "knight"; mage = "mage"; thief = "thief"; walk = "knight"; picker = "mage"; smoke = "thief"; pause = "knight"; click = "knight" }
+    $logDir = Join-Path $ProjDir "Saved\Logs\Tests"
+    New-Item -ItemType Directory -Force $logDir | Out-Null
+    if ($Parallel -le 0) {
+        # Size the batch to this PC: each game instance needs roughly 3 CPU cores, 2.5 GB of RAM (keeping 4 GB for
+        # Windows) and 2 GB of video memory. Whichever runs out first sets the limit.
+        $cores = (Get-CimInstance Win32_Processor | Measure-Object NumberOfCores -Sum).Sum
+        $freeGB = [math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB, 1)
+        $vramGB = 0
+        try {
+            $vramGB = (Get-ItemProperty "HKLM:\SYSTEM\ControlSet001\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0*" -Name "HardwareInformation.qwMemorySize" -ErrorAction Stop |
+                ForEach-Object { $_."HardwareInformation.qwMemorySize" } | Measure-Object -Maximum).Maximum / 1GB
+        } catch {}
+        if ($vramGB -le 0) { $vramGB = 4 }   # unknown: assume a modest card
+        $byCpu = [math]::Floor($cores / 3)
+        $byRam = [math]::Floor(($freeGB - 4) / 2.5)
+        $byGpu = [math]::Floor($vramGB / 2)
+        $Parallel = [math]::Max(1, [math]::Min([math]::Min($byCpu, $byRam), [math]::Min($byGpu, $scenarios.Count)))
+        Note ("This PC: {0} cores, {1} GB RAM free, {2:n0} GB video memory -> CPU allows {3}, RAM {4}, GPU {5}: running {6} at a time" -f $cores, $freeGB, $vramGB, $byCpu, $byRam, $byGpu, $Parallel)
+    }
+    $started = Get-Date
+    $queue = [System.Collections.Generic.Queue[string]]::new([string[]]$scenarios.Keys)
+    $running = @{}
+    Step "Running $($scenarios.Count) scenarios, $Parallel at a time"
+    while ($queue.Count -gt 0 -or $running.Count -gt 0) {
+        while ($queue.Count -gt 0 -and $running.Count -lt $Parallel) {
+            $name = $queue.Dequeue()
+            $log = Join-Path $logDir "$name.log"
+            Remove-Item $log -ErrorAction SilentlyContinue
+            $a = @("`"$Proj`"", "-game", "-windowed", "-ResX=960", "-ResY=540", "-log", "-abslog=`"$log`"", "-RPGNoInput", "-RPGTest=$name", "-RPGClass=$($scenarios[$name])")
+            $running[$name] = @{ Proc = (Start-Process -FilePath $Editor -ArgumentList $a -PassThru); Start = Get-Date }
+        }
+        foreach ($name in @($running.Keys)) {
+            $r = $running[$name]
+            if ($r.Proc.HasExited) { $running.Remove($name); Note ("{0,-8} finished in {1:n0}s" -f $name, ((Get-Date) - $r.Start).TotalSeconds) }
+            elseif (((Get-Date) - $r.Start).TotalSeconds -gt 240) { Stop-Process -Id $r.Proc.Id -Force; $running.Remove($name); Note "$name timed out" }
+        }
+        Start-Sleep -Milliseconds 300
+    }
     $results = @()
     foreach ($name in $scenarios.Keys) {
-        Step "Test: $name"
-        $a = @("`"$Proj`"", "-game", "-windowed", "-ResX=1280", "-ResY=720", "-log", "-RPGNoInput", "-RPGTest=$name", "-RPGClass=$($scenarios[$name])")
-        $p = Start-Process -FilePath $Editor -ArgumentList $a -PassThru
-        if (-not $p.WaitForExit(180000)) { Stop-Process -Id $p.Id -Force; Note "timed out" }
+        $log = Join-Path $logDir "$name.log"
         $lines = @()
-        if (Test-Path $Log) {
-            $lines = Select-String -Path $Log -Pattern "\[TEST $name" | ForEach-Object { $_.Line -replace "^\[.*?\]\[.*?\]LogRPG: Display: ", "" }
-        }
-        $lines | ForEach-Object { Note $_ }
+        if (Test-Path $log) { $lines = Select-String -Path $log -Pattern "\[TEST $name" | ForEach-Object { $_.Line -replace "^\[.*?\]\[.*?\]LogRPG: Display: ", "" } }
         $ok = ($lines | Where-Object { $_ -match "\] done" }).Count -gt 0 -and ($lines | Where-Object { $_ -match "FAIL" }).Count -eq 0
+        if (-not $ok) { Write-Host "  --- $name ---" -ForegroundColor DarkGray; $lines | ForEach-Object { Note $_ } }
         $results += [pscustomobject]@{ Scenario = $name; Result = $(if ($ok) { "PASS" } else { "FAIL" }) }
     }
     Write-Host ""
@@ -124,6 +159,7 @@ if ($Test) {
         $color = "Green"; if ($r.Result -ne "PASS") { $color = "Red" }
         Write-Host ("  {0,-8} {1}" -f $r.Scenario, $r.Result) -ForegroundColor $color
     }
+    Write-Host ("  all done in {0:n0}s (logs: {1})" -f ((Get-Date) - $started).TotalSeconds, $logDir)
     if ($results | Where-Object { $_.Result -ne "PASS" }) { exit 1 }
     exit 0
 }

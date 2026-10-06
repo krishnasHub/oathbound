@@ -1,9 +1,11 @@
 #include "RPGHUD.h"
+#include "RPGWorldBuilder.h"
 #include "RPGStory.h"
 #include "RPGData.h"
 #include "RPGEnemy.h"
 #include "RPGNPC.h"
 #include "RPGPlayerCharacter.h"
+#include "RPGPlayerController.h"
 
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
@@ -35,6 +37,7 @@ void ARPGHUD::Bar(float X, float Y, float W, float H, float Frac, const FLinearC
 
 void ARPGHUD::DrawHUD()
 {
+	if (const ARPGPlayerController* PCtl = Cast<ARPGPlayerController>(PlayerOwner); PCtl && (PCtl->IsInTitle() || PCtl->IsInCharSelect())) { Super::DrawHUD(); return; }
 	Super::DrawHUD();
 	URPGStory* Story = URPGStory::Get(this);
 	ARPGPlayerCharacter* P = Story ? Story->Player() : nullptr;
@@ -48,6 +51,7 @@ void ARPGHUD::DrawHUD()
 		if (C == P || C->IsDead() || C->IsHidden()) continue;
 		const float Dist = FVector::Dist(C->GetActorLocation(), P->GetActorLocation());
 		if (Dist > 3500.f) continue;
+		if (!ARPGWorldBuilder::IsLit(C->GetActorLocation(), P->GetActorLocation())) continue;   // lost in the dark
 		const FVector S = Project(C->Head() + FVector(0, 0, 45.f), false);
 		if (S.Z <= 0.f) continue;   // behind the camera
 
@@ -122,9 +126,10 @@ void ARPGHUD::DrawHUD()
 
 	if (Story->IsDialogueOpen() || P->IsDead()) return;
 
-	// Crosshair for ranged styles / aiming.
+	// Crosshair for ranged styles / aiming (third person; top-down aims with the mouse cursor).
 	const RPGJson::FObj Style = P->Style();
-	const bool bRanged = RPGJson::Str(RPGJson::Obj(Style, TEXT("primary")), TEXT("type")) == TEXT("bolt") || P->IsDrawing();
+	const bool bRanged = !ARPGPlayerCharacter::IsTopDown(this)
+		&& (RPGJson::Str(RPGJson::Obj(Style, TEXT("primary")), TEXT("type")) == TEXT("bolt") || P->IsDrawing());
 	if (bRanged)
 	{
 		const float R = 4.f * UI;
@@ -133,8 +138,48 @@ void ARPGHUD::DrawHUD()
 		Canvas->DrawItem(Dot);
 	}
 
-	// Talk prompt.
-	if (ARPGCharacterBase* T = P->TalkTarget())
+	// Top-down: a ring where a click-to-move is heading, and the name of what the cursor is on.
+	if (ARPGPlayerCharacter::IsTopDown(this))
+	{
+		FVector Dest;
+		if (P->ClickDestination(Dest))
+		{
+			const float Pulse = 38.f + 6.f * FMath::Sin(GetWorld()->GetRealTimeSeconds() * 8.f);
+			FVector2D Prev;
+			for (int32 I = 0; I <= 20; ++I)
+			{
+				const float A = I * UE_TWO_PI / 20.f;
+				const FVector S = Project(Dest + FVector(FMath::Cos(A), FMath::Sin(A), 0.f) * Pulse + FVector(0, 0, 4), false);
+				const FVector2D Cur(S.X, S.Y);
+				if (I > 0 && S.Z > 0)
+				{
+					FCanvasLineItem L(Prev, Cur);
+					L.SetColor(FLinearColor(1.f, 0.9f, 0.55f, 0.85f));
+					L.LineThickness = 2.f * UI;
+					Canvas->DrawItem(L);
+				}
+				Prev = Cur;
+			}
+		}
+		// Hover: red = a click fights them; white = a click talks; grey = can't talk (talk mode).
+		bool bHostile = false;
+		const ARPGCharacterBase* H = P->UnderCursor(bHostile);
+		if (H)
+		{
+			const FVector S = Project(H->Head() + FVector(0, 0, 40), false);
+			const bool bTalk = P->IsTalkMode() || !bHostile;
+			const FString Why = bTalk ? P->TalkBlocker(H) : FString();
+			const FLinearColor C = !bTalk ? FLinearColor(1.f, 0.35f, 0.3f) : Why.IsEmpty() ? FLinearColor(0.95f, 0.95f, 0.85f) : FLinearColor(0.6f, 0.6f, 0.6f);
+			if (S.Z > 0) Text(bTalk ? TEXT("Talk: ") + H->DisplayName : H->DisplayName, S.X, S.Y, C, 0.8f * UI);
+		}
+		// Talk mode: a label next to the cursor.
+		float MX = 0.f, MY = 0.f;
+		if (P->IsTalkMode() && PlayerOwner->GetMousePosition(MX, MY))
+			Text(TEXT("TALK  (click someone · E / RMB to cancel)"), MX + 18.f * UI, MY + 26.f * UI, FLinearColor(0.95f, 0.85f, 0.5f), 0.65f * UI, false);
+	}
+
+	// Talk prompt (third person; top-down talks with the cursor).
+	if (ARPGCharacterBase* T = ARPGPlayerCharacter::IsTopDown(this) ? nullptr : P->TalkTarget())
 	{
 		Text(FString::Printf(TEXT("[E] Talk to %s"), *T->DisplayName), Center.X, Canvas->ClipY * 0.72f, FLinearColor::White, 1.f * UI);
 	}

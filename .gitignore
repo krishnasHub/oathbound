@@ -17,3 +17,8 @@ unreal/Platforms/
 
 # Cooker-generated file order logs
 unreal/Build/*/FileOpenOrder/
+
+# Pixel-art generator previews and caches
+tools/pixelart/out/
+__pycache__/
+*.pyc

@@ -6,6 +6,7 @@
 #include "Components/SceneComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Particles/ParticleSystem.h"
+#include "Particles/ParticleSystemComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
 
@@ -102,14 +103,17 @@ void ARPGFX::Burst(UWorld* W, const FVector& At, float InRadius, const FLinearCo
 	F->Light->RegisterComponent();
 }
 
-void ARPGFX::Smoke(UWorld* W, const FVector& At, float InRadius)
+void ARPGFX::Smoke(UWorld* W, const FVector& At, float InRadius, float Duration)
 {
+	ARPGFX* F = Make(W, At, EKind::Smoke, Duration + 2.f);   // + SmokeFade
 	if (UParticleSystem* PS = RPGAssets::Load<UParticleSystem>(TEXT("/Game/StarterContent/Particles/P_Smoke.P_Smoke")))
 	{
 		for (int32 I = 0; I < 4; ++I)
 		{
 			const FVector Off(FMath::FRandRange(-InRadius, InRadius) * 0.4f, FMath::FRandRange(-InRadius, InRadius) * 0.4f, 0);
-			UGameplayStatics::SpawnEmitterAtLocation(W, PS, At + Off, FRotator::ZeroRotator, FVector(InRadius / 150.f));
+			if (UParticleSystemComponent* E = UGameplayStatics::SpawnEmitterAttached(PS, F->RootComponent, NAME_None, Off, FRotator::ZeroRotator,
+				FVector(InRadius / 150.f), EAttachLocation::KeepRelativeOffset, /*bAutoDestroy*/ false))
+				F->Emitters.Add(E);
 		}
 	}
 	Ring(W, At, InRadius, FLinearColor(0.6f, 0.62f, 0.66f), 0.8f);
@@ -134,6 +138,12 @@ void ARPGFX::Tick(float Dt)
 	else if (Kind == EKind::Bolt)
 	{
 		for (UMaterialInstanceDynamic* M : Mats) M->SetScalarParameterValue(TEXT("Intensity"), 25.f * (1.f - K));
+	}
+	else if (Kind == EKind::Smoke && !bSmokeStopped && Age >= Life - SmokeFade)
+	{
+		// The cloud is done: stop making smoke and let what's in the air drift off before the actor goes.
+		bSmokeStopped = true;
+		for (UParticleSystemComponent* E : Emitters) if (E) E->Deactivate();
 	}
 	if (Light) Light->SetIntensity(LightBase * (1.f - K));
 	if (Age >= Life) Destroy();

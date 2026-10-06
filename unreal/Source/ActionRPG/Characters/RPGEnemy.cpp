@@ -287,6 +287,7 @@ void ARPGEnemy::RunAI(float Dt)
 		if (T <= 0.f)
 		{
 			PerformAttack();
+			SpriteAttackAt = GetWorld()->GetTimeSeconds();
 			State = ERPGEnemyState::Recover;
 			T = float(RPGJson::Num(CurAtk, TEXT("recover"), 0.6));
 		}
@@ -404,9 +405,9 @@ void ARPGEnemy::PerformAttack()
 	{
 		const RPGJson::FObj Pr = RPGJson::Obj(A, TEXT("projectile"));
 		const FVector From = Chest() + Facing() * (Radius() + 20.f);
-		const FVector Aim = (P->Chest() - From).GetSafeNormal();
-		ARPGProjectile::Fire(this, From, Aim, D.Px(RPGJson::Num(Pr, TEXT("speed"), 300)), D.Px(RPGJson::Num(Pr, TEXT("range"), 420)),
-			D.Px(RPGJson::Num(Pr, TEXT("radius"), 4)), RPGJson::Color(RPGJson::Str(Pr, TEXT("color"), TEXT("#f0e6c8"))), true, Hit);
+		// An arrow lobbed at where the player stands now: keep moving and it lands behind you.
+		ARPGProjectile::FireArrow(this, From, P->Chest(), D.Px(RPGJson::Num(Pr, TEXT("speed"), 300)),
+			D.Px(RPGJson::Num(Pr, TEXT("radius"), 4)), RPGJson::Color(RPGJson::Str(Pr, TEXT("fletch"), TEXT("#c83a2a"))), Hit);
 	}
 
 	RevealT = float(RPGJson::Num(RPGJson::Obj(D.Section(TEXT("tuning")), TEXT("threatSense")), TEXT("revealAfterAttack"), 1.5));

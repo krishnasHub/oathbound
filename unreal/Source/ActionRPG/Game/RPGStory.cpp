@@ -188,11 +188,9 @@ void URPGStory::UpdateEncounters()
 		for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->Type == RPGJson::Str(Enc, TEXT("leader"))) { Leader = *It; break; }
 		if (!Leader || Leader->IsDead() || !Leader->IsPassive()) continue;
 
-		if (!HasFlag(RPGJson::Str(Enc, TEXT("metFlag"))) && FVector::Dist2D(Leader->GetActorLocation(), P->GetActorLocation()) < D.Px(RPGJson::Num(Enc, TEXT("parleyRange"), 150)))
-		{
-			OpenDialogue(Leader);   // they stop you
-		}
-		else if (P->GetActorLocation().Y > RPGJson::Num(Enc, TEXT("crossRow"), 12) * D.TileSize + 30.f)
+		// (Nobody stops you to talk: the hero chooses to talk (E + click) or to fight. Slipping past without either
+		// still turns the faction hostile.)
+		if (P->GetActorLocation().Y > RPGJson::Num(Enc, TEXT("crossRow"), 12) * D.TileSize + 30.f)
 		{
 			SetHostile(RPGJson::Str(Enc, TEXT("faction")), RPGJson::Str(Enc, TEXT("crossBark")));   // you tried to slip past
 		}

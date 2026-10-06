@@ -2,6 +2,10 @@
 
 Working title: TBD. Setting: TBD (mechanics-first; the prototype uses neutral placeholder fantasy).
 
+> **Direction (2026-10-05):** the game is a **top-down HD-2D** game in Unreal (pixel-art sprites in a lit 3D world,
+> mouse-driven: click to move / attack / talk). The HTML prototype stays as the test bed for the rules. See
+> `SO_FAR.md` for the current state; the sections below are the rules both versions share.
+
 ## Goals for this phase
 
 1. **Get the mechanics right.** The rules below are the source of truth.

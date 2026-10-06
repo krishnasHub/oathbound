@@ -3,9 +3,13 @@
 #include "RPGData.h"
 #include "RPGStory.h"
 #include "RPGPlayerCharacter.h"
+#include "RPGPlayerController.h"
+#include "SRPGWidgets.h"
+#include "GameFramework/GameModeBase.h"
 #include "RPGEnemy.h"
 #include "RPGLoot.h"
 #include "RPGInventoryComponent.h"
+#include "RPGAbilityComponent.h"
 
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -18,6 +22,10 @@
 #include "Engine/GameViewportClient.h"
 #include "Engine/Engine.h"
 #include "Camera/CameraActor.h"
+#include "Kismet/GameplayStatics.h"
+#include "Particles/ParticleSystem.h"
+#include "Particles/ParticleSystemComponent.h"
+#include "UObject/UObjectIterator.h"
 
 ARPGSelfTest::ARPGSelfTest()
 {
@@ -110,12 +118,19 @@ void ARPGSelfTest::Tick(float Dt)
 		{
 			Place(Brask->Home + FVector(-280, -390, 0), 35.f);
 			AimAt(Brask->GetActorLocation());
-			Report(TEXT("walked up to the bridge"));
-			Step = 1; Next = T + 1.5f;
+			Report(FString::Printf(TEXT("%s: walked up to the bridge: nobody stops us (dialogue open=%d)"), S->IsDialogueOpen() ? TEXT("FAIL") : TEXT("PASS"), S->IsDialogueOpen()));
+			Step = 10; Next = T + 1.5f;
+		}
+		else if (Step == 10)
+		{
+			if (S->IsDialogueOpen()) { Report(TEXT("FAIL: a dialogue opened by itself")); Quit(0.5f); return; }
+			Pl->TryTalk(Brask);   // the player chooses to talk (E + click on Brask)
+			Report(TEXT("chose to talk to Brask"));
+			Step = 1; Next = T + 2.f;
 		}
 		else if (Step == 1)
 		{
-			if (!S->IsDialogueOpen()) { Report(TEXT("FAIL: Brask did not stop us")); Quit(0.5f); return; }
+			if (!S->IsDialogueOpen()) { Report(TEXT("FAIL: talking to Brask did not open the parley")); Quit(0.5f); return; }
 			FString Opts;
 			for (const FRPGChoiceView& V : S->ChoiceViews) Opts += TEXT("\n      ") + (V.Verb.IsEmpty() ? FString() : TEXT("[") + V.Verb + TEXT("] ")) + V.Text;
 			Report(TEXT("parley: ") + S->DialogueSpeaker + TEXT(": ") + S->DialogueText + Opts);
@@ -171,9 +186,13 @@ void ARPGSelfTest::Tick(float Dt)
 			const FKeyEvent Down(EKeys::One, FModifierKeysState(), 0, false, '1', '1');
 			FSlateApplication::Get().ProcessKeyDownEvent(Down);
 			FSlateApplication::Get().ProcessKeyUpEvent(Down);
+			Step = 31; Next = T + 0.7f;   // the choice flashes and fades (~0.4 s) before it's made
+		}
+		else if (Step == 31)
+		{
 			Report(FString::Printf(TEXT("after pressing 1: dialogue open=%d, paused=%d"), S->IsDialogueOpen(), GetWorld()->IsPaused()));
 			if (S->IsDialogueOpen()) { Report(TEXT("FAIL: pressing 1 did not answer the dialogue")); Quit(0.5f); return; }
-			Step = 4; Next = T + 3.f;
+			Step = 4; Next = T + 2.3f;
 		}
 		else if (Step == 4)
 		{
@@ -191,8 +210,11 @@ void ARPGSelfTest::Tick(float Dt)
 		if (Step == 0)
 		{
 			Target = Find(TEXT("slime"));
+			// Just this slime: anything else nearby could join in from the side, which a shield rightly doesn't cover.
+			for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It)
+				if (*It != Target.Get() && FVector::Dist2D(It->GetActorLocation(), Target->GetActorLocation()) < 2500.f) It->Destroy();
 			Place(Target->GetActorLocation() - FVector(150, 0, 0), 0);
-			AimAt(Target->GetActorLocation());
+			AimAt(Pl->GetActorLocation() - (Target->GetActorLocation() - Pl->GetActorLocation()));   // aim AWAY: the shield must turn to the threat itself
 			Pl->TestPress(TEXT("Secondary"), true);   // raise the shield early (normal block, not perfect)
 			Report(FString::Printf(TEXT("shield raised: guarding=%d, HP %.0f, stamina %.0f"), Pl->IsGuarding(), Pl->Stats->HP, Pl->Stats->Stamina));
 			Step = 1; Next = T + 1.0f;
@@ -224,9 +246,303 @@ void ARPGSelfTest::Tick(float Dt)
 		}
 		else if (Step == 3)
 		{
-			Report(FString::Printf(TEXT("after the slime's attacks: HP %d -> %.0f (unblocked hit is ~7), stamina %.0f, guarding=%d"), Swings, Pl->Stats->HP, Pl->Stats->Stamina, Pl->IsGuarding()));
+			Report(FString::Printf(TEXT("%s: after the slime's attacks: HP %d -> %.0f (an unblocked hit is ~7; a shield block stops it all), stamina %.0f, guarding=%d"),
+				FMath::RoundToInt(Pl->Stats->HP) >= Swings ? TEXT("PASS") : TEXT("FAIL"), Swings, Pl->Stats->HP, Pl->Stats->Stamina, Pl->IsGuarding()));
 			Pl->TestPress(TEXT("Secondary"), false);
 			Quit(1.f);
+		}
+	}
+	// ---------------------------------------------------------------------------------------------
+	else if (Scenario == TEXT("walk"))
+	{
+		// Top-down click-to-move: path around a cottage, click a villager to talk, click a slime to fight.
+		auto Ground = [&](float X, float Y)
+		{
+			FHitResult H;
+			FCollisionQueryParams Q(SCENE_QUERY_STAT(TestGround), false, Pl);
+			return GetWorld()->LineTraceSingleByChannel(H, FVector(X, Y, 5000.f), FVector(X, Y, -5000.f), ECC_Visibility, Q) ? H.ImpactPoint : FVector(X, Y, 0.f);
+		};
+		if (Step == 0)
+		{
+			// The first cottage: start on its north side, click the far (south) side.
+			FIntPoint Top(-1, -1);
+			for (int32 Y = 1; Y < D.MapH && Top.X < 0; ++Y)
+				for (int32 X = 0; X < D.MapW; ++X)
+					if (D.Rows[Y][X] == TEXT('H') && D.Rows[Y - 1][X] != TEXT('H')) { Top = FIntPoint(X, Y); break; }
+			if (Top.X < 0) { Report(TEXT("FAIL: no house")); Quit(0.5f); return; }
+			int32 Bottom = Top.Y;
+			while (Bottom + 1 < D.MapH && D.Rows[Bottom + 1][Top.X] == TEXT('H')) ++Bottom;
+			const FVector From = D.TileCenter(Top.X, Top.Y - 1), To = D.TileCenter(Top.X, Bottom + 1);
+			Place(Ground(From.X, From.Y), 90.f);
+			WalkGoal = Ground(To.X, To.Y);
+			Report(FString::Printf(TEXT("north of the house at tile (%d,%d); clicking (%d,%d) on its far side"), Top.X, Top.Y - 1, Top.X, Bottom + 1));
+			Step = 1; Next = T + 3.f;   // let the runtime navmesh build
+		}
+		else if (Step == 1)
+		{
+			Pl->TestClick(WalkGoal);
+			Corners = 0;
+			Started = T;
+			Step = 2; Next = T + 0.2f;
+		}
+		else if (Step == 2)
+		{
+			Corners = FMath::Max(Corners, Pl->GetPath().Num());
+			if (Pl->GetClickGoal() == ARPGPlayerCharacter::EClickGoal::None)
+			{
+				const float Miss = FVector::Dist2D(Pl->GetActorLocation(), WalkGoal);
+				Report(FString::Printf(TEXT("%s: arrived %.0fuu from the click in %.1fs, path had %d points (%s)"),
+					Miss < 120.f ? TEXT("PASS") : TEXT("FAIL"), Miss, T - Started, Corners, Corners > 2 ? TEXT("navmesh, around the house") : TEXT("straight line")));
+				Step = 3; Next = T + 0.5f;
+			}
+			else if (T - Started > 15.f) { Report(FString::Printf(TEXT("FAIL: still walking after 15s, %.0fuu short (path had %d points)"), FVector::Dist2D(Pl->GetActorLocation(), WalkGoal), Corners)); Step = 3; }
+			else Next = T + 0.2f;
+		}
+		else if (Step == 3)
+		{
+			ARPGCharacterBase* Elder = nullptr;
+			for (TActorIterator<ARPGCharacterBase> It(GetWorld()); It; ++It) if (It->TalkKey == TEXT("elder")) Elder = *It;
+			if (!Elder) { Report(TEXT("FAIL: no elder")); Quit(0.5f); return; }
+			Place(Ground(Elder->GetActorLocation().X + 550.f, Elder->GetActorLocation().Y + 250.f), 180.f);
+			Pl->TestClick(Elder->GetActorLocation(), Elder);
+			Started = T;
+			Step = 4; Next = T + 0.2f;
+		}
+		else if (Step == 4)
+		{
+			if (S->IsDialogueOpen())
+			{
+				Report(FString::Printf(TEXT("PASS: clicked the elder, walked up, dialogue opened in %.1fs: %s"), T - Started, *S->DialogueSpeaker));
+				S->CloseDialogue();
+				Step = 5; Next = T + 0.5f;
+			}
+			else if (T - Started > 10.f) { Report(TEXT("FAIL: dialogue never opened")); Step = 5; }
+			else Next = T + 0.2f;
+		}
+		else if (Step == 5)
+		{
+			Target = Find(TEXT("slime"));
+			if (!Target.IsValid()) { Report(TEXT("FAIL: no slime")); Quit(0.5f); return; }
+			const FVector At = Target->GetActorLocation();
+			Place(Ground(At.X - 600.f, At.Y), 0.f);
+			Started = T;
+			Swings = 0;
+			Step = 6; Next = T + 0.3f;
+		}
+		else if (Step == 6)
+		{
+			if (!Target.IsValid() || Target->IsDead())
+			{
+				Report(FString::Printf(TEXT("PASS: click-attacked the slime from 600uu away; dead after %d clicks, %.1fs"), Swings, T - Started));
+				Quit(1.f);
+				return;
+			}
+			if (T - Started > 25.f) { Report(TEXT("FAIL: slime never died")); Quit(0.5f); return; }
+			Pl->Stats->Stamina = Pl->Stats->MaxStamina();
+			Pl->TestClick(Target->GetActorLocation(), Target.Get());
+			++Swings;
+			Next = T + 0.45f;
+		}
+	}
+	// ---------------------------------------------------------------------------------------------
+	else if (Scenario == TEXT("click"))
+	{
+		// One real mouse click (move, press, release through Slate, like the OS) on a dialogue choice must answer it.
+		ARPGPlayerController* PC = Cast<ARPGPlayerController>(Pl->GetController());
+		ARPGCharacterBase* Elder = nullptr;
+		for (TActorIterator<ARPGCharacterBase> It(GetWorld()); It; ++It) if (It->TalkKey == TEXT("elder")) Elder = *It;
+		if (!PC || !Elder) { Report(TEXT("FAIL: no elder")); Quit(0.5f); return; }
+		if (Step == 0)
+		{
+			// Like playing: click on the game view first (the viewport takes the mouse), then the dialogue opens.
+			Place(Elder->GetActorLocation() + FVector(160, 140, -90), 0);
+			FSlateApplication& App = FSlateApplication::Get();
+			const FVector2D Mid = App.GetActiveTopLevelWindow().IsValid() ? App.GetActiveTopLevelWindow()->GetPositionInScreen() + App.GetActiveTopLevelWindow()->GetSizeInScreen() * 0.5f : FVector2D(800, 450);
+			TSet<FKey> Held = { EKeys::LeftMouseButton };
+			App.ProcessMouseMoveEvent(FPointerEvent(0, 0, Mid, Mid, TSet<FKey>(), EKeys::Invalid, 0, FModifierKeysState()));
+			App.ProcessMouseButtonDownEvent(nullptr, FPointerEvent(0, 0, Mid, Mid, Held, EKeys::LeftMouseButton, 0, FModifierKeysState()));
+			App.ProcessMouseButtonUpEvent(FPointerEvent(0, 0, Mid, Mid, TSet<FKey>(), EKeys::LeftMouseButton, 0, FModifierKeysState()));
+			Step = 10; Next = T + 0.3f;
+		}
+		else if (Step == 10)
+		{
+			S->OpenDialogue(Elder);
+			Step = 1; Next = T + 1.f;   // let it lay out
+		}
+		else if (Step == 1)
+		{
+			if (!S->IsDialogueOpen() || !PC->GetDialogue()) { Report(TEXT("FAIL: dialogue did not open")); Quit(0.5f); return; }
+			ClickNode = S->DialogueText;
+			int32 Choice = INDEX_NONE;
+			for (int32 I = 0; I < S->ChoiceViews.Num() && Choice == INDEX_NONE; ++I) if (S->ChoiceViews[I].bEnabled) Choice = I;
+			const FVector2D At = PC->GetDialogue()->ChoiceScreenCenter(Choice);
+			FSlateApplication& App = FSlateApplication::Get();
+			App.ProcessMouseMoveEvent(FPointerEvent(0, 0, At, At - FVector2D(4, 0), TSet<FKey>(), EKeys::Invalid, 0, FModifierKeysState()));
+			TSet<FKey> Held = { EKeys::LeftMouseButton };
+			App.ProcessMouseButtonDownEvent(nullptr, FPointerEvent(0, 0, At, At, Held, EKeys::LeftMouseButton, 0, FModifierKeysState()));
+			App.ProcessMouseButtonUpEvent(FPointerEvent(0, 0, At, At, TSet<FKey>(), EKeys::LeftMouseButton, 0, FModifierKeysState()));
+			Report(FString::Printf(TEXT("one click on choice %d (\"%s\") at %.0f,%.0f"), Choice + 1, *S->ChoiceViews[Choice].Text.Left(40), At.X, At.Y));
+			Step = 2; Next = T + 0.12f;
+		}
+		else if (Step == 2)
+		{
+			FScreenshotRequest::RequestScreenshot(FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots/RPG/click_chosen.png")), true, false);
+			Step = 3; Next = T + 0.8f;
+		}
+		else if (Step == 3)
+		{
+			const bool bMoved = !S->IsDialogueOpen() || S->DialogueText != ClickNode;
+			Report(FString::Printf(TEXT("%s: a single click answered the dialogue (now: %s)"), bMoved ? TEXT("PASS") : TEXT("FAIL"),
+				S->IsDialogueOpen() ? *S->DialogueText.Left(60) : TEXT("closed")));
+			if (S->IsDialogueOpen()) S->CloseDialogue();
+			Quit(0.5f);
+		}
+	}
+	// ---------------------------------------------------------------------------------------------
+	else if (Scenario == TEXT("pause"))
+	{
+		// Esc: picker first, then the pause menu; Resume; New Game reloads into character select with a fresh story.
+		ARPGPlayerController* PC = Cast<ARPGPlayerController>(Pl->GetController());
+		if (!PC) { Report(TEXT("FAIL: no controller")); Quit(0.5f); return; }
+		const AGameModeBase* GM = GetWorld()->GetAuthGameMode();
+		if (Step == 0 && GM && UGameplayStatics::HasOption(GM->OptionsString, TEXT("RPGNewGame")))
+		{
+			// The second world, after New Game.
+			Report(FString::Printf(TEXT("%s: after New Game: character select=%d, paused=%d, quests started=%d"),
+				PC->IsInCharSelect() && !UGameplayStatics::IsGamePaused(this) && S->Quests.Num() == 0 ? TEXT("PASS") : TEXT("FAIL"),
+				PC->IsInCharSelect(), UGameplayStatics::IsGamePaused(this), S->Quests.Num()));
+			Quit(0.5f);
+			return;
+		}
+		if (Step == 0)
+		{
+			S->StartQuest(TEXT("slime_cull"));   // some progress, so New Game has something to wipe
+			Pl->TestPicker(0, true);
+			Pl->TestPress(TEXT("Escape"), true);
+			Report(FString::Printf(TEXT("%s: Esc with the ability picker open closes the picker only: picker=%d, menu=%d"),
+				Pl->PickerSlot() < 0 && !PC->IsPauseMenuOpen() ? TEXT("PASS") : TEXT("FAIL"), Pl->PickerSlot(), PC->IsPauseMenuOpen()));
+			Step = 1; Next = T + 0.5f;
+		}
+		else if (Step == 1)
+		{
+			Pl->TestPress(TEXT("Escape"), true);
+			Report(FString::Printf(TEXT("%s: Esc in game: menu=%d, paused=%d"), PC->IsPauseMenuOpen() && UGameplayStatics::IsGamePaused(this) ? TEXT("PASS") : TEXT("FAIL"),
+				PC->IsPauseMenuOpen(), UGameplayStatics::IsGamePaused(this)));
+			Step = 2; Next = T + 0.6f;
+		}
+		else if (Step == 2)
+		{
+			FScreenshotRequest::RequestScreenshot(FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots/RPG/pause.png")), true, false);
+			Step = 3; Next = T + 1.f;
+		}
+		else if (Step == 3)
+		{
+			PC->ResumeGame();
+			Report(FString::Printf(TEXT("%s: Resume: menu=%d, paused=%d"), !PC->IsPauseMenuOpen() && !UGameplayStatics::IsGamePaused(this) ? TEXT("PASS") : TEXT("FAIL"),
+				PC->IsPauseMenuOpen(), UGameplayStatics::IsGamePaused(this)));
+			Step = 4; Next = T + 0.5f;
+		}
+		else if (Step == 4)
+		{
+			Report(FString::Printf(TEXT("New Game (quests before: %d)..."), S->Quests.Num()));
+			PC->OpenPauseMenu();
+			PC->NewGame();   // reloads the world; this scenario resumes in the new one (see the top)
+			Step = 5;
+		}
+	}
+	// ---------------------------------------------------------------------------------------------
+	else if (Scenario == TEXT("smoke"))
+	{
+		// Smoke Bomb: foes in the blast stagger; the cloud lasts its duration, then clears.
+		auto Clouds = [this]()
+		{
+			int32 N = 0;
+			for (TObjectIterator<UParticleSystemComponent> It; It; ++It)
+				if (It->GetWorld() == GetWorld() && It->IsActive() && It->Template && It->Template->GetName() == TEXT("P_Smoke")) ++N;
+			return N;
+		};
+		if (Step == 0)
+		{
+			while (Pl->Level() < 2) Pl->GainXp(ARPGPlayerCharacter::XpToNext(Pl, Pl->Level()) - Pl->Xp);
+			Target = Find(TEXT("slime"));
+			if (!Target.IsValid()) { Report(TEXT("FAIL: no slime")); Quit(0.5f); return; }
+			Place(Target->GetActorLocation() - FVector(150, 0, 0), 0.f);
+			AimAt(Target->GetActorLocation());
+			Step = 1; Next = T + 0.5f;
+		}
+		else if (Step == 1)
+		{
+			Pl->Stats->Stamina = Pl->Stats->MaxStamina();
+			Pl->TestPress(TEXT("Ability2"), true);
+			Started = T;
+			Report(FString::Printf(TEXT("%s: smoke bomb thrown; slime staggered=%d, player hidden=%d"),
+				Target.IsValid() && Target->Tags.Has(TEXT("Staggered")) ? TEXT("PASS") : TEXT("FAIL"),
+				Target.IsValid() && Target->Tags.Has(TEXT("Staggered")), Pl->Tags.Has(TEXT("Hidden"))));
+			Step = 2; Next = T + 1.5f;
+		}
+		else if (Step == 2)
+		{
+			const int32 N = Clouds();
+			Report(FString::Printf(TEXT("%s: %.1fs in: %d smoke emitters puffing"), N > 0 ? TEXT("PASS") : TEXT("FAIL"), T - Started, N));
+			Step = 3; Next = Started + 6.f;   // duration 3 s + 2 s to drift off, + margin
+		}
+		else if (Step == 3)
+		{
+			const int32 N = Clouds();
+			Report(FString::Printf(TEXT("%s: %.1fs in: %d smoke emitters left (cooldown left %.1fs)"), N == 0 ? TEXT("PASS") : TEXT("FAIL"),
+				T - Started, N, Pl->Abilities->Cooldowns.FindRef(TEXT("smoke_bomb"))));
+			Quit(0.5f);
+		}
+	}
+	// ---------------------------------------------------------------------------------------------
+	else if (Scenario == TEXT("picker"))
+	{
+		// Shift + wheel ability picker (slow motion, cycle, cast) and E talk mode vs click-to-fight.
+		const float Dil = UGameplayStatics::GetGlobalTimeDilation(this);
+		if (Step == 0)
+		{
+			while (Pl->Level() < 4) Pl->GainXp(ARPGPlayerCharacter::XpToNext(Pl, Pl->Level()) - Pl->Xp);
+			Pl->Stats->Mana = Pl->Stats->MaxMana();
+			Target = Find(TEXT("slime"));
+			if (Target.IsValid()) { Place(Target->GetActorLocation() - FVector(700, 0, 0), 0.f); AimAt(Target->GetActorLocation()); }
+			Pl->TestPicker(0, true);
+			Report(FString::Printf(TEXT("%s: Shift+wheel opened the picker on slot %d (time dilation was %.2f)"), Pl->PickerSlot() >= 0 ? TEXT("PASS") : TEXT("FAIL"), Pl->PickerSlot(), Dil));
+			Step = 1; Next = T + 0.3f;   // (real seconds pass slower now; Next is in game time)
+		}
+		else if (Step == 1)
+		{
+			Report(FString::Printf(TEXT("%s: while open, time dilation %.2f"), Dil < 0.5f ? TEXT("PASS") : TEXT("FAIL"), Dil));
+			const int32 Before = Pl->PickerSlot();
+			Pl->TestPicker(1, true);
+			Report(FString::Printf(TEXT("%s: scrolled one notch: slot %d -> %d"), Pl->PickerSlot() != Before ? TEXT("PASS") : TEXT("FAIL"), Before, Pl->PickerSlot()));
+			Step = 2; Next = T + 1.2f;   // leave it up for a screenshot (-RPGShot=1)
+		}
+		else if (Step == 2)
+		{
+			const int32 Slot = Pl->PickerSlot();
+			const FString Id = Pl->Abilities->Ids.IsValidIndex(Slot) ? Pl->Abilities->Ids[Slot] : FString();
+			Pl->TestPickerRelease(true);
+			Report(FString::Printf(TEXT("%s: released on %s: cooldown %.1fs, time dilation back to %.2f, picker %d"),
+				Pl->Abilities->Cooldowns.FindRef(Id) > 0.f && UGameplayStatics::GetGlobalTimeDilation(this) > 0.99f && Pl->PickerSlot() < 0 ? TEXT("PASS") : TEXT("FAIL"),
+				*Id, Pl->Abilities->Cooldowns.FindRef(Id), UGameplayStatics::GetGlobalTimeDilation(this), Pl->PickerSlot()));
+			Step = 3; Next = T + 1.f;
+		}
+		else if (Step == 3)
+		{
+			// Talk mode on a slime: refused with a reason. Clicking a (still neutral) bandit = fight; E on him = talk.
+			const FString SlimeWhy = Target.IsValid() ? Pl->TalkBlocker(Target.Get()) : TEXT("?");
+			Report(FString::Printf(TEXT("%s: talk to a slime -> \"%s\""), SlimeWhy.IsEmpty() ? TEXT("FAIL") : TEXT("PASS"), *SlimeWhy));
+			ARPGEnemy* Bandit = Find(TEXT("bandit_lt"));   // Wren: a bandit with something to say
+			if (!Bandit) { Report(TEXT("FAIL: no Wren")); Quit(0.5f); return; }
+			Pl->TestClick(Bandit->GetActorLocation(), Bandit);
+			const bool bFight = Pl->GetClickGoal() == ARPGPlayerCharacter::EClickGoal::Attack;
+			Pl->ClearHeldInput();   // don't actually start a war
+			Pl->TryTalk(Bandit);
+			const bool bTalk = Pl->GetClickGoal() == ARPGPlayerCharacter::EClickGoal::Talk;
+			Pl->ClearHeldInput();
+			Report(FString::Printf(TEXT("%s: click on a neutral bandit = %s; E on him = %s (talk blocker: \"%s\")"), bFight && bTalk ? TEXT("PASS") : TEXT("FAIL"),
+				bFight ? TEXT("fight") : TEXT("NOT fight"), bTalk ? TEXT("talk") : TEXT("NOT talk"), *Pl->TalkBlocker(Bandit)));
+			Quit(0.5f);
 		}
 	}
 	// ---------------------------------------------------------------------------------------------

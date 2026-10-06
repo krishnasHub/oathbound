@@ -1,4 +1,6 @@
 #include "RPGCharacterBase.h"
+#include "RPGSprite.h"
+#include "RPGLook.h"
 #include "ActionRPG.h"
 #include "RPGData.h"
 #include "RPGAssets.h"
@@ -70,6 +72,8 @@ void ARPGCharacterBase::SetLookFromData(const FString& LookId)
 {
 	const RPGJson::FObj Look = RPGJson::Obj(RPGJson::Obj(URPGData::Get(this).World3D(), TEXT("looks")), LookId);
 	SetLook(RPGJson::Str(Look, TEXT("mesh"), TEXT("manny")), RPGJson::Str(Look, TEXT("tint")), float(RPGJson::Num(Look, TEXT("scale"), 1.0)));
+	const FString Sheet = RPGJson::Str(RPGJson::Obj(RPGJson::Obj(URPGData::Get(this).World3D(), TEXT("looks2d")), TEXT("sheets")), LookId, LookId);
+	UseSprite(Sheet);
 }
 
 void ARPGCharacterBase::SetLook(const FString& InMeshKind, const FString& TintHex, float Scale)
@@ -311,4 +315,30 @@ void ARPGCharacterBase::Tick(float DeltaSeconds)
 		const float S = FMath::Sin(BlobPhase) * (0.05f + FMath::Min(Speed, 300.f) * 0.0003f);
 		Blob->SetRelativeScale3D(FVector(0.9f - S * 0.6f, 0.9f - S * 0.6f, 0.75f + S));
 	}
+}
+
+// ---------------------------------------------------------------------------------------------
+// 2D looks
+// ---------------------------------------------------------------------------------------------
+
+void ARPGCharacterBase::UseSprite(const FString& Sheet)
+{
+	if (!RPGLook::IsSprite() || Sheet.IsEmpty()) return;
+	if (!Sprite)
+	{
+		Sprite = NewObject<URPGSpriteComponent>(this, TEXT("Sprite"));
+		Sprite->SetupAttachment(RootComponent);
+		Sprite->RegisterComponent();
+	}
+	Sprite->Setup(Sheet);
+	HeadZ = 100.f;
+	HideBody();
+}
+
+void ARPGCharacterBase::HideBody()
+{
+	GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+	GetMesh()->SetVisibility(false, true);
+	if (BodyMesh() && BodyMesh() != GetMesh()) BodyMesh()->SetVisibility(false, true);
+	if (Blob) Blob->SetVisibility(false, true);
 }

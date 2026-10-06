@@ -29,7 +29,7 @@ namespace RPGAssets
 	/** /Engine/BasicShapes: Cube, Sphere, Cylinder, Cone, Plane (100uu). */
 	inline UStaticMesh* Shape(const FString& Name) { return Load<UStaticMesh>(ObjPath(TEXT("/Engine/BasicShapes"), Name)); }
 	/** Starter Content materials, e.g. "M_Ground_Grass". */
-	inline UMaterialInterface* StarterMat(const FString& Name) { return Load<UMaterialInterface>(ObjPath(TEXT("/Game/StarterContent/Materials"), Name)); }
+	UMaterialInterface* StarterMat(const FString& Name);   // (HD-2D look: its pixel-art replacement)
 	/** Starter Content props, e.g. "SM_Bush". */
 	inline UStaticMesh* StarterProp(const FString& Name) { return Load<UStaticMesh>(ObjPath(TEXT("/Game/StarterContent/Props"), Name)); }
 

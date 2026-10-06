@@ -1,4 +1,6 @@
 #include "RPGGameMode.h"
+#include "RPGLook.h"
+#include "RPGAmbient.h"
 #include "ActionRPG.h"
 #include "RPGData.h"
 #include "RPGAssets.h"
@@ -29,8 +31,10 @@ ARPGGameMode::ARPGGameMode()
 
 void ARPGGameMode::StartPlay()
 {
+	RPGLook::Init(this);   // before anything builds or spawns: it decides how they look
 	WorldBuilder = GetWorld()->SpawnActor<ARPGWorldBuilder>();
 	WorldBuilder->Build();
+	if (ARPGAmbient* Life = GetWorld()->SpawnActor<ARPGAmbient>()) Life->Init(WorldBuilder);   // birds, geese, prowler, fireflies
 	SpawnCharacters();
 
 	Super::StartPlay();
@@ -128,6 +132,17 @@ void ARPGGameMode::RunSelfTests()
 		}, ShotAt, false);
 		FTimerHandle Q;
 		GetWorldTimerManager().SetTimer(Q, []() { FPlatformMisc::RequestExit(false); }, ShotAt + 2.f, false);
+	}
+
+	// -RPGLowHP: drop the hero to 15% health after 3 s (to see the low-health warning).
+	if (FParse::Param(Cmd, TEXT("RPGLowHP")))
+	{
+		FTimerHandle H;
+		GetWorldTimerManager().SetTimer(H, [this]()
+		{
+			if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+				if (ARPGPlayerCharacter* P = Cast<ARPGPlayerCharacter>(PC->GetPawn())) P->Stats->HP = P->Stats->MaxHP() * 0.15f;
+		}, 3.f, false);
 	}
 
 	FString Scenario;
