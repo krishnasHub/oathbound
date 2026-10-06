@@ -23,6 +23,5 @@ tools/pixelart/out/
 __pycache__/
 *.pyc
 
-# Look-dev comparison shots are kept as JPEGs in git; the original PNGs stay local
-lookdev/shots/*.png
-lookdev/crisp/*.png
+# Look-dev comparisons (3D vs HD-2D vs flat, fog vs tilt-shift): decisions made, kept locally only
+lookdev/

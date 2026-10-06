@@ -36,7 +36,7 @@ Last updated: 2026-10-06 (HD-2D, front end, day/night, ambient life, shields, pa
 | `unreal/Tools/rpg.ps1` | Developer commands: build, run, editor, prepare, shot, sync, test |
 | `unreal/Tools/*.py` | Headless editor scripts: `create_materials.py` (M_RPG_Glow/Telegraph/Fresnel/Flash), `fix_material_usage.py`, `import_pixel.py` (imports the pixel art; builds M_RPG_Sprite / PixelWorld / Minimap / NightShade) |
 | `tools/pixelart/` | Python + numpy (no PIL): `characters.py` (sprite sheets, portraits), `environment.py` (textures, props), `ui_art.py` (UI, minimap frames, fades), `extras.py` (cursors, backdrops, effects, ambient creatures), `build_all.py` (writes `unreal/ImportSource/Pixel/`) |
-| `lookdev/` | Look comparisons (`index.html`: 3D / HD-2D / flat 2D; `crisp.html`: fog vs tilt-shift) |
+| `lookdev/` | Look comparisons (`index.html`: 3D / HD-2D / flat 2D; `crisp.html`: fog vs tilt-shift). Local only, not in git |
 | `Dist/Windows/ActionRPG.exe` | Packaged standalone game (rebuilt 2026-10-06) |
 | `README.md`, `unreal/README.md` | Controls, how to run, architecture |
 
@@ -207,7 +207,7 @@ Same game, three ways to draw it. `world3d.look` or `-RPGLook=hd2d|flat2d|mesh3d
 - **Art pipeline:** `tools/pixelart/build_all.py` (Python + numpy, no PIL) draws all sprites, textures, props and the baked map into `unreal/ImportSource/Pixel/`. `unreal/Tools/import_pixel.py` imports them (nearest filter, no mips) and builds `M_RPG_Sprite` (flipbook card, world-up normal, flip/tint/flash) and `M_RPG_PixelWorld` (world-projected 32 px textures). It is part of `prepare` and play.ps1's first-run step.
 - **Code:** `Core/RPGLook` (mode, card rotation, pixel material swap: `RPGAssets::StarterMat` returns pixel versions in HD-2D), `Characters/RPGSprite` (picks direction/action/frame from character state; the 3D body stays hidden but keeps animating, so montage hit timing is unchanged), `ARPGWorldBuilder::BuildFlat2D` and the tree/bush cards in `BuildTreesAndScatter`.
 - **Lessons:** in flat 2D, hidden 3D geometry must also leave lighting (distance-field shadows). Ortho plus Lumen/SSAO smears dark bands, so GI and AO are off there. Same-depth cards z-fight, so a tiny x tie-break is added. HD-2D depth of field needs a big virtual sensor (400 mm) to show at this distance.
-- **Results:** `lookdev/index.html` (15 side-by-side screenshots + a live sprite animation player). Sun override for time of day: `-RPGSun=pitch,yaw,lux,r,g,b`.
+- **Results:** `lookdev/index.html` (local only; 15 side-by-side screenshots + a live sprite animation player). Sun override for time of day: `-RPGSun=pitch,yaw,lux,r,g,b`.
 - **Open in HD-2D:** no cast/bow-specific frames (casting uses the attack row, drawing the bow holds the wind-up frame); the mana shield, guard arc and aim line are still 3D effects; weapon-style swaps (Knight longsword) don't change the sprite. Flat 2D: clicking characters aims at the actor, not the drawn sprite.
 
 ## 7c. Front end (2026-10-05)

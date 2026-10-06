@@ -25,7 +25,7 @@ one) as the game changes.
 | `data/game-data.json` | The rules both versions share: stats, classes, abilities, enemies, items, quests, dialogue, map, look settings |
 | `tools/sync-data.js` | Pushes `data/game-data.json` into both versions (`play.ps1` does this for you) |
 | `tools/pixelart/` | Draws all the pixel art in code (characters, world textures, props, UI, cursors, backdrops) |
-| `lookdev/` | Look tests: `index.html` (3D vs HD-2D vs flat 2D), `crisp.html` (fog / tilt-shift comparison) |
+| `lookdev/` | Look tests (3D vs HD-2D vs flat 2D; fog vs tilt-shift). Local only, not in git |
 | `DESIGN.md`, `CHARACTERS.md` | Game design: mechanics, classes, dialogue, quest structure |
 | `SO_FAR.md` | Project log and handoff: where things stand, how it's built, what's next |
 
