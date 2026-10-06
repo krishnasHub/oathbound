@@ -22,3 +22,7 @@ unreal/Build/*/FileOpenOrder/
 tools/pixelart/out/
 __pycache__/
 *.pyc
+
+# Look-dev comparison shots are kept as JPEGs in git; the original PNGs stay local
+lookdev/shots/*.png
+lookdev/crisp/*.png
