@@ -8,7 +8,12 @@ every hard and soft dependency in the asset registry, and writes Saved/content_a
 packages) and Content/.gitignore, which keeps the unused template assets on disk but out of git (they would only
 cost Git LFS space). Keep ROOTS in step with the /Game/ paths in Source/, then rerun this after adding a use of
 a template asset, and `git add` the asset.
+
+Git holds what the default HD-2D look needs. Starter Content materials that HD-2D swaps for pixel art
+(world3d.looks2d.pixelMaterials) only show in the 3D look, and their 4K textures are most of the weight, so they
+stay local too: on a fresh clone the 3D look falls back to plain grey (add Starter Content to get them back).
 """
+import json
 import os
 import unreal
 
@@ -16,6 +21,9 @@ STARTER_MATS = ["M_Brick_Clay_Old", "M_Brick_Cut_Stone", "M_Brick_Hewn_Stone", "
                 "M_CobbleStone_Rough", "M_Concrete_Poured", "M_Ground_Grass", "M_Ground_Gravel",
                 "M_Metal_Burnished_Steel", "M_Metal_Chrome", "M_Metal_Copper", "M_Metal_Gold", "M_Metal_Steel",
                 "M_Rock_Slate", "M_Water_Lake", "M_Wood_Floor_Walnut_Worn", "M_Wood_Oak", "M_Wood_Walnut"]
+with open(os.path.join(unreal.Paths.project_content_dir(), "Data", "game-data.json"), encoding="utf-8") as f:
+    PIXEL_SWAPPED = set(json.load(f)["world3d"]["looks2d"]["pixelMaterials"])
+STARTER_MATS = [m for m in STARTER_MATS if m not in PIXEL_SWAPPED]
 DEATHS = ["MM_Death_Front_01", "MM_Death_Front_02", "MM_Death_Back_01", "MM_Death_Left_01", "MM_Death_Right_01"]
 
 ROOTS = (["/Game/StarterContent/Materials/" + m for m in STARTER_MATS]
