@@ -87,6 +87,14 @@ Useful switches (`-Extra`): `-RPGHour=22` (start at that hour), `-RPGLook=hd2d|f
 | Input | `RPGPlayerCharacter` | Enhanced Input in code; click-to-move / attack / talk |
 | Materials | `Tools/create_materials.py`, `Tools/import_pixel.py` | Glow, telegraph, fresnel, flash; sprite, pixel-world, minimap, night-shade |
 
+## What's in git
+
+Only the Content assets the game uses. `Tools/audit_content.py` (run headless, like the other tools) starts from
+every `/Game/` path the code and data load, follows the asset registry's dependencies, and writes
+`Content/.gitignore` listing the rest: Starter Content and mannequin assets nothing uses (about 340 MB), which stay
+on disk but aren't uploaded. A fresh clone simply doesn't have them. If you start using one, add its path to the
+script's `ROOTS`, rerun it, and `git add` the asset.
+
 ## Known gaps / next
 
 - **Art:** all pixel art is procedural placeholder; portraits are built but switched off (`world3d.dialoguePortraits`) until there's proper illustrated art.

@@ -5,6 +5,18 @@ much as fighting. There are four classes (Knight, Mage, Thief, Scholar), two sex
 dialogue styles, and quests with several possible outcomes. It is built in Unreal Engine 5.8; a single-file HTML
 version is the test bed for the rules.
 
+| | |
+|---|---|
+| ![Title screen](docs/screenshots/01-title.jpg) | ![Mage on character select, with a certain tower](docs/screenshots/02-select-mage.jpg) |
+| ![Knight on character select](docs/screenshots/04-select-knight.jpg) | ![Thief on character select](docs/screenshots/03-select-thief.jpg) |
+| ![The village at midday](docs/screenshots/05-village-day.jpg) | ![Golden hour, with geese](docs/screenshots/06-golden-hour.jpg) |
+| ![Deep night: only the moonlit pool around the hero](docs/screenshots/07-deep-night.jpg) | ![Talking to Elder Maren](docs/screenshots/10-conversation.jpg) |
+| ![An arrow arcing onto a slime](docs/screenshots/09-arrow-flight.jpg) | ![Shift + wheel ability picker, in slow motion](docs/screenshots/11-ability-pick.jpg) |
+| ![After the honour duel at the toll bridge](docs/screenshots/08-bridge-duel.jpg) | |
+
+Screenshots are retaken with `tools/screenshots.ps1` (all of them in parallel, about a minute; `-Only night` for
+one) as the game changes.
+
 | Folder | What |
 |---|---|
 | `play.ps1` | **Start here.** One-click launcher: play, test, package |
