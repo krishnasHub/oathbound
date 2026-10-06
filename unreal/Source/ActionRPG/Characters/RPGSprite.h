@@ -6,6 +6,9 @@
 
 class UMaterialInstanceDynamic;
 
+/** Character sprite sheet layout (tools/pixelart/characters.py): 4 columns x 13 rows of 32-unit frames. */
+namespace RPGSpriteSheet { constexpr int32 Cols = 4, Rows = 13, Frame = 32; }
+
 /**
  * A pixel-art character for the 2D looks (RPGLook HD2D / Flat2D): a card showing one frame of a sprite sheet
  * (tools/pixelart/characters.py layout: 3 directions x idle / walk / attack / hurt, plus dead).

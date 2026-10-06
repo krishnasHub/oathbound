@@ -9,7 +9,6 @@
 
 namespace
 {
-	constexpr int32 SheetCols = 4, SheetRows = 13, FrameUnits = 32;   // sprite sheet layout (logical 32-unit frames)
 	enum EAct { Idle = 0, Walk = 1, Attack = 2, Hurt = 3 };
 }
 
@@ -30,7 +29,7 @@ void URPGSpriteComponent::Setup(const FString& Sheet)
 	if (Sheet == SheetName && Mat) return;
 	SheetName = Sheet;
 	SetStaticMesh(RPGAssets::Shape(TEXT("Plane")));
-	Mat = RPGLook::SpriteMaterial(this, TEXT("SPR_") + Sheet, SheetCols, SheetRows);
+	Mat = RPGLook::SpriteMaterial(this, TEXT("SPR_") + Sheet, RPGSpriteSheet::Cols, RPGSpriteSheet::Rows);
 	if (Mat) SetMaterial(0, Mat);
 	HideCheck = 0.f;
 	if (RPGLook::Mode() == RPGLook::EMode::Flat2D && !Shadow)
@@ -98,7 +97,7 @@ void URPGSpriteComponent::TickComponent(float Dt, ELevelTick TickType, FActorCom
 
 	// Placement: the card's bottom edge at the feet (the art leaves ~2 px under the boots).
 	const float Units = RPGLook::SpriteUnits() * C->GetActorScale3D().Z;
-	const float Size = FrameUnits * Units;
+	const float Size = RPGSpriteSheet::Frame * Units;
 	const FRotator R = RPGLook::CardRotation();
 	const FVector CardUp = -FRotationMatrix(R).GetUnitAxis(EAxis::Y);
 	FVector Feet = C->GetActorLocation() - FVector(0, 0, C->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());

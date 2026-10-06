@@ -997,7 +997,6 @@ int32 SRPGBackdrop::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FS
 
 namespace
 {
-	constexpr int32 SheetCols = 4, SheetRows = 13;
 	constexpr float HeroScale = 10.f;   // screen px per sprite px on the stage
 }
 
@@ -1018,7 +1017,7 @@ void SRPGCharSelect::SetBrush(FSlateBrush& B, const FString& Texture, const FVec
 
 void SRPGCharSelect::SetFrame(FSlateBrush& B, int32 Row, int32 Col)
 {
-	B.SetUVRegion(FBox2f(FVector2f(float(Col) / SheetCols, float(Row) / SheetRows), FVector2f(float(Col + 1) / SheetCols, float(Row + 1) / SheetRows)));
+	B.SetUVRegion(FBox2f(FVector2f(float(Col) / RPGSpriteSheet::Cols, float(Row) / RPGSpriteSheet::Rows), FVector2f(float(Col + 1) / RPGSpriteSheet::Cols, float(Row + 1) / RPGSpriteSheet::Rows)));
 }
 
 void SRPGCharSelect::Construct(const FArguments& Args)
