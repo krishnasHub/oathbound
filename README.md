@@ -12,10 +12,12 @@ version is the test bed for the rules.
 | ![The village at midday](docs/screenshots/05-village-day.jpg) | ![Golden hour, with geese](docs/screenshots/06-golden-hour.jpg) |
 | ![Deep night: only the moonlit pool around the hero](docs/screenshots/07-deep-night.jpg) | ![Talking to Elder Maren](docs/screenshots/10-conversation.jpg) |
 | ![An arrow arcing onto a slime](docs/screenshots/09-arrow-flight.jpg) | ![Shift + wheel ability picker, in slow motion](docs/screenshots/11-ability-pick.jpg) |
-| ![After the honour duel at the toll bridge](docs/screenshots/08-bridge-duel.jpg) | |
+| ![After the honour duel at the toll bridge](docs/screenshots/08-bridge-duel.jpg) | ![Aldric the Grave-Watcher laid to rest: his ghost rises, at peace](docs/screenshots/15-grave-rest.jpg) |
+| ![A bright world: children, geese, a puppy, butterflies, ivy on the walls](docs/screenshots/12-bright-village.jpg) | ![A dark world: cracked roads and walls, grumpy men](docs/screenshots/13-dark-mood.jpg) |
+| ![Fighting the Ruin Brute in the old mine](docs/screenshots/14-old-mine.jpg) | ![Grot the Miner, taught a trade, carries his gold out of the mine](docs/screenshots/16-grot-miner.jpg) |
 
-Screenshots are retaken with `tools/screenshots.ps1` (all of them in parallel, about a minute; `-Only night` for
-one) as the game changes.
+Screenshots are retaken with `tools/screenshots.ps1` (four at a time, a couple of minutes; `-Only night` for one)
+as the game changes.
 
 | Folder | What |
 |---|---|

@@ -993,15 +993,15 @@ void ARPGSelfTest::RunStep()
 			const float From = FVector::Dist2D(Brute->GetActorLocation(), Mine);
 			Report(FString::Printf(TEXT("%s: after a rest in the mine he comes out of the cave with a sack of gold for the village (carrying %d, %.0fuu from the mine, heading to %s)"),
 				Brute->IsCarrying() && From > 200.f && R && R->CurrentTag() == TEXT("village") && !D.AreaAt(Brute->GetActorLocation()) ? TEXT("PASS") : TEXT("FAIL"), Brute->IsCarrying(), From, R ? *R->CurrentTag().ToString() : TEXT("-")));
-			Place(Brute->GetActorLocation() + FVector(0, 650, 0), -90.f);
+			Place(Brute->GetActorLocation() + FVector(420, 380, 0), -120.f);   // beside him, not in front (the screenshot)
 			Step = 2; Next = T + 0.4f;
 		}
 		else if (Step == 2)
 		{
 			Shot(TEXT("grot_carrying"));
-			Place(Brute->GetActorLocation() + FVector(0, 260, 0), -90.f);
-			Step = 20; Next = T + 0.4f;
+			Step = 19; Next = T + 0.3f;   // (move on after the shot is taken)
 		}
+		else if (Step == 19) { Place(Brute->GetActorLocation() + FVector(0, 260, 0), -90.f); Step = 20; Next = T + 0.4f; }
 		else if (Step == 20)
 		{
 			// Watch him in the ruins: standing a while, then walking on with the hero a few steps behind. He must be drawn
@@ -1082,7 +1082,7 @@ void ARPGSelfTest::RunStep()
 					Life->Count(TEXT("wolf")) > 0 && Life->Count(TEXT("bat")) > 0 && Life->Count(TEXT("snake")) > 0 && Dress->Shown(TEXT("sunray")) == 0 ? TEXT("PASS") : TEXT("FAIL"),
 					Life->Count(TEXT("wolf")), Life->Count(TEXT("bat")), Life->Count(TEXT("snake")), Dress->Shown(TEXT("sunray"))));
 				const TArray<FVector> Wolves = Life->Positions(TEXT("wolf"));
-				if (Wolves.Num()) Place(Wolves[0] + FVector(0, 1300, 0), -90.f);
+				if (Wolves.Num()) Place(Wolves[0] + FVector(0, 380, 0), -90.f);   // close enough to see them in the hero's light
 				Step = 5; Next = T + 1.5f;
 				return;
 			}
@@ -1090,11 +1090,15 @@ void ARPGSelfTest::RunStep()
 				Dress->Shown(TEXT("road_crack")) > 0 && Dress->Shown(TEXT("crack")) > 0 && Dress->Shown(TEXT("vines")) == 0 && Life->Count(TEXT("child_a")) == 0 && Life->Count(TEXT("grumpy")) > 0 && S->PriceOf(15) > 15 ? TEXT("PASS") : TEXT("FAIL"),
 				Dress->Shown(TEXT("road_crack")), Dress->Shown(TEXT("crack")), Dress->Shown(TEXT("moss")), Life->Count(TEXT("grumpy")), Dress->Shown(TEXT("vines")), Life->Count(TEXT("child_a")), S->PriceOf(15)));
 			Place(D.TileCenter(8, 9), -90.f);
-			Step = 1; Next = T + 1.5f;
+			Step = 1; Next = T + 5.f;   // textures and shaders settle first (the screenshot)
 		}
 		else if (Step == 1)
 		{
 			Shot(TEXT("mood_dark_day"));
+			Step = 6; Next = T + 0.4f;   // (brighten after the shot is taken)
+		}
+		else if (Step == 6)
+		{
 			Show(400.f);
 			Report(FString::Printf(TEXT("%s: a bright day: %d vines, %d sunrays, no road cracks (%d), %d children, %d puppies; a potion costs %d"),
 				Dress->Shown(TEXT("vines")) > 0 && Dress->Shown(TEXT("sunray")) > 0 && Dress->Shown(TEXT("road_crack")) == 0 && Life->Count(TEXT("child_a")) > 0 && S->PriceOf(15) < 15 ? TEXT("PASS") : TEXT("FAIL"),

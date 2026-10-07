@@ -359,6 +359,8 @@ dynamic story. So the reusable code is moving into two plugins, each its own rep
   need roomier bounds or the occlusion culler can lose them; character cards stand upright (stretched by 1/cos pitch)
   so they don't lean into walls; walls in a top-down cave must stay low.
 - Tests now 30 scenarios, run at most 4 at a time (`tessera.json maxParallel`).
+- README gallery: 16 screenshots (new: 12 bright village, 13 dark mood, 14 the old mine, 15 Aldric at rest, 16 Grot
+  the Miner), retaken with `tools/screenshots.ps1`; the new ones reuse the images their test scenarios take (`png`).
 
 ## 8. Next steps / open threads
 

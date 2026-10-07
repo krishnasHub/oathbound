@@ -29,7 +29,12 @@
       "08-bridge-duel":   { "at": 4.5,  "args": "-RPGClass=knight -RPGTest=bridge" },
       "09-arrow-flight":  { "at": 1.25, "args": "-RPGClass=thief -RPGTest=thief" },
       "10-conversation":  { "at": 6,    "args": "-RPGClass=knight -RPGTest=elder", "png": "elder" },
-      "11-ability-pick":  { "at": 1.0,  "args": "-RPGClass=mage -RPGTest=picker" }
+      "11-ability-pick":  { "at": 1.0,  "args": "-RPGClass=mage -RPGTest=picker" },
+      "12-bright-village": { "at": 14,   "args": "-RPGClass=knight -RPGHour=13 -RPGTest=palette", "png": "mood_bright_day" },
+      "13-dark-mood":      { "at": 6,   "args": "-RPGClass=knight -RPGHour=13 -RPGTest=palette", "png": "mood_dark_day" },
+      "14-old-mine":       { "at": 19.5, "args": "-RPGClass=knight -RPGTest=tour_knight", "png": "tour_knight_6_brute_fight" },
+      "15-grave-rest":     { "at": 6.4,  "args": "-RPGClass=scholar -RPGTest=skeletons", "png": "skeleton_rest" },
+      "16-grot-miner":     { "at": 26.5, "args": "-RPGClass=scholar -RPGTest=trader", "png": "grot_carrying" }
     }
   }
 }
