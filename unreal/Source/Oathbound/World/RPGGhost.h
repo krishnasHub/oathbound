@@ -26,8 +26,8 @@ class OATHBOUND_API ARPGGhost : public AActor
 
 public:
 	ARPGGhost();
-	/** A ghost rising from Body. */
-	static ARPGGhost* Rise(ATSCharacter* Body);
+	/** A ghost rising from Body; bCalm: laid to rest (never scared, rises slow and gentle). */
+	static ARPGGhost* Rise(ATSCharacter* Body, bool bCalm = false);
 	virtual void Tick(float DeltaSeconds) override;
 
 private:

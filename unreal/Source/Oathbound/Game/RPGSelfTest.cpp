@@ -21,6 +21,13 @@
 #include "TSLoot.h"
 #include "TSInventory.h"
 #include "TSAbilities.h"
+#include "TSAmbientLife.h"
+#include "TSDressing.h"
+#include "TSCharacterEvents.h"
+#include "TSInteractable.h"
+#include "TSRoutine.h"
+#include "TSSprite.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -120,6 +127,7 @@ void ARPGSelfTest::RunStep()
 		if (!Brask) { Report(TEXT("FAIL: no Brask")); Quit(0.5f); return; }
 		if (Step == 0)
 		{
+			while (Pl->Level() < 3) Pl->GainXp(ARPGPlayerCharacter::XpToNext(Pl, Pl->Level()) - Pl->Xp);   // a level-1 knight is too green to challenge Brask
 			Place(Brask->Home + FVector(-280, -390, 0), 35.f);
 			AimAt(Brask->GetActorLocation());
 			Report(FString::Printf(TEXT("%s: walked up to the bridge: nobody stops us (dialogue open=%d)"), S->Story()->IsDialogueOpen() ? TEXT("FAIL") : TEXT("PASS"), S->Story()->IsDialogueOpen()));
@@ -652,6 +660,672 @@ void ARPGSelfTest::RunStep()
 			Report(FString::Printf(TEXT("%s: the ghost got scared and fled from the hero (scared %d, drifted %.0fuu, now %.0fuu from the hero)"),
 				Gh && Gh->IsScared() && Gh->Drift() > 300.f ? TEXT("PASS") : TEXT("FAIL"), Gh ? Gh->IsScared() : 0, Gh ? Gh->Drift() : 0.f, Away));
 			Quit(0.5f);
+		}
+	}
+	else if (Scenario == TEXT("talk"))
+	{
+		// Languages: who each class can talk to; a skeleton waits for the one who speaks its tongue; Brask's level gate
+		// (too green at level 1, open again after levelling); peaceful wins pay XP.
+		if (Step == 0)
+		{
+			ARPGEnemy* Slime = Find(TEXT("slime"));
+			ARPGEnemy* Archer = Find(TEXT("archer"));
+			ARPGEnemy* Brute = Find(TEXT("brute"));
+			ARPGEnemy* Wren = Find(TEXT("bandit_lt"));
+			if (!Slime || !Archer || !Brute || !Wren) { Report(TEXT("FAIL: missing a slime, archer, brute or Wren")); Quit(0.5f); return; }
+			// class -> can it talk to: slime, archer (Grave-speech), brute (Old Tongue), Wren (common)
+			struct FRow { const TCHAR* Class; bool Slime, Archer, Brute, Wren; };
+			const FRow Rows[] = { { TEXT("knight"), false, false, false, true }, { TEXT("thief"), false, false, false, true },
+				{ TEXT("mage"), false, false, true, true }, { TEXT("scholar"), false, true, true, true } };
+			for (const FRow& R : Rows)
+			{
+				Pl->ApplyClass(R.Class, TEXT("male"));
+				auto Can = [&](ARPGEnemy* E) { return Pl->TalkBlocker(E).IsEmpty(); };
+				const bool bOk = Can(Slime) == R.Slime && Can(Archer) == R.Archer && Can(Brute) == R.Brute && Can(Wren) == R.Wren;
+				Report(FString::Printf(TEXT("%s: %s talks to slime %d, skeleton %d, brute %d, Wren %d (skeleton: \"%s\"; slime: \"%s\")"),
+					bOk ? TEXT("PASS") : TEXT("FAIL"), R.Class, Can(Slime), Can(Archer), Can(Brute), Can(Wren),
+					*Pl->TalkBlocker(Archer), *Pl->TalkBlocker(Slime)));
+				const bool bWaits = Archer->IsPassive();
+				Report(FString::Printf(TEXT("%s: as a %s, the skeleton %s"), bWaits == R.Archer ? TEXT("PASS") : TEXT("FAIL"), R.Class, bWaits ? TEXT("waits to hear you out") : TEXT("attacks")));
+			}
+			// Brask: a level-1 knight's challenge is laughed off, and the option comes back after levelling.
+			Pl->ApplyClass(TEXT("knight"), TEXT("male"));
+			ARPGEnemy* Brask = Find(TEXT("bandit_captain"));
+			S->OpenDialogue(Brask);
+			const int32 Honor = S->Story()->FindChoice(TEXT("I am a knight"));
+			if (Honor == INDEX_NONE) { Report(TEXT("FAIL: no honour challenge at Brask")); Quit(0.5f); return; }
+			S->Story()->Choose(Honor);
+			const bool bGreen = S->Story()->DialogueText.Contains(TEXT("pup"));
+			Report(FString::Printf(TEXT("%s: level %d knight is too green (\"%s\")"), bGreen ? TEXT("PASS") : TEXT("FAIL"), Pl->Level(), *S->Story()->DialogueText.Left(60)));
+			S->Story()->CloseDialogue();
+			S->OpenDialogue(Brask);
+			Report(FString::Printf(TEXT("%s: until levelling up, the challenge is gone"), S->Story()->FindChoice(TEXT("I am a knight")) == INDEX_NONE ? TEXT("PASS") : TEXT("FAIL")));
+			S->Story()->CloseDialogue();
+			while (Pl->Level() < 4) Pl->GainXp(ARPGPlayerCharacter::XpToNext(Pl, Pl->Level()) - Pl->Xp);
+			S->OpenDialogue(Brask);
+			Report(FString::Printf(TEXT("%s: at level %d it can be tried again"), S->Story()->FindChoice(TEXT("I am a knight")) != INDEX_NONE ? TEXT("PASS") : TEXT("FAIL"), Pl->Level()));
+			S->Story()->CloseDialogue();
+			// Peaceful win: the skeleton, talked down, walks off and pays at least its kill XP.
+			Pl->ApplyClass(TEXT("scholar"), TEXT("male"));
+			auto TotalXp = [Pl]() { int32 X = Pl->Xp; for (int32 L = 1; L < Pl->Level(); ++L) X += ARPGPlayerCharacter::XpToNext(Pl, L); return X; };
+			const int32 Before = TotalXp();
+			Archer->Leave();
+			const int32 After = TotalXp();
+			const int32 Kill = int32(TSJson::Num(Archer->Def, TEXT("xp"), 0));
+			Report(FString::Printf(TEXT("%s: talked down, it pays %d XP (killing it: %d)"), After - Before >= Kill ? TEXT("PASS") : TEXT("FAIL"), After - Before, Kill));
+			Quit(1.f);
+		}
+	}
+	else if (Scenario == TEXT("mood"))
+	{
+		// The world's mood: killing one who could talk darkens it, talking one down brightens it; a new band is shown at
+		// the next dawn / dusk (Tessera's ambient life re-weighted); critters flee the hero.
+		ULMStory* L = S->Story();
+		ATSAmbientLife* Life = nullptr;
+		for (TActorIterator<ATSAmbientLife> It(GetWorld()); It; ++It) Life = *It;
+		if (Step == 0)
+		{
+			if (!Life) { Report(TEXT("FAIL: no ambient life in the world")); Quit(0.5f); return; }
+			const float M0 = L->Mood;
+			ARPGEnemy* Archer = Find(TEXT("archer"));
+			ARPGEnemy* Slime = Find(TEXT("slime"));
+			ARPGEnemy* Brute = Find(TEXT("brute"));
+			if (!Archer || !Slime || !Brute) { Report(TEXT("FAIL: missing a slime, archer or brute")); Quit(0.5f); return; }
+			Slime->Die(Pl);
+			const float M1 = L->Mood;
+			Archer->Die(Pl);
+			const float M2 = L->Mood;
+			Pl->ApplyClass(TEXT("scholar"), TEXT("male"));
+			Brute->Leave();
+			const float M3 = L->Mood;
+			Report(FString::Printf(TEXT("%s: slime kill leaves the mood (%.0f -> %.0f); killing a skeleton darkens it (%.0f); talking the brute down brightens it (%.0f)"),
+				M1 == M0 && M2 < M1 && M3 > M2 ? TEXT("PASS") : TEXT("FAIL"), M0, M1, M2, M3));
+			L->AddMood(-40.f, TEXT("test"));
+			const int32 Band = L->MoodBand();
+			Report(FString::Printf(TEXT("%s: band %d isn't shown until the day turns (still %d)"), Band < 0 && S->ShownMoodBand() == 0 ? TEXT("PASS") : TEXT("FAIL"), Band, S->ShownMoodBand()));
+			S->OnDayPhase(ETSDayPhase::Dawn);
+			Report(FString::Printf(TEXT("%s: at dawn the world shows band %d: wolves x%.1f, children x%.1f"),
+				S->ShownMoodBand() == Band && Life->GetWeight(TEXT("wolf")) > 0.f && Life->GetWeight(TEXT("child_a")) < 1.f ? TEXT("PASS") : TEXT("FAIL"),
+				S->ShownMoodBand(), Life->GetWeight(TEXT("wolf")), Life->GetWeight(TEXT("child_a"))));
+			L->AddMood(200.f, TEXT("test: redemption"));
+			S->OnDayPhase(ETSDayPhase::Dusk);
+			Life->FillNow();
+			Report(FString::Printf(TEXT("%s: redeemed (band %d): %d children, %d geese, %d butterflies, %d puppies, %d wolves by day"),
+				S->ShownMoodBand() == 3 && Life->Count(TEXT("child_a")) >= 3 && Life->Count(TEXT("goose")) >= 5 && Life->Count(TEXT("wolf")) == 0 ? TEXT("PASS") : TEXT("FAIL"),
+				S->ShownMoodBand(), Life->Count(TEXT("child_a")) + Life->Count(TEXT("child_b")), Life->Count(TEXT("goose")),
+				Life->Count(TEXT("butterfly_a")) + Life->Count(TEXT("butterfly_b")), Life->Count(TEXT("puppy")), Life->Count(TEXT("wolf"))));
+			const TArray<FVector> Kids = Life->Positions(TEXT("child_a"));
+			if (Kids.Num()) Place(Kids[0] + FVector(500, 0, 0), 180.f);
+			Step = 1; Next = T + 1.2f;
+		}
+		else if (Step == 1)
+		{
+			Shot(TEXT("mood_bright"));
+			const TArray<FVector> Kids = Life->Positions(TEXT("child_a"));
+			if (Kids.Num()) Place(Kids[0] + FVector(150, 0, 0), 180.f);   // walk right up to one
+			Step = 2; Next = T + 0.6f;
+		}
+		else if (Step == 2)
+		{
+			Report(FString::Printf(TEXT("%s: the children run off when the hero comes close"), Life->HasFled(TEXT("child_a")) ? TEXT("PASS") : TEXT("FAIL")));
+			Quit(0.5f);
+		}
+	}
+	else if (Scenario == TEXT("skeletons"))
+	{
+		// The Scholar and the dead: walk up to a grave and read it; each lone skeleton's want; the Grave-Watcher laid to
+		// rest; Captain Ossric's band stands down for his signet.
+		ULMStory* L = S->Story();
+		ATSInteractable* Grave = ATSInteractable::Find(GetWorld(), TEXT("unmarked_grave"));
+		auto Pick = [&](const TCHAR* Prefix) { const int32 I = L->FindChoice(Prefix); if (I != INDEX_NONE) L->Choose(I); return I != INDEX_NONE; };
+		if (Step == 0)
+		{
+			if (!Grave) { Report(TEXT("FAIL: no unmarked grave")); Quit(0.5f); return; }
+			Place(Grave->GetActorLocation() + FVector(700, 0, 0), 180.f);
+			Pl->Control->TryUse(Grave);   // a click on it: walk up and look
+			Step = 1; Next = T + 4.f;
+		}
+		else if (Step == 1)
+		{
+			Report(FString::Printf(TEXT("%s: clicked from afar, the hero walked to the grave and looked at it (open %d, speaker %s)"),
+				L->IsDialogueOpen() && L->Speaker() == Grave ? TEXT("PASS") : TEXT("FAIL"), L->IsDialogueOpen(), L->Speaker() ? *L->Speaker()->GetName() : TEXT("none")));
+			L->CloseDialogue();
+
+			// Lone skeletons: each wants something of its own.
+			TArray<ARPGEnemy*> Lone;
+			for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->Type == TEXT("archer") && !It->IsDead()) Lone.Add(*It);
+			TSet<FString> Wants;
+			for (ARPGEnemy* E : Lone) Wants.Add(E->Wish);
+			Report(FString::Printf(TEXT("%s: %d lone skeletons want %d different things (%s)"), Wants.Num() == 3 ? TEXT("PASS") : TEXT("FAIL"), Lone.Num(), Wants.Num(), *FString::Join(Wants.Array(), TEXT(", "))));
+			for (ARPGEnemy* E : Lone)
+			{
+				if (E->IsLeaving()) continue;
+				S->OpenDialogue(E);
+				Pick(TEXT("What keeps you here?"));
+				if (E->Wish == TEXT("toll"))
+				{
+					Pl->Inventory->Currency = 25;
+					Pick(TEXT("[Pay 10 gold]"));
+					Report(FString::Printf(TEXT("%s: paid the ferryman's toll, the skeleton leaves (gold %d)"), E->IsLeaving() && Pl->Inventory->Currency == 15 ? TEXT("PASS") : TEXT("FAIL"), Pl->Inventory->Currency));
+				}
+				else if (E->Wish == TEXT("riddle"))
+				{
+					Pick(TEXT("A ghost."));
+					const bool bWrong = L->DialogueText.Contains(TEXT("No."));
+					Pick(TEXT("Let me try again."));
+					Pick(TEXT("Your shadow."));
+					Report(FString::Printf(TEXT("%s: a wrong answer, then the riddle solved: it leaves"), bWrong && E->IsLeaving() ? TEXT("PASS") : TEXT("FAIL")));
+				}
+				else if (E->Wish == TEXT("song"))
+				{
+					L->ForcedCheck = true;
+					Pick(TEXT("(Hum"));
+					L->ForcedCheck.Reset();
+					Report(FString::Printf(TEXT("%s: a song from the living days, and it goes"), E->IsLeaving() ? TEXT("PASS") : TEXT("FAIL")));
+				}
+				L->CloseDialogue();
+			}
+
+			// The Grave-Watcher.
+			ARPGEnemy* Watcher = Find(TEXT("skeleton_watcher"));
+			if (!Watcher) { Report(TEXT("FAIL: no Grave-Watcher")); Quit(0.5f); return; }
+			S->OpenDialogue(Watcher);
+			Pick(TEXT("How can I help"));
+			Pick(TEXT("I'll do it."));
+			L->CloseDialogue();
+			Report(FString::Printf(TEXT("%s: the Grave-Watcher's quest: %s"), L->QuestStatus(TEXT("grave_rites")) == TEXT("active") ? TEXT("PASS") : TEXT("FAIL"), *L->QuestStatus(TEXT("grave_rites"))));
+			Pl->ApplyClass(TEXT("knight"), TEXT("male"));
+			S->UseInteractable(Grave);
+			const bool bKnightCant = L->FindChoice(TEXT("[Grave-speech]")) == INDEX_NONE;
+			L->CloseDialogue();
+			Pl->ApplyClass(TEXT("scholar"), TEXT("male"));
+			S->UseInteractable(Grave);
+			Pick(TEXT("[Grave-speech]"));
+			L->CloseDialogue();
+			ATSInteractable* Marker = ATSInteractable::Find(GetWorld(), TEXT("grave_marker"));
+			Report(FString::Printf(TEXT("%s: a knight can't read Grave-speech (%d); the Scholar reads the rites and a marker appears (%d)"),
+				bKnightCant && Marker && Marker->IsShown() ? TEXT("PASS") : TEXT("FAIL"), bKnightCant, Marker && Marker->IsShown()));
+			const float Mood0 = L->Mood;
+			S->OpenDialogue(Watcher);
+			Pick(TEXT("It's done."));
+			L->CloseDialogue();
+			Report(FString::Printf(TEXT("%s: Aldric rests (resting %d, quest %s, mood %+.0f)"), Watcher->IsLeaving() && Watcher->bResting ? TEXT("PASS") : TEXT("FAIL"),
+				Watcher->bResting, *L->QuestStatus(TEXT("grave_rites")), L->Mood - Mood0));
+			Place(Watcher->GetActorLocation() + FVector(0, 500, 0), -90.f);
+			Step = 2; Next = T + 1.6f;
+		}
+		else if (Step == 2)
+		{
+			Shot(TEXT("skeleton_rest"));   // Aldric's ghost rising
+			// Captain Ossric's band: a knight gets shot at; the Scholar gets heard.
+			ARPGEnemy* Cap = Find(TEXT("skeleton_captain"));
+			TArray<ARPGEnemy*> Band;
+			for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->FactionId() == TEXT("bonewardens")) Band.Add(*It);
+			if (!Cap || Band.Num() != 3) { Report(FString::Printf(TEXT("FAIL: the band (%d)"), Band.Num())); Quit(0.5f); return; }
+			Pl->ApplyClass(TEXT("knight"), TEXT("male"));
+			const bool bKnightAttacked = !Cap->IsPassive();
+			Pl->ApplyClass(TEXT("scholar"), TEXT("male"));
+			Report(FString::Printf(TEXT("%s: the Bonewardens attack a knight (%d) but wait for the Scholar (%d)"), bKnightAttacked && Cap->IsPassive() ? TEXT("PASS") : TEXT("FAIL"), bKnightAttacked, Cap->IsPassive()));
+			S->OpenDialogue(Cap);
+			Pick(TEXT("Why can't you leave?"));
+			Pick(TEXT("I'll find it."));
+			L->CloseDialogue();
+			ATSInteractable* Ring = ATSInteractable::Find(GetWorld(), TEXT("lost_signet"));
+			S->UseInteractable(Ring);
+			Pick(TEXT("Take it."));
+			L->CloseDialogue();
+			Report(FString::Printf(TEXT("%s: found the signet (have %d, still lying there %d, quest %s)"), Pl->Inventory->Count(TEXT("signet")) == 1 && Ring && !Ring->IsShown() ? TEXT("PASS") : TEXT("FAIL"),
+				Pl->Inventory->Count(TEXT("signet")), Ring && Ring->IsShown(), *L->QuestStatus(TEXT("lost_signet"))));
+			S->OpenDialogue(Cap);
+			Pick(TEXT("[Give the signet]"));
+			L->CloseDialogue();
+			int32 Gone = 0;
+			for (ARPGEnemy* E : Band) Gone += E->IsLeaving();
+			Report(FString::Printf(TEXT("%s: the captain stands his band down: %d of 3 leave (signet given %d, quest %s)"), Gone == 3 && Pl->Inventory->Count(TEXT("signet")) == 0 ? TEXT("PASS") : TEXT("FAIL"),
+				Gone, Pl->Inventory->Count(TEXT("signet")) == 0, *L->QuestStatus(TEXT("lost_signet"))));
+			Quit(1.f);
+		}
+	}
+	else if (Scenario == TEXT("brute"))
+	{
+		// The Ruin Brute: too strong / too simple for green heroes; the food chain (Maren's slime cull -> bread -> relic).
+		ULMStory* L = S->Story();
+		auto Pick = [&](const TCHAR* Prefix) { const int32 I = L->FindChoice(Prefix); if (I != INDEX_NONE) L->Choose(I); return I != INDEX_NONE; };
+		ARPGEnemy* Brute = Find(TEXT("brute"));
+		ARPGNPC* Elder = nullptr;
+		for (TActorIterator<ARPGNPC> It(GetWorld()); It; ++It) if (It->DialogueRoot == TEXT("elder_root")) Elder = *It;
+		if (!Brute || !Elder) { Report(TEXT("FAIL: no brute or elder")); Quit(0.5f); return; }
+		// Level gates: a level-1 mage can't get into its head; a level-1 scholar can't teach it.
+		Pl->ApplyClass(TEXT("mage"), TEXT("male"));
+		Pl->Stats->Pool(TEXT("mana")).Current = 100.f;
+		S->OpenDialogue(Brute);
+		Pick(TEXT("(Reach into its slow"));
+		const bool bStrong = L->DialogueText.Contains(TEXT("wall of stubborn stone"));
+		L->CloseDialogue();
+		Pl->ApplyClass(TEXT("scholar"), TEXT("male"));
+		S->OpenDialogue(Brute);
+		Pick(TEXT("There's gold in the old mine"));
+		const bool bSimple = L->DialogueText.Contains(TEXT("Talk smaller"));
+		L->CloseDialogue();
+		Report(FString::Printf(TEXT("%s: at level 1 the mage's hypnosis slides off (%d) and the scholar can't teach it (%d)"), bStrong && bSimple ? TEXT("PASS") : TEXT("FAIL"), bStrong, bSimple));
+		// The food chain.
+		S->OpenDialogue(Brute);
+		Pick(TEXT("What would you take"));
+		L->CloseDialogue();
+		S->OpenDialogue(Elder);
+		Pick(TEXT("Could you spare some food?"));
+		Pick(TEXT("I'll do it."));
+		L->CloseDialogue();
+		Report(FString::Printf(TEXT("%s: the brute wants food (%s); Maren wants slimes culled first (%s)"),
+			L->QuestStatus(TEXT("brute_food")) == TEXT("active") && L->QuestStatus(TEXT("maren_slimes")) == TEXT("active") ? TEXT("PASS") : TEXT("FAIL"),
+			*L->QuestStatus(TEXT("brute_food")), *L->QuestStatus(TEXT("maren_slimes"))));
+		for (int32 I = 0; I < 5; ++I) if (ARPGEnemy* Slime = Find(TEXT("slime"))) Slime->Die(Pl);
+		S->OpenDialogue(Elder);
+		Pick(TEXT("The slimes are culled."));
+		L->CloseDialogue();
+		Report(FString::Printf(TEXT("%s: five slimes later, Maren parts with a loaf (bread %d, quest %s)"), Pl->Inventory->Count(TEXT("bread")) == 1 ? TEXT("PASS") : TEXT("FAIL"),
+			Pl->Inventory->Count(TEXT("bread")), *L->QuestStatus(TEXT("maren_slimes"))));
+		const float Mood0 = L->Mood;
+		S->OpenDialogue(Brute);
+		Pick(TEXT("[Give the bread]"));
+		L->CloseDialogue();
+		Report(FString::Printf(TEXT("%s: fed, the brute hands over the relic and settles down (relic %d, pacified %d, passive %d, hunting %d, mood %+.0f)"),
+			Pl->Inventory->Count(TEXT("relic")) == 1 && Brute->IsPacified() && Brute->IsPassive() && !Brute->IsHunting() && L->Mood > Mood0 ? TEXT("PASS") : TEXT("FAIL"),
+			Pl->Inventory->Count(TEXT("relic")), Brute->IsPacified(), Brute->IsPassive(), Brute->IsHunting(), L->Mood - Mood0));
+		S->OpenDialogue(Brute);
+		Place(Brute->GetActorLocation() + FVector(0, 650, 0), -90.f);
+		Shot(TEXT("brute_fed"));
+		Report(FString::Printf(TEXT("%s: now it just snores (\"%s\")"), L->DialogueText.Contains(TEXT("snoring")) ? TEXT("PASS") : TEXT("FAIL"), *L->DialogueText.Left(50)));
+		L->CloseDialogue();
+		Quit(1.f);
+	}
+	else if (Scenario == TEXT("trader"))
+	{
+		// A seasoned Scholar teaches the brute a trade: the relic, a name, and rounds between the mine and the village.
+		ULMStory* L = S->Story();
+		auto Pick = [&](const TCHAR* Prefix) { const int32 I = L->FindChoice(Prefix); if (I != INDEX_NONE) L->Choose(I); return I != INDEX_NONE; };
+		ARPGEnemy* Brute = nullptr;
+		for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->Type == TEXT("brute")) Brute = *It;
+		if (!Brute) { Report(TEXT("FAIL: no brute")); Quit(0.5f); return; }
+		UTSRoutine* R = Brute->GetRoutine();
+		if (Step == 0) { Place(Brute->GetActorLocation() + FVector(0, 500, 0), -90.f); Step = 30; Next = T + 2.f; return; }
+		if (Step == 30) { Shot(TEXT("brute_before")); Step = 31; Next = T + 0.3f; return; }
+		if (Step == 31)
+		{
+			auto LevelTo = [&](int32 N) { while (Pl->Level() < N) Pl->GainXp(ARPGPlayerCharacter::XpToNext(Pl, Pl->Level()) - Pl->Xp); };   // (ApplyClass starts over at 1)
+			// A level-3 mage may now try the hypnosis (it stays offered, and the roll isn't hopeless).
+			Pl->ApplyClass(TEXT("mage"), TEXT("male"));
+			LevelTo(3);
+			S->OpenDialogue(Brute);
+			const bool bHypno = L->FindChoice(TEXT("(Reach into its slow")) != INDEX_NONE;
+			L->CloseDialogue();
+			// A level-1 scholar can't teach it even with luck on their side; a level-4 one can.
+			Pl->ApplyClass(TEXT("scholar"), TEXT("male"));
+			S->OpenDialogue(Brute);
+			L->ForcedCheck = true;
+			Pick(TEXT("There's gold in the old mine"));
+			const bool bTooSimple = L->DialogueText.Contains(TEXT("Talk smaller")) && !Brute->IsTrader();
+			L->CloseDialogue();
+			Report(FString::Printf(TEXT("%s: luck can't beat the level floor: at level 1 it's still too simple to teach"), bTooSimple ? TEXT("PASS") : TEXT("FAIL")));
+			LevelTo(4);
+			S->OpenDialogue(Brute);
+			L->ForcedCheck = true;
+			Pick(TEXT("There's gold in the old mine"));
+			L->ForcedCheck.Reset();
+			L->CloseDialogue();
+			R = Brute->GetRoutine();
+			Report(FString::Printf(TEXT("%s: taught a trade at level %d: relic %d, now \"%s\", a trader %d (the mage could try hypnosis now: %d)"),
+				Pl->Inventory->Count(TEXT("relic")) == 1 && Brute->IsTrader() && Brute->DisplayName == TEXT("Grot the Miner") && bHypno ? TEXT("PASS") : TEXT("FAIL"),
+				Pl->Level(), Pl->Inventory->Count(TEXT("relic")), *Brute->DisplayName, Brute->IsTrader(), bHypno));
+			Pl->ApplyClass(TEXT("knight"), TEXT("male"));
+			Report(FString::Printf(TEXT("%s: Grot speaks the common tongue now: even a knight can talk to him (\"%s\")"), Pl->TalkBlocker(Brute).IsEmpty() ? TEXT("PASS") : TEXT("FAIL"), *Pl->TalkBlocker(Brute)));
+			Place(Brute->GetActorLocation() + FVector(0, 500, 0), -90.f);
+			Step = 32; Next = T + 0.5f;
+		}
+		else if (Step == 32)
+		{
+			Shot(TEXT("grot_now"));
+			Step = 1; Next = T + 22.f;   // a rest in the mine, the walk to its mouth, out with the gold
+		}
+		else if (Step == 1)
+		{
+			const FVector Mine = R ? R->Stops[0].At : FVector::ZeroVector;
+			const float From = FVector::Dist2D(Brute->GetActorLocation(), Mine);
+			Report(FString::Printf(TEXT("%s: after a rest in the mine he comes out of the cave with a sack of gold for the village (carrying %d, %.0fuu from the mine, heading to %s)"),
+				Brute->IsCarrying() && From > 200.f && R && R->CurrentTag() == TEXT("village") && !D.AreaAt(Brute->GetActorLocation()) ? TEXT("PASS") : TEXT("FAIL"), Brute->IsCarrying(), From, R ? *R->CurrentTag().ToString() : TEXT("-")));
+			Place(Brute->GetActorLocation() + FVector(0, 650, 0), -90.f);
+			Step = 2; Next = T + 0.4f;
+		}
+		else if (Step == 2)
+		{
+			Shot(TEXT("grot_carrying"));
+			Place(Brute->GetActorLocation() + FVector(0, 260, 0), -90.f);
+			Step = 20; Next = T + 0.4f;
+		}
+		else if (Step == 20)
+		{
+			// Watch him in the ruins: standing a while, then walking on with the hero a few steps behind. He must be drawn
+			// every time (the occlusion culler once lost flat cards on the ruins floor; tall cards once leaned into walls).
+			R->Stop();
+			Undrawn = 0;
+			Step = 50; Next = T + 1.f;
+		}
+		else if (Step >= 50 && Step < 58)
+		{
+			const int32 I = Step - 50;
+			if (I == 4) R->Begin();
+			if (I >= 4) Place(Brute->GetActorLocation() + FVector(0, 330, 0), -90.f);
+			Shot(FString::Printf(TEXT("grot_watch_%d"), I));
+			Undrawn += !Brute->Sprite->WasRecentlyRendered(0.2f);
+			++Step; Next = T + 1.5f;
+			if (Step == 58)
+			{
+				Report(FString::Printf(TEXT("%s: Grot stays drawn standing and walking through the ruins (missing in %d of 8 looks)"), Undrawn == 0 ? TEXT("PASS") : TEXT("FAIL"), Undrawn));
+				Step = 3; Next = T + 0.2f;
+			}
+		}
+		else if (Step == 3) { Quit(1.f); }
+	}
+	else if (Scenario == TEXT("cave"))
+	{
+		// The old mine: a door in the ruins leads to a small cave of its own (the brute's lair), and back out again.
+		ATSInteractable* Mouth = ATSInteractable::Find(GetWorld(), TEXT("cave_mouth"));
+		ATSInteractable* Exit = ATSInteractable::Find(GetWorld(), TEXT("cave_exit"));
+		if (!Mouth || !Exit) { Report(TEXT("FAIL: no cave doors")); Quit(0.5f); return; }
+		if (Step == 0)
+		{
+			Place(Mouth->GetActorLocation() + FVector(0, 700, 0), -90.f);
+			Pl->Control->TryUse(Mouth);   // click the cave mouth: walk up, go in
+			Step = 1; Next = T + 4.f;
+		}
+		else if (Step == 1)
+		{
+			const ARPGEnemy* Brute = Find(TEXT("brute"));
+			const FTSArea* BruteArea = Brute ? D.AreaAt(Brute->GetActorLocation()) : nullptr;
+			Report(FString::Printf(TEXT("%s: through the mine entrance into \"%s\" (the brute lives here: %d)"),
+				Pl->AreaId == TEXT("cave") && BruteArea && BruteArea->Id == TEXT("cave") ? TEXT("PASS") : TEXT("FAIL"), *Pl->AreaId, BruteArea != nullptr));
+			Place(Exit->GetActorLocation() + FVector(0, -500, 0), 90.f);
+			Step = 2; Next = T + 1.5f;
+		}
+		else if (Step == 2)
+		{
+			Shot(TEXT("cave"));
+			Pl->Control->TryUse(Exit);   // and back out
+			Step = 3; Next = T + 3.5f;
+		}
+		else if (Step == 3)
+		{
+			const float FromMouth = FVector::Dist2D(Pl->GetActorLocation(), Mouth->GetActorLocation());
+			Report(FString::Printf(TEXT("%s: and back out to the ruins (area \"%s\", %.0fuu from the mine entrance)"),
+				Pl->AreaId.IsEmpty() && FromMouth < 700.f ? TEXT("PASS") : TEXT("FAIL"), *Pl->AreaId, FromMouth));
+			Quit(1.f);
+		}
+	}
+	else if (Scenario == TEXT("palette") || Scenario == TEXT("palette_night"))
+	{
+		// The world's look at either end of the mood: cracked roads and walls, grumpy men (and at night wolves, bats, snakes);
+		// or vines, sunrays, children and puppies; prices and Tobin's tone follow.
+		ULMStory* L = S->Story();
+		ATSAmbientLife* Life = nullptr;
+		for (TActorIterator<ATSAmbientLife> It(GetWorld()); It; ++It) Life = *It;
+		ATSDressing* Dress = nullptr;
+		for (TActorIterator<ATSDressing> It(GetWorld()); It; ++It) Dress = *It;
+		const bool bNight = Scenario == TEXT("palette_night");
+		if (!Life || !Dress) { Report(TEXT("FAIL: no ambient life or dressing")); Quit(0.5f); return; }
+		auto Show = [&](float Delta) { L->AddMood(Delta, TEXT("test")); S->ApplyMood(); Life->FillNow(); };
+		if (Step == 0)
+		{
+			Show(-200.f);
+			if (bNight)
+			{
+				Report(FString::Printf(TEXT("%s: a dark night: %d wolves, %d bats, %d snakes; no sunrays (%d)"),
+					Life->Count(TEXT("wolf")) > 0 && Life->Count(TEXT("bat")) > 0 && Life->Count(TEXT("snake")) > 0 && Dress->Shown(TEXT("sunray")) == 0 ? TEXT("PASS") : TEXT("FAIL"),
+					Life->Count(TEXT("wolf")), Life->Count(TEXT("bat")), Life->Count(TEXT("snake")), Dress->Shown(TEXT("sunray"))));
+				const TArray<FVector> Wolves = Life->Positions(TEXT("wolf"));
+				if (Wolves.Num()) Place(Wolves[0] + FVector(0, 1300, 0), -90.f);
+				Step = 5; Next = T + 1.5f;
+				return;
+			}
+			Report(FString::Printf(TEXT("%s: a dark day: %d road cracks, %d wall cracks, %d moss, %d grumpy men, no vines (%d), no children (%d); a potion costs %d"),
+				Dress->Shown(TEXT("road_crack")) > 0 && Dress->Shown(TEXT("crack")) > 0 && Dress->Shown(TEXT("vines")) == 0 && Life->Count(TEXT("child_a")) == 0 && Life->Count(TEXT("grumpy")) > 0 && S->PriceOf(15) > 15 ? TEXT("PASS") : TEXT("FAIL"),
+				Dress->Shown(TEXT("road_crack")), Dress->Shown(TEXT("crack")), Dress->Shown(TEXT("moss")), Life->Count(TEXT("grumpy")), Dress->Shown(TEXT("vines")), Life->Count(TEXT("child_a")), S->PriceOf(15)));
+			Place(D.TileCenter(8, 9), -90.f);
+			Step = 1; Next = T + 1.5f;
+		}
+		else if (Step == 1)
+		{
+			Shot(TEXT("mood_dark_day"));
+			Show(400.f);
+			Report(FString::Printf(TEXT("%s: a bright day: %d vines, %d sunrays, no road cracks (%d), %d children, %d puppies; a potion costs %d"),
+				Dress->Shown(TEXT("vines")) > 0 && Dress->Shown(TEXT("sunray")) > 0 && Dress->Shown(TEXT("road_crack")) == 0 && Life->Count(TEXT("child_a")) > 0 && S->PriceOf(15) < 15 ? TEXT("PASS") : TEXT("FAIL"),
+				Dress->Shown(TEXT("vines")), Dress->Shown(TEXT("sunray")), Dress->Shown(TEXT("road_crack")), Life->Count(TEXT("child_a")) + Life->Count(TEXT("child_b")), Life->Count(TEXT("puppy")), S->PriceOf(15)));
+			ARPGNPC* Tobin = nullptr;
+			for (TActorIterator<ARPGNPC> It(GetWorld()); It; ++It) if (It->DialogueRoot == TEXT("merchant_root")) Tobin = *It;
+			if (Tobin)
+			{
+				Pl->Inventory->Currency = 100;
+				S->OpenDialogue(Tobin);
+				const int32 Buy = L->FindChoice(FString::Printf(TEXT("Buy Health Potion (%dg)"), S->PriceOf(15)));
+				Report(FString::Printf(TEXT("%s: Tobin's in a good mood (\"%s\") and the potion is %dg"), Buy != INDEX_NONE && L->DialogueText.Contains(TEXT("cheaper")) ? TEXT("PASS") : TEXT("FAIL"), *L->DialogueText.Left(40), S->PriceOf(15)));
+				if (Buy != INDEX_NONE) L->Choose(Buy);
+				Report(FString::Printf(TEXT("%s: and it costs that (gold %d)"), Pl->Inventory->Currency == 100 - S->PriceOf(15) ? TEXT("PASS") : TEXT("FAIL"), Pl->Inventory->Currency));
+				L->CloseDialogue();
+			}
+			Step = 2; Next = T + 8.f;   // let them wander a while
+		}
+		else if (Step == 2)
+		{
+			Shot(TEXT("mood_bright_day"));
+			// Nobody walks into the river (or a wall): after a while of wandering, every walker is on open ground.
+			int32 Walkers = 0, Wet = 0;
+			for (const TCHAR* Kind : { TEXT("child_a"), TEXT("child_b"), TEXT("goose"), TEXT("puppy"), TEXT("grumpy") })
+				for (const FVector& At : Life->Positions(Kind)) { ++Walkers; Wet += !Life->CanStand(At); }
+			Report(FString::Printf(TEXT("%s: %d walkers about, %d in water or walls"), Walkers > 0 && Wet == 0 ? TEXT("PASS") : TEXT("FAIL"), Walkers, Wet));
+			Quit(0.5f);
+		}
+		else if (Step == 5) { Shot(TEXT("mood_dark_night")); Quit(0.5f); }
+	}
+	else if (Scenario == TEXT("pacifist"))
+	{
+		// Proof run: a Scholar who only ever kills slimes clears the bridge, the dead and the relic by talking; the world
+		// brightens. (Levels are granted, not ground: the run proves the routes, not the grind.)
+		ULMStory* L = S->Story();
+		auto Pick = [&](const TCHAR* Prefix) { const int32 I = L->FindChoice(Prefix); if (I != INDEX_NONE) L->Choose(I); return I != INDEX_NONE; };
+		auto Talk = [&](ATSCharacter* Who, std::initializer_list<const TCHAR*> Choices) { S->OpenDialogue(Who); for (const TCHAR* Ch : Choices) Pick(Ch); L->CloseDialogue(); };
+		ARPGNPC* Elder = nullptr;
+		for (TActorIterator<ARPGNPC> It(GetWorld()); It; ++It) if (It->DialogueRoot == TEXT("elder_root")) Elder = *It;
+		int32 TalkersKilled = 0;
+		const FDelegateHandle Listen = UTSCharacterEvents::Get(this)->OnDied.AddLambda([&TalkersKilled](ATSCharacter* Who, AActor*) { if (const ARPGEnemy* E = Cast<ARPGEnemy>(Who); E && !E->Speaks().IsEmpty()) ++TalkersKilled; });
+		while (Pl->Level() < 5) Pl->GainXp(ARPGPlayerCharacter::XpToNext(Pl, Pl->Level()) - Pl->Xp);
+		const float Mood0 = L->Mood;
+		// The bridge: talked into honest work.
+		S->OpenDialogue(Elder); Pick(TEXT("What's troubling the village?")); L->Choose(0); L->CloseDialogue();
+		ARPGEnemy* Brask = Find(TEXT("bandit_captain"));
+		S->OpenDialogue(Brask); L->ForcedCheck = true; Pick(TEXT("Ashford needs guards")); Pick(TEXT("(Shake his hand)")); L->CloseDialogue();
+		Talk(Elder, { TEXT("The bridge is open.") });
+		// The dead: every lone skeleton's want, the Grave-Watcher's grave, the Bonewardens' signet.
+		for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It)
+		{
+			ARPGEnemy* E = *It;
+			if (E->Type != TEXT("archer") || E->IsLeaving()) continue;
+			Pl->Inventory->Currency = FMath::Max(Pl->Inventory->Currency, 20);
+			S->OpenDialogue(E); Pick(TEXT("What keeps you here?"));
+			Pick(TEXT("[Pay 10 gold]")); Pick(TEXT("Your shadow.")); L->ForcedCheck = true; Pick(TEXT("(Hum")); L->ForcedCheck.Reset();
+			L->CloseDialogue();
+		}
+		Talk(Find(TEXT("skeleton_watcher")), { TEXT("How can I help"), TEXT("I'll do it.") });
+		S->UseInteractable(ATSInteractable::Find(GetWorld(), TEXT("unmarked_grave"))); Pick(TEXT("[Grave-speech]")); L->CloseDialogue();
+		Talk(Find(TEXT("skeleton_watcher")), { TEXT("It's done.") });
+		Talk(Find(TEXT("skeleton_captain")), { TEXT("Why can't you leave?"), TEXT("I'll find it.") });
+		S->UseInteractable(ATSInteractable::Find(GetWorld(), TEXT("lost_signet"))); Pick(TEXT("Take it.")); L->CloseDialogue();
+		Talk(Find(TEXT("skeleton_captain")), { TEXT("[Give the signet]") });
+		// The relic: the brute taught a trade.
+		Talk(Elder, { TEXT("Is there anything else I can do?") });
+		if (L->QuestStatus(TEXT("lost_relic")) == TEXT("none")) L->StartQuest(TEXT("lost_relic"));
+		ARPGEnemy* Brute = Find(TEXT("brute"));
+		S->OpenDialogue(Brute); L->ForcedCheck = true; Pick(TEXT("There's gold in the old mine")); L->ForcedCheck.Reset(); L->CloseDialogue();
+		Talk(Elder, { TEXT("I recovered the relic.") });
+		UTSCharacterEvents::Get(this)->OnDied.Remove(Listen);
+		int32 Foes = 0;
+		for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (!It->Speaks().IsEmpty() && !It->IsDead() && !It->IsLeaving() && !It->IsPacified() && It->Team == ETSTeam::Hostile) ++Foes;
+		const bool bQuests = L->QuestStatus(TEXT("toll_bridge")) == TEXT("turnedIn") && L->QuestStatus(TEXT("lost_relic")) == TEXT("turnedIn")
+			&& L->QuestStatus(TEXT("grave_rites")) == TEXT("turnedIn") && L->QuestStatus(TEXT("lost_signet")) == TEXT("turnedIn");
+		Report(FString::Printf(TEXT("%s: the bridge %s, the relic %s, the grave %s, the signet %s; talkers killed %d; talkers still hostile %d"),
+			bQuests && TalkersKilled == 0 && Foes == 0 ? TEXT("PASS") : TEXT("FAIL"), *L->QuestStatus(TEXT("toll_bridge")), *L->QuestStatus(TEXT("lost_relic")),
+			*L->QuestStatus(TEXT("grave_rites")), *L->QuestStatus(TEXT("lost_signet")), TalkersKilled, Foes));
+		S->OnDayPhase(ETSDayPhase::Dawn);
+		Report(FString::Printf(TEXT("%s: the world brightened (mood %.0f -> %.0f, band %d shown at dawn)"), L->MoodBand() >= 2 && S->ShownMoodBand() == L->MoodBand() ? TEXT("PASS") : TEXT("FAIL"), Mood0, L->Mood, S->ShownMoodBand()));
+		Quit(1.f);
+	}
+	else if (Scenario == TEXT("spree"))
+	{
+		// Proof run: a knight who cuts down everyone who could have talked darkens the world (wolves by night, grumpy
+		// men by day); then a change of heart brings it back - slowly.
+		ULMStory* L = S->Story();
+		auto Pick = [&](const TCHAR* Prefix) { const int32 I = L->FindChoice(Prefix); if (I != INDEX_NONE) L->Choose(I); return I != INDEX_NONE; };
+		ATSAmbientLife* Life = nullptr;
+		for (TActorIterator<ATSAmbientLife> It(GetWorld()); It; ++It) Life = *It;
+		// Strike a bandit at the bridge (a betrayal while they'd talk), then put every archer and bandit down.
+		if (ARPGEnemy* B = Find(TEXT("bandit"))) B->OnStruck(Pl);
+		int32 Kills = 0;
+		for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It)
+			if ((It->Type == TEXT("archer") || It->Type == TEXT("bandit")) && !It->IsDead()) { It->Die(Pl); ++Kills; }
+		const int32 Low = L->MoodBand();
+		S->OnDayPhase(ETSDayPhase::Dusk);
+		Report(FString::Printf(TEXT("%s: %d killed: mood %.0f, band %d; by dusk the world shows it (wolves x%.1f, grumpy men x%.1f, children x%.1f)"),
+			Low <= -2 && S->ShownMoodBand() == Low && Life && Life->GetWeight(TEXT("wolf")) > 0.f && Life->GetWeight(TEXT("grumpy")) > 0.f && Life->GetWeight(TEXT("child_a")) == 0.f ? TEXT("PASS") : TEXT("FAIL"),
+			Kills, L->Mood, Low, Life ? Life->GetWeight(TEXT("wolf")) : 0.f, Life ? Life->GetWeight(TEXT("grumpy")) : 0.f, Life ? Life->GetWeight(TEXT("child_a")) : 0.f));
+		// Redemption: the Scholar's way with the dead who are left.
+		const float Before = L->Mood;
+		Pl->ApplyClass(TEXT("scholar"), TEXT("male"));
+		S->OpenDialogue(Find(TEXT("skeleton_watcher"))); Pick(TEXT("How can I help")); Pick(TEXT("I'll do it.")); L->CloseDialogue();
+		S->UseInteractable(ATSInteractable::Find(GetWorld(), TEXT("unmarked_grave"))); Pick(TEXT("[Grave-speech]")); L->CloseDialogue();
+		S->OpenDialogue(Find(TEXT("skeleton_watcher"))); Pick(TEXT("It's done.")); L->CloseDialogue();
+		S->OpenDialogue(Find(TEXT("skeleton_captain"))); Pick(TEXT("Why can't you leave?")); Pick(TEXT("I'll find it.")); L->CloseDialogue();
+		S->UseInteractable(ATSInteractable::Find(GetWorld(), TEXT("lost_signet"))); Pick(TEXT("Take it.")); L->CloseDialogue();
+		S->OpenDialogue(Find(TEXT("skeleton_captain"))); Pick(TEXT("[Give the signet]")); L->CloseDialogue();
+		const int32 Shown = S->ShownMoodBand();
+		S->OnDayPhase(ETSDayPhase::Dawn);
+		Report(FString::Printf(TEXT("%s: redemption: mood %.0f -> %.0f (band %d -> %d), shown at dawn, not before (%d until then); slow: not yet back to normal (%d)"),
+			L->Mood > Before + 10.f && Shown == Low && S->ShownMoodBand() == L->MoodBand() && L->MoodBand() < 0 ? TEXT("PASS") : TEXT("FAIL"),
+			Before, L->Mood, Low, L->MoodBand(), Shown, L->MoodBand()));
+		Quit(1.f);
+	}
+	else if (Scenario.StartsWith(TEXT("tour")))
+	{
+		// A play-through for whichever class the run picked (-RPGClass): Maren, Brask, the dead, the grave, the old mine
+		// and its brute, and back out. Screenshots at each stop (tour_<class>_*); what each class can and can't do.
+		ULMStory* L = S->Story();
+		const FString Cls = Pl->ClassId;
+		auto Snap = [&](const TCHAR* What) { Shot(FString::Printf(TEXT("tour_%s_%s"), *Cls, What)); };
+		auto Shown = [&](const TCHAR* Prefix) { return L->FindChoice(Prefix) != INDEX_NONE; };
+		ARPGNPC* Elder = nullptr;
+		for (TActorIterator<ARPGNPC> It(GetWorld()); It; ++It) if (It->DialogueRoot == TEXT("elder_root")) Elder = *It;
+		ARPGEnemy* Brask = Find(TEXT("bandit_captain"));
+		ARPGEnemy* Brute = Find(TEXT("brute"));
+		ATSInteractable* Grave = ATSInteractable::Find(GetWorld(), TEXT("unmarked_grave"));
+		ATSInteractable* Mouth = ATSInteractable::Find(GetWorld(), TEXT("cave_mouth"));
+		ATSInteractable* Exit = ATSInteractable::Find(GetWorld(), TEXT("cave_exit"));
+		if (!Elder || !Brask || !Brute || !Grave || !Mouth || !Exit) { Report(TEXT("FAIL: something's missing from the world")); Quit(0.5f); return; }
+		if (Step == 0)
+		{
+			while (Pl->Level() < 4) Pl->GainXp(ARPGPlayerCharacter::XpToNext(Pl, Pl->Level()) - Pl->Xp);
+			Place(Elder->GetActorLocation() + FVector(380, 0, 0), 180.f);   // beside her (a house stands south of her)
+			Pl->Control->TestClick(Elder->GetActorLocation(), Elder);   // click Maren: walk up and talk
+			Step = 1; Next = T + 2.5f;
+		}
+		else if (Step == 1)
+		{
+			Report(FString::Printf(TEXT("%s: [%s] clicking Elder Maren opens her conversation (\"%s\")"), L->IsDialogueOpen() && !L->DialogueText.IsEmpty() ? TEXT("PASS") : TEXT("FAIL"), *Cls, *L->DialogueText.Left(60)));
+			Snap(TEXT("1_elder"));
+			L->CloseDialogue();
+			Step = 11; Next = T + 0.4f;
+		}
+		else if (Step == 11) { Place(Brask->GetActorLocation() + FVector(-250, -300, 0), 40.f); Step = 2; Next = T + 1.5f; }
+		else if (Step == 2)
+		{
+			S->OpenDialogue(Brask);
+			struct FOpt { const TCHAR* Class; const TCHAR* Prefix; };
+			const FOpt Opts[] = { { TEXT("knight"), TEXT("I am a knight") }, { TEXT("mage"), TEXT("(Reach into his mind)") }, { TEXT("thief"), TEXT("(Spin a dagger)") }, { TEXT("scholar"), TEXT("Ashford needs guards") } };
+			FString Mine, Others;
+			for (const FOpt& O : Opts) { if (Cls == O.Class) Mine = Shown(O.Prefix) ? TEXT("offered") : TEXT("MISSING"); else if (Shown(O.Prefix)) Others += O.Class; }
+			Report(FString::Printf(TEXT("%s: [%s] at the bridge Brask hears this class's own approach (%s); no other class's (%s)"), Mine == TEXT("offered") && Others.IsEmpty() ? TEXT("PASS") : TEXT("FAIL"), *Cls, *Mine, Others.IsEmpty() ? TEXT("none") : *Others));
+			Snap(TEXT("2_brask"));
+			L->CloseDialogue();
+			Step = 21; Next = T + 0.4f;
+		}
+		else if (Step == 21) { ARPGEnemy* Skel = Find(TEXT("archer")); Place(Skel->GetActorLocation() + FVector(0, 420, 0), -90.f); Target = Skel; Step = 3; Next = T + 1.5f; }
+		else if (Step == 3)
+		{
+			ARPGEnemy* Skel = Target.Get();
+			const bool bScholar = Cls == TEXT("scholar");
+			const FString Why = Skel ? Pl->TalkBlocker(Skel) : FString(TEXT("gone"));
+			Report(FString::Printf(TEXT("%s: [%s] a skeleton %s (\"%s\")"), Skel && (Why.IsEmpty() == bScholar) && (Skel->IsPassive() == bScholar) ? TEXT("PASS") : TEXT("FAIL"),
+				*Cls, bScholar ? TEXT("waits to be talked to") : TEXT("won't talk, and comes for you"), *Why));
+			Snap(TEXT("3_skeleton"));
+			Step = 31; Next = T + 0.4f;
+		}
+		else if (Step == 31) { Place(Grave->GetActorLocation() + FVector(0, 300, 0), -90.f); Step = 4; Next = T + 1.2f; }
+		else if (Step == 4)
+		{
+			S->UseInteractable(Grave);
+			const bool bRead = Shown(TEXT("[Grave-speech]"));
+			Report(FString::Printf(TEXT("%s: [%s] the unmarked grave: the rites %s"), bRead == (Cls == TEXT("scholar")) ? TEXT("PASS") : TEXT("FAIL"), *Cls, bRead ? TEXT("can be read") : TEXT("are in Grave-speech, not for this hero")));
+			Snap(TEXT("4_grave"));
+			L->CloseDialogue();
+			Step = 41; Next = T + 0.4f;
+		}
+		else if (Step == 41) { Place(Mouth->GetActorLocation() + FVector(0, 650, 0), -90.f); Pl->Control->TryUse(Mouth); Step = 5; Next = T + 4.f; }
+		else if (Step == 5)
+		{
+			Report(FString::Printf(TEXT("%s: [%s] into the old mine (\"%s\")"), Pl->AreaId == TEXT("cave") ? TEXT("PASS") : TEXT("FAIL"), *Cls, *Pl->AreaId));
+			Place(Brute->GetActorLocation() + FVector(-60, 380, 0), -90.f);
+			Step = 6; Next = T + 1.5f;
+		}
+		else if (Step == 6)
+		{
+			Snap(TEXT("5_cave"));
+			const bool bOld = Cls == TEXT("mage") || Cls == TEXT("scholar");
+			const FString Why = Pl->TalkBlocker(Brute);
+			Report(FString::Printf(TEXT("%s: [%s] the Ruin Brute %s (\"%s\")"), Why.IsEmpty() == bOld ? TEXT("PASS") : TEXT("FAIL"), *Cls, bOld ? TEXT("can be talked to in the Old Tongue") : TEXT("can't be talked to"), *Why));
+			if (bOld)
+			{
+				S->OpenDialogue(Brute);
+				const bool bHyp = Shown(TEXT("(Reach into its slow")), bTeach = Shown(TEXT("There's gold in the old mine"));
+				Report(FString::Printf(TEXT("%s: [%s] its options: hypnosis %d (mage only), teaching a trade %d (scholar only)"),
+					bHyp == (Cls == TEXT("mage")) && bTeach == (Cls == TEXT("scholar")) ? TEXT("PASS") : TEXT("FAIL"), *Cls, bHyp, bTeach));
+				Snap(TEXT("6_brute_talk"));
+				L->CloseDialogue();
+				Step = 8; Next = T + 0.6f;
+			}
+			else
+			{
+				// Fight it: a few swings, and it must take the hits.
+				Swings = 0;
+				Target = Brute;
+				Step = 7; Next = T + 0.2f;
+			}
+		}
+		else if (Step == 7)
+		{
+			ARPGEnemy* B = Target.Get();
+			if (B && Swings < 6) { AimAt(B->GetActorLocation()); Pl->Control->TestClick(B->GetActorLocation(), B); ++Swings; Next = T + 0.7f; return; }
+			Report(FString::Printf(TEXT("%s: [%s] fighting the brute: it takes the hits (%.0f / %.0f HP)"), B && B->Stats->Health() < B->Stats->MaxHealth() ? TEXT("PASS") : TEXT("FAIL"), *Cls, B ? B->Stats->Health() : 0.f, B ? B->Stats->MaxHealth() : 0.f));
+			Snap(TEXT("6_brute_fight"));
+			Step = 8; Next = T + 0.5f;
+		}
+		else if (Step == 8)
+		{
+			Pl->Stats->Health() = Pl->Stats->MaxHealth();
+			Place(Exit->GetActorLocation() + FVector(0, -450, 0), 90.f);
+			Pl->Control->TryUse(Exit);
+			Step = 9; Next = T + 3.5f;
+		}
+		else if (Step == 9)
+		{
+			Report(FString::Printf(TEXT("%s: [%s] and back out to the ruins (\"%s\")"), Pl->AreaId.IsEmpty() ? TEXT("PASS") : TEXT("FAIL"), *Cls, *Pl->AreaId));
+			Snap(TEXT("7_out"));
+			Quit(1.f);
 		}
 	}
 	else if (Scenario == TEXT("night"))

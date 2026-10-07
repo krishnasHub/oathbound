@@ -1,4 +1,5 @@
 #include "RPGPlayerCharacter.h"
+#include "TSInteractable.h"
 #include "TSFeedback.h"
 #include "TSSky.h"
 #include "Oathbound.h"
@@ -139,6 +140,8 @@ void ARPGPlayerCharacter::BeginPlay()
 	Control->Attack = [this]() { PrimaryAttack(); };
 	Control->TalkBlocker = [this](const ATSCharacter* C) { return TalkBlocker(C); };
 	Control->Talk = [this](ATSCharacter* C) { URPGSession::Get(this)->OpenDialogue(C); };
+	Control->UseBlocker = [this](const ATSInteractable* It) { return It && It->CanUse() ? FString() : FString(TEXT("...")); };
+	Control->Use = [this](ATSInteractable* It) { URPGSession::Get(this)->UseInteractable(It); };
 
 	// After dark a soft, warm light follows the hero (faded in by the day/night cycle) so you never lose yourself.
 	NightGlow = NewObject<UPointLightComponent>(this, TEXT("NightGlow"));
@@ -436,16 +439,55 @@ float ARPGPlayerCharacter::TalkRange() const
 	return D.Px(D.Tuning(TEXT("interactRange"), 48)) + 60.f;
 }
 
+bool ARPGPlayerCharacter::Speaks(const FString& Language) const
+{
+	if (Language.IsEmpty()) return false;
+	for (const TSharedPtr<FJsonValue>& V : TSJson::Arr(ClassDef, TEXT("languages")))
+		if (V->AsString() == TEXT("*") || V->AsString() == Language) return true;
+	return false;
+}
+
+FString ARPGPlayerCharacter::CantSpeakWhy(const UObject* WorldContext, const FString& Language)
+{
+	const FString Name = TSJson::Str(UTSData::Get(WorldContext).Entry(TEXT("languages"), Language), TEXT("name"), Language);
+	return FString::Printf(TEXT("It speaks %s. You don't."), *Name);
+}
+
 FString ARPGPlayerCharacter::TalkBlocker(const ATSCharacter* C) const
 {
 	if (!C || C->IsDead() || C->IsLeaving()) return TEXT("...");
 	if (C->IsFrozen()) return TEXT("Frozen solid.");
+	// Language first: slimes have none; the dead and the old ones only talk to those who speak their tongue.
 	const ARPGEnemy* E = Cast<ARPGEnemy>(C);
-	if (C->DialogueRoot.IsEmpty())
-		return E && !TSJson::Bool(E->Def, TEXT("intelligent")) ? TEXT("It can't be reasoned with.") : TEXT("They have nothing to say.");
+	const FString Lang = E ? E->Speaks() : FString(TEXT("common"));
+	if (Lang.IsEmpty()) return TEXT("It can't be reasoned with.");
+	if (!Speaks(Lang)) return CantSpeakWhy(this, Lang);
+	if (C->DialogueRoot.IsEmpty()) return TEXT("They have nothing to say.");
 	// Foes talk only while their faction is still neutral; mid-fight it takes Silver Words.
 	if (C->Team == ETSTeam::Hostile && !C->IsPassive()) return TEXT("They're past talking.");
 	return FString();
+}
+
+void ARPGPlayerCharacter::SnapCamera()
+{
+	CameraBoom->bEnableCameraLag = false;
+	FTimerHandle H;
+	GetWorldTimerManager().SetTimer(H, [this]() { CameraBoom->bEnableCameraLag = true; }, 0.1f, false);
+}
+
+void ARPGPlayerCharacter::UpdateArea()
+{
+	const UTSData& D = UTSData::Get(this);
+	const FTSArea* A = D.AreaAt(GetActorLocation());
+	const FString Now = A ? A->Id : FString();
+	if (Now == AreaId) return;
+	AreaId = Now;
+	// An area's look: darker, closed in (camera post-process), or back to the open sky.
+	const TSJson::FObj Look = A ? TSJson::Obj(A->Def, TEXT("look")) : nullptr;
+	for (TActorIterator<ATSSky> It(GetWorld()); It; ++It)
+		It->SetIndoors(float(TSJson::Num(Look, TEXT("exposure"), 0)), float(TSJson::Num(Look, TEXT("vignette"), 0.3)));
+	const FString Name = A ? A->Name : TSJson::Str(TSJson::Obj(D.Section(TEXT("map")), TEXT("main")), TEXT("name"));
+	if (!Name.IsEmpty()) UTSFeedback::Get(this)->Toast(Name, FLinearColor(0.9f, 0.85f, 0.7f));
 }
 
 FRotator ARPGPlayerCharacter::MoveFrame() const
@@ -466,10 +508,13 @@ void ARPGPlayerCharacter::OnKey(FName Key)
 		{
 			bool bHostile = false;
 			if (ATSCharacter* C = Control->UnderCursor(bHostile)) Control->TryTalk(C);
+			else if (ATSInteractable* It = Control->ObjectUnderCursor()) Control->TryUse(It);
+			else if (ATSInteractable* Near = ATSInteractable::Nearest(GetWorld(), GetActorLocation(), Control->TalkRange)) Session->UseInteractable(Near);
 			else Control->SetTalkMode(!Control->IsTalkMode());
 			return;
 		}
 		if (ARPGCharacterBase* T = TalkTarget()) Session->OpenDialogue(T);
+		else if (ATSInteractable* Near = ATSInteractable::Nearest(GetWorld(), GetActorLocation(), Control->TalkRange)) Session->UseInteractable(Near);
 		return;
 	}
 	if (Key == TEXT("Potion")) { DrinkPotion(); return; }
@@ -1222,6 +1267,7 @@ void ARPGPlayerCharacter::Tick(float Dt)
 {
 	Super::Tick(Dt);
 	URPGSession* Session = URPGSession::Get(this);
+	UpdateArea();
 
 
 

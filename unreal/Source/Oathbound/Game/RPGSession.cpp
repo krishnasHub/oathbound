@@ -15,6 +15,12 @@
 #include "TSPerception.h"
 #include "TSCharacterEvents.h"
 #include "RPGGhost.h"
+#include "RPGAmbient.h"
+#include "TSAmbientLife.h"
+#include "TSDressing.h"
+#include "TSDayNight.h"
+#include "TSInteractable.h"
+#include "TSHeroControl.h"
 #include "Engine/Texture2D.h"
 
 #include "EngineUtils.h"
@@ -52,6 +58,9 @@ void URPGSession::OnWorldBeginPlay(UWorld& InWorld)
 	Super::OnWorldBeginPlay(InWorld);
 	Bind(Story());
 	if (UTSCharacterEvents* Events = UTSCharacterEvents::Get(this)) Events->OnDied.AddUObject(this, &URPGSession::OnCharacterDied);
+	Story()->OnMoodBand.AddUObject(this, &URPGSession::OnMoodBand);
+	Story()->OnDialogueChanged.AddWeakLambda(this, [this]() { RefreshInteractables(); });   // a grave marked, a ring picked up
+	if (UTSDayNight* DayNight = UTSDayNight::Get(this)) DayNight->OnPhase.AddUObject(this, &URPGSession::OnDayPhase);
 }
 
 void URPGSession::SetDebug(bool bOn)
@@ -71,11 +80,12 @@ void URPGSession::Tick(float Dt)
 // Duels, factions, encounters
 // ---------------------------------------------------------------------------------------------
 
-void URPGSession::SetHostile(const FString& FactionName, const FString& Bark)
+void URPGSession::SetHostile(const FString& FactionName, const FString& Bark, bool bByHero)
 {
 	ULMStory* L = Story();
 	if (L->Faction(FactionName) == TEXT("hostile")) return;
 	L->Factions.Add(FactionName, TEXT("hostile"));
+	if (bByHero) L->AddMood(-float(UTSData::Get(this).Tuning(TEXT("moodBetray"), 10)), TEXT("attacked ") + FactionName + TEXT(" while they talked"));
 	Duel = nullptr;
 	Feedback()->Toast(Bark.IsEmpty() ? FString(TEXT("They attack!")) : Bark, ToastRed);
 	L->CloseDialogue();
@@ -118,6 +128,67 @@ void URPGSession::UpdateEncounters()
 // Talking
 // ---------------------------------------------------------------------------------------------
 
+void URPGSession::SpawnInteractables()
+{
+	const UTSData& D = UTSData::Get(this);
+	const TSJson::FObj All = D.Section(TEXT("interactables"));
+	if (!All) return;
+	for (const auto& KV : All->Values)
+	{
+		const TSJson::FObj Def = TSJson::Obj(All, FString(*KV.Key));   // (skips "_doc")
+		const TArray<TSharedPtr<FJsonValue>> At = TSJson::Arr(Def, TEXT("at"));
+		if (!Def || At.Num() != 2) continue;
+		FVector Loc = D.TileCenter(int32(At[0]->AsNumber()), int32(At[1]->AsNumber()));
+		FHitResult H;   // stand it on the ground
+		if (GetWorld()->LineTraceSingleByChannel(H, Loc + FVector(0, 0, 3000), Loc - FVector(0, 0, 3000), ECC_Visibility)) Loc.Z = H.ImpactPoint.Z;
+		ATSInteractable::Spawn(GetWorld(), FString(*KV.Key), Def, Loc);
+	}
+	RefreshInteractables();
+}
+
+void URPGSession::RefreshInteractables()
+{
+	for (TActorIterator<ATSInteractable> It(GetWorld()); It; ++It)
+	{
+		const TSharedPtr<FJsonValue> If = It->Def ? It->Def->TryGetField(TEXT("showIf")) : nullptr;
+		It->SetShown(!If || Story()->CheckCond(If));
+	}
+}
+
+void URPGSession::UseInteractable(ATSInteractable* It)
+{
+	if (!It || !It->CanUse()) return;
+	if (!It->DoorTo.IsEmpty()) { Travel(It); return; }
+	Story()->OpenDialogue(It, FLMSpeaker{ It->DisplayName, It->NameColor, It->TalkKey, It->DialogueRoot });
+}
+
+void URPGSession::Travel(ATSInteractable* Door)
+{
+	ATSInteractable* To = Door ? Door->DoorTarget() : nullptr;
+	ARPGPlayerCharacter* P = Player();
+	if (!To || !P || GetWorld()->GetRealTimeSeconds() - FadeStart < FadeOut + FadeIn) return;
+	FadeStart = GetWorld()->GetRealTimeSeconds();
+	P->Control->ClearGoal();
+	TWeakObjectPtr<ATSInteractable> Target = To;
+	FTimerHandle H;
+	GetWorld()->GetTimerManager().SetTimer(H, [this, Target]()
+	{
+		ARPGPlayerCharacter* Pl = Player();
+		if (!Pl || !Target.IsValid()) return;
+		const FVector Out = Target->ExitPoint(UTSData::Get(this).TileSize);
+		Pl->TeleportTo(Out + FVector(0, 0, Pl->GetSimpleCollisionHalfHeight() + 30.f), FRotator(0, 90, 0), false, true);
+		Pl->SnapCamera();
+		UE_LOG(LogRPG, Display, TEXT("Through the door to %s"), *Target->Id);
+	}, FadeOut, false);
+}
+
+float URPGSession::FadeAlpha() const
+{
+	const float T = GetWorld()->GetRealTimeSeconds() - FadeStart;
+	if (T < 0.f || T > FadeOut + FadeIn) return 0.f;
+	return T < FadeOut ? T / FadeOut : 1.f - (T - FadeOut) / FadeIn;
+}
+
 void URPGSession::OpenDialogue(ATSCharacter* Npc, const FString& NodeId)
 {
 	if (!Npc) return;
@@ -131,7 +202,52 @@ FString URPGSession::MarkerFor(const ATSCharacter* Npc) const
 
 void URPGSession::OnCharacterDied(ATSCharacter* Who, AActor* Killer)
 {
-	if (Cast<ARPGEnemy>(Who)) ARPGGhost::Rise(Who);   // only foes give up the ghost (villagers don't die; the hero respawns)
+	ARPGEnemy* E = Cast<ARPGEnemy>(Who);
+	if (!E) return;
+	ARPGGhost::Rise(Who);   // only foes give up the ghost (villagers don't die; the hero respawns)
+	// Killing one who could have been talked to darkens the world (slimes, beasts: no).
+	if (!E->Speaks().IsEmpty()) Story()->AddMood(-float(UTSData::Get(this).Tuning(TEXT("moodKill"), 5)), TEXT("killed ") + E->DisplayName);
+}
+
+void URPGSession::OnMoodBand(float Mood, int32 Band) { bMoodPending = true; }
+
+void URPGSession::OnDayPhase(ETSDayPhase Phase)
+{
+	// Changes land quietly, as the day turns: the world is a little different by morning (or by nightfall).
+	if (bMoodPending && (Phase == ETSDayPhase::Dawn || Phase == ETSDayPhase::Dusk)) ApplyMood();
+}
+
+void URPGSession::ApplyMood()
+{
+	bMoodPending = false;
+	ShownBand = FMath::Clamp(Story()->MoodBand(), -3, 3);
+	const TSJson::FObj Table = UTSData::Get(this).Section(TEXT("moodLife"));
+	ATSAmbientLife* Life = nullptr;
+	for (TActorIterator<ATSAmbientLife> It(GetWorld()); It; ++It) Life = *It;
+	if (Life && Table)
+		for (const auto& KV : Table->Values)
+		{
+			const TArray<TSharedPtr<FJsonValue>> W = TSJson::Arr(Table, FString(*KV.Key));
+			if (W.Num() == 7) Life->SetWeight(FName(FString(*KV.Key)), float(W[ShownBand + 3]->AsNumber()));
+		}
+	// The village's look: cracked roads and walls when things go badly, vines and sunlight when they go well.
+	const TSJson::FObj Dress = UTSData::Get(this).Section(TEXT("moodDressing"));
+	ATSDressing* Dressing = nullptr;
+	for (TActorIterator<ATSDressing> It(GetWorld()); It; ++It) Dressing = *It;
+	if (Dressing && Dress)
+		for (const auto& KV : Dress->Values)
+		{
+			const TArray<TSharedPtr<FJsonValue>> N = TSJson::Arr(Dress, FString(*KV.Key));
+			if (N.Num() == 7) Dressing->SetCount(FName(FString(*KV.Key)), int32(N[ShownBand + 3]->AsNumber()));
+		}
+	UE_LOG(LogRPG, Display, TEXT("The world shows mood band %d (mood %.1f)"), ShownBand, Story()->Mood);
+}
+
+int32 URPGSession::PriceOf(int32 Base) const
+{
+	const TArray<TSharedPtr<FJsonValue>> Mul = TSJson::Arr(UTSData::Get(this).Section(TEXT("tuning")), TEXT("moodPrices"));
+	const float M = Mul.Num() == 7 ? float(Mul[FMath::Clamp(ShownBand, -3, 3) + 3]->AsNumber()) : 1.f;
+	return FMath::Max(1, FMath::RoundToInt(Base * M));
 }
 
 ARPGCharacterBase* URPGSession::DialogueNpc() const { return Cast<ARPGCharacterBase>(Story()->Speaker()); }
@@ -186,6 +302,8 @@ void URPGSession::Bind(ULMStory* L)
 	// What the hero is and has.
 	L->StatValue = [this](FName Stat) { const ARPGPlayerCharacter* P = Player(); return P ? P->Stats->Get(Stat) : 0.f; };
 	L->ItemCount = [this](const FString& Item) { const ARPGPlayerCharacter* P = Player(); return P ? P->Inventory->Count(Item) : 0; };
+	L->HeroLevel = [this]() { const ARPGPlayerCharacter* P = Player(); return P ? P->Level() : 1; };   // level-scaled checks
+	L->AddCondition(TEXT("speaks"), [this](const TSJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && P->Speaks(TSJson::Str(C, TEXT("speaks"))); });
 	auto OneOf = [](const TSJson::FObj& C, const FString& Key, const FString& Value)
 	{
 		const TSharedPtr<FJsonValue> V = C->TryGetField(Key);
@@ -193,9 +311,12 @@ void URPGSession::Bind(ULMStory* L)
 		if (V->Type == EJson::Array) { for (const auto& X : V->AsArray()) if (X->AsString() == Value) return true; return false; }
 		return V->AsString() == Value;
 	};
+	L->AddCondition(TEXT("want"), [this, OneOf](const TSJson::FObj& C) { const ARPGEnemy* E = Cast<ARPGEnemy>(DialogueNpc()); return E && OneOf(C, TEXT("want"), E->Wish); });
 	L->AddCondition(TEXT("class"), [this, OneOf](const TSJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && OneOf(C, TEXT("class"), P->ClassId); });
 	L->AddCondition(TEXT("sex"), [this](const TSJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && TSJson::Str(C, TEXT("sex")) == P->Sex; });
 	L->AddCondition(TEXT("gold"), [this](const TSJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && P->Inventory->Currency >= TSJson::Num(C, TEXT("gold")); });
+	L->AddCondition(TEXT("afford"), [this](const TSJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && P->Inventory->Currency >= PriceOf(int32(TSJson::Num(C, TEXT("afford")))); });
+	L->Price = [this](int32 Base) { return PriceOf(Base); };
 	L->AddCondition(TEXT("hasItem"), [this](const TSJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && P->Inventory->Count(TSJson::Str(C, TEXT("hasItem"))) > 0; });
 
 	L->AddPlaceholder(TEXT("gold"), [this]() { const ARPGPlayerCharacter* P = Player(); return P ? FString::FromInt(P->Inventory->Currency) : FString(TEXT("0")); });
@@ -250,7 +371,7 @@ void URPGSession::Bind(ULMStory* L)
 	{
 		ARPGPlayerCharacter* P = Player();
 		const TSJson::FObj Buy = TSJson::Obj(A, TEXT("buy"));
-		const int32 Cost = int32(TSJson::Num(Buy, TEXT("cost"), 0));
+		const int32 Cost = PriceOf(int32(TSJson::Num(Buy, TEXT("cost"), 0)));   // prices follow the mood
 		if (!P || P->Inventory->Currency < Cost) return;
 		const FTSItem It = UTSInventoryComponent::MakeItem(this, TSJson::Str(Buy, TEXT("item")));
 		if (P->Inventory->Add(It)) { P->Inventory->Currency -= Cost; Feedback()->Toast(TEXT("Bought ") + It.Name, UTSInventoryComponent::RarityColor(this, It.Rarity)); }
@@ -263,6 +384,24 @@ void URPGSession::Bind(ULMStory* L)
 	{
 		const FString F = TSJson::Str(A, TEXT("leave"));
 		for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->FactionId() == F && !It->IsDead()) It->Leave();
+	});
+	L->AddAction(TEXT("pacify"), [this](const TSJson::FObj& A)
+	{
+		ARPGEnemy* E = Cast<ARPGEnemy>(DialogueNpc());
+		if (!E) return;
+		const TSharedPtr<FJsonValue> V = A->TryGetField(TEXT("pacify"));
+		E->Pacify(V && V->Type == EJson::Object ? V->AsObject() : nullptr);
+	});
+	L->AddAction(TEXT("trade"), [this](const TSJson::FObj& A) { if (ARPGEnemy* E = Cast<ARPGEnemy>(DialogueNpc()); E && TSJson::Bool(A, TEXT("trade"))) E->BecomeTrader(); });
+	L->AddAction(TEXT("rest"), [this](const TSJson::FObj& A) { if (ARPGEnemy* E = Cast<ARPGEnemy>(DialogueNpc()); E && TSJson::Bool(A, TEXT("rest"))) E->Leave(/*bRest*/ true); });
+	L->AddAction(TEXT("takeItem"), [this](const TSJson::FObj& A)
+	{
+		ARPGPlayerCharacter* P = Player();
+		const FString Id = TSJson::Str(A, TEXT("takeItem"));
+		if (!P || P->Inventory->Count(Id) <= 0) return;
+		P->Inventory->Remove(Id, 1);
+		Feedback()->Toast(TEXT("Gave away ") + TSJson::Str(UTSData::Get(this).Entry(TEXT("items"), Id), TEXT("name"), Id));
+		P->Inventory->OnChanged.Broadcast();
 	});
 	L->AddAction(TEXT("leaveSelf"), [this](const TSJson::FObj& A) { if (ARPGEnemy* E = Cast<ARPGEnemy>(DialogueNpc()); E && TSJson::Bool(A, TEXT("leaveSelf"))) E->Leave(); });
 	L->AddAction(TEXT("recruit"), [this](const TSJson::FObj& A)
@@ -291,6 +430,7 @@ void URPGSession::Bind(ULMStory* L)
 		if (What == TEXT("complete")) { Feedback()->Toast(FString::Printf(TEXT("%s: complete — return to %s"), *Name, *TSJson::Str(Def, TEXT("giver"))), ToastGreen); return; }
 		if (What != TEXT("turnedIn")) return;
 		Feedback()->Toast(TEXT("Quest complete: ") + Name, ToastGreen);
+		Story()->AddMood(float(TSJson::Num(TSJson::Obj(Def, TEXT("reward")), TEXT("mood"), UTSData::Get(this).Tuning(TEXT("moodQuest"), 2))), TEXT("quest ") + Name);
 		ARPGPlayerCharacter* P = Player();
 		if (!P) return;
 		const TSJson::FObj O = TSJson::Obj(Def, TEXT("objective"));

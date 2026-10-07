@@ -7,6 +7,7 @@
 class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
 class ARPGWorldBuilder;
+class ATSAmbientLife;
 
 /**
  * Life that isn't part of the game: it just lives in the world and reacts to the hero.
@@ -26,6 +27,8 @@ class OATHBOUND_API ARPGAmbient : public AActor
 public:
 	ARPGAmbient();
 	void Init(ARPGWorldBuilder* InWorld);
+	/** Tessera's ambient life (children, puppies, wolves...), on this map's areas: grass, village, road, wild. */
+	ATSAmbientLife* GetLife() const { return Life; }
 	virtual void Tick(float DeltaSeconds) override;
 
 private:
@@ -67,6 +70,7 @@ private:
 	bool StayThrown(FCard& C, float Dt);
 
 	TWeakObjectPtr<ARPGWorldBuilder> World;
+	UPROPERTY() TObjectPtr<ATSAmbientLife> Life;
 	TArray<FVector> Grass, Village;
 	TArray<FBird> Birds;
 	TArray<FGoose> Geese;

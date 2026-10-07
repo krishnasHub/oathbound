@@ -51,6 +51,7 @@ void ARPGWorldBuilder::Build()
 	BuildBridge(D);
 	BuildTreesAndScatter(D);
 	BuildProps(D);
+	BuildAreas(D);
 	if (TSLook::Mode() == TSLook::EMode::Flat2D) BuildFlat2D();
 	// Sky, day/night and the navmesh over the map (plus room above and below for the terrain).
 	FinishBuild(FBox(FVector(0.f, 0.f, -1500.f), FVector(MapW * Tile, MapH * Tile, 3000.f)));
@@ -299,6 +300,50 @@ void ARPGWorldBuilder::BuildBlockers(const UTSData& D)
 	AddBlocker(FVector(W * 0.5f, H - T * 0.5f, 0), FVector(W * 0.5f, T * 0.5f, 800));
 	AddBlocker(FVector(T * 0.5f, H * 0.5f, 0), FVector(T * 0.5f, H * 0.5f, 800));
 	AddBlocker(FVector(W - T * 0.5f, H * 0.5f, 0), FVector(T * 0.5f, H * 0.5f, 800));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Areas: small maps built off to the side, reached through doors (Tessera interactables)
+// ---------------------------------------------------------------------------------------------
+
+void ARPGWorldBuilder::BuildAreas(const UTSData& D)
+{
+	UMaterialInterface* Floor = RPGAssets::StarterMat(TEXT("M_Ground_Gravel"));
+	UMaterialInterface* Rock = RPGAssets::StarterMat(TEXT("M_Rock_Slate"));
+	UMaterialInterface* Dark = TSAssets::Color(this, FLinearColor(0.015f, 0.012f, 0.01f));
+	const float WallH = float(TSJson::Num(D.World(), TEXT("wallHeight"), 380.0));
+	for (const FTSArea& A : D.Areas)
+	{
+		const FVector Min(A.Origin.X * Tile, A.Origin.Y * Tile, 0.f), Max((A.Origin.X + A.W) * Tile, (A.Origin.Y + A.H) * Tile, 0.f);
+		const FVector Mid = (Min + Max) * 0.5f, Ext = Max - Min;
+		// Darkness all round (what the camera sees past the walls), then the floor.
+		AddBox(FVector(Mid.X, Mid.Y, -60.f), FVector(Ext.X + Tile * 16.f, Ext.Y + Tile * 16.f, 100.f), Dark, false);
+		AddBox(FVector(Mid.X, Mid.Y, -20.f), FVector(Ext.X, Ext.Y, 40.f), Floor);
+		for (int32 Y = 0; Y < A.H; ++Y)
+			for (int32 X = 0; X < A.W; ++X)
+			{
+				const TCHAR C = A.Rows[Y][X];
+				const FVector At = D.TileCenter(A.Origin.X + X, A.Origin.Y + Y);
+				FRandomStream R = TileRand(A.Origin.X + X, A.Origin.Y + Y, 7);
+				if (C == TEXT('#'))
+				{
+					// Rough rock, kept low (the camera looks down from the south: tall walls would hide whoever stands
+					// just north of them); the dark and the torches make it a cave, not the height.
+					const float H = R.FRandRange(WallH * 0.3f, WallH * 0.5f);
+					AddBox(FVector(At.X, At.Y, H * 0.5f - 10.f), FVector(Tile + 4.f, Tile + 4.f, H), Rock, true, FRotator(0, R.FRandRange(-4, 4), 0));
+					if (R.FRand() < 0.35f) AddBox(FVector(At.X + R.FRandRange(-40, 40), At.Y + R.FRandRange(-40, 40), H + 20.f), FVector(Tile * 0.6f, Tile * 0.6f, 60.f), Rock, false, FRotator(R.FRandRange(-8, 8), R.FRandRange(0, 90), 0));
+				}
+				else if (C == TEXT('r'))
+					AddBox(FVector(At.X, At.Y, 25.f), FVector(Tile * 0.5f, Tile * 0.45f, 70.f), Rock, true, FRotator(R.FRandRange(-6, 6), R.FRandRange(0, 90), R.FRandRange(-6, 6)));   // a fallen rock
+			}
+		for (const TSharedPtr<FJsonValue>& V : TSJson::Arr(A.Def, TEXT("lights")))
+		{
+			const TArray<TSharedPtr<FJsonValue>> P = V->AsArray();
+			if (P.Num() == 2) AddFire(D.TileCenter(A.Origin.X + int32(P[0]->AsNumber()), A.Origin.Y + int32(P[1]->AsNumber())), 0.5f, float(TSJson::Num(A.Def, TEXT("lightIntensity"), 1500)));
+		}
+		FlatGround.Add(FBox(FVector(Min.X, Min.Y, 0.f), FVector(Max.X, Max.Y, 0.f)));
+		AddNavArea(FBox(FVector(Min.X, Min.Y, -500.f), FVector(Max.X, Max.Y, 1500.f)));
+	}
 }
 
 // ---------------------------------------------------------------------------------------------

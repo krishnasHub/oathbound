@@ -331,6 +331,35 @@ dynamic story. So the reusable code is moving into two plugins, each its own rep
 - **Architecture rule (user, 2026-10-07):** decoupled and event-driven. Tessera / Loom publish events and offer hooks;
   the game listens and acts. Loom and Tessera never know about each other: the game bridges them (e.g. time of day to Loom).
 
+## 7i. The Scholar's routes and the world's mood (2026-10-07, phases 1-6 of TODO.md; done, played by the user)
+
+- **Languages** (`languages`, `classes.<id>.languages`, `enemies.<id>.speaks`): Common for everyone, the Old Tongue (Ruin
+  Brute: Mage, Scholar), Grave-speech (skeletons: Scholar); slimes speak none. A foe that speaks your tongue and isn't
+  provoked waits to be talked to; the hover says why when you can't ("It speaks Grave-speech. You don't.").
+- **Loom**: level-scaled checks (`check.level { min, per }`, `tooLow` node; a forced test roll can't beat the floor); a
+  hidden **world mood** (`mood { start, min, max, bands }`, `OnMood` / `OnMoodBand`, `{"mood": n}` action and condition);
+  `{price:N}` text with a game hook.
+- **Mood sources** (tuning): talking down / pacifying +3, quests +2..4, killing anyone who could talk -5, striking a
+  faction mid-talk -10; slimes 0. The world shows a new band only at the next dawn or dusk (Tessera `UTSDayNight`).
+- **What the mood looks like** (all cosmetic, nothing to fight, everything flees or vanishes near the hero):
+  Tessera `ATSAmbientLife` (children, butterflies, geese, puppies; grumpy men by day; wolves, bats, snakes by night;
+  `moodLife` weights per band; walkers never step into water or walls) and `ATSDressing` (cracked roads, wall cracks
+  and moss when it's bad; vines and sunrays when it's good; `moodDressing` counts). Tobin's prices (`moodPrices`) and
+  Maren's and Tobin's tone follow it too.
+- **Skeletons**: lone ones each want something (`wants`: the ferryman's toll, a riddle, a song); Aldric the Grave-Watcher
+  rests once the Scholar reads the rites at his unmarked grave (a marker appears; his ghost rises, calm); Captain
+  Ossric's Bonewardens stand down for his lost signet. Tessera `ATSInteractable`: things you walk up to and use (click
+  or E): graves, lost items, doors.
+- **The Ruin Brute** lives in **the old mine**, a small map of its own (Tessera map areas `map.areas`, built off to the
+  side, its own navmesh; two-way doors with a fade; the sky goes "indoors" dark there). Routes: food (Maren's slime cull
+  -> bread), Mage hypnosis (level 3+), Scholar teaches it a trade (level 4+): it becomes **Grot the Miner** and walks
+  its rounds (Tessera `UTSRoutine`, doors between areas), carrying gold from the mine to the village.
+- **Proof runs and tours**: `pacifist`, `spree` (and redemption), and a play-through per hero (`tour_*`).
+- **Lessons**: Unreal's spawn-letter map is case-insensitive (never reuse a letter in another case); flat sprite cards
+  need roomier bounds or the occlusion culler can lose them; character cards stand upright (stretched by 1/cos pitch)
+  so they don't lean into walls; walls in a top-down cave must stay low.
+- Tests now 30 scenarios, run at most 4 at a time (`tessera.json maxParallel`).
+
 ## 8. Next steps / open threads
 
 **The agreed plan (2026-10-07): talking foes, the Scholar's routes, and world mood.** Checklist by phase: `TODO.md`.

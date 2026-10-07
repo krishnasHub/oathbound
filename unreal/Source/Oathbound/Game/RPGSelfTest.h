@@ -43,6 +43,7 @@ private:
 
 	TWeakObjectPtr<ARPGEnemy> Target;
 	int32 Swings = 0;
+	int32 Undrawn = 0;                        // trader: looks at Grot where he wasn't drawn
 	FVector WalkGoal = FVector::ZeroVector;   // walk: where the ground click went
 	int32 Corners = 0;
 	float Started = 0.f;

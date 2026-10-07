@@ -4,6 +4,7 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "TSJson.h"
 #include "STSDialogueBox.h"
+#include "TSDayNight.h"
 #include "RPGSession.generated.h"
 
 class ARPGCharacterBase;
@@ -49,7 +50,8 @@ public:
 
 	// ---- duels / factions ----
 	TWeakObjectPtr<ARPGCharacterBase> Duel;
-	void SetHostile(const FString& FactionName, const FString& Bark = FString());
+	/** bByHero: the hero struck them while they were willing to talk (a betrayal: the world darkens). */
+	void SetHostile(const FString& FactionName, const FString& Bark = FString(), bool bByHero = false);
 	void StartDuel(ARPGCharacterBase* Opponent);
 
 	// ---- talking (characters -> Loom) ----
@@ -61,9 +63,36 @@ public:
 	/** Loom's conversation as Tessera's dialogue box shows it (verbs in the hero's colour when class-only). */
 	FTSDialogueView DialogueView();
 
+	// ---- things in the world (Tessera's interactables: graves, lost items...) ----
+	/** Spawn data "interactables" { id: { ...ATSInteractable fields, "at": [tileX, tileY], "showIf": cond } }. */
+	void SpawnInteractables();
+	/** Show / hide each by its "showIf" (re-checked whenever the story moves). */
+	void RefreshInteractables();
+	/** Open a thing's conversation, or (a door) go through it. */
+	void UseInteractable(class ATSInteractable* It);
+	/** Through a door: a short fade, and the hero comes out at the other side (two-way: that one leads back). */
+	void Travel(class ATSInteractable* Door);
+	/** 0..1 black over the screen (doors). */
+	float FadeAlpha() const;
+	float FadeStart = -10.f;
+	float FadeOut = 0.3f, FadeIn = 0.45f;
+
+	// ---- the world's mood (Loom) shown as ambient life (Tessera) ----
+	/** Show the world's mood now: weights Tessera's ambient life by band (data: moodLife { kind: [band -3 .. +3] }). */
+	void ApplyMood();
+	/** A base price at today's mood (tuning.moodPrices, per shown band -3..+3). */
+	int32 PriceOf(int32 Base) const;
+	/** The band last shown (the one in effect in the world). */
+	int32 ShownMoodBand() const { return ShownBand; }
+	/** Loom's mood changed band: shown at the next dawn or dusk (Tessera's day/night event). */
+	void OnMoodBand(float Mood, int32 Band);
+	void OnDayPhase(ETSDayPhase Phase);
+
 private:
 	void Bind(ULMStory* L);
-	/** Tessera's death event: a fallen enemy's ghost rises (ARPGGhost). */
+	bool bMoodPending = false;
+	int32 ShownBand = 0;
+	/** Tessera's death event: a fallen enemy's ghost rises (ARPGGhost); killing one who could talk darkens the world. */
 	void OnCharacterDied(ATSCharacter* Who, AActor* Killer);
 	void UpdateEncounters();
 	float EncounterCooldown = 0.f;

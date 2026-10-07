@@ -1,4 +1,6 @@
 #include "RPGHUD.h"
+#include "TSInteractable.h"
+#include "LMStory.h"
 #include "TSFeedback.h"
 #include "TSSky.h"
 #include "RPGWorldBuilder.h"
@@ -100,6 +102,16 @@ void ARPGHUD::DrawHUD()
 		Canvas->DrawItem(Dot);
 	}
 
+	// Things (graves, lost items): their name when close, and a quest marker if their story has one.
+	for (TActorIterator<ATSInteractable> It(GetWorld()); It; ++It)
+	{
+		if (!It->CanUse() || FVector::Dist2D(It->GetActorLocation(), P->GetActorLocation()) > 900.f) continue;
+		const FVector S = Project(It->Top(), false);
+		if (S.Z <= 0) continue;
+		const FString Marker = Session->Story()->MarkerFor(It->DialogueRoot);
+		if (!Marker.IsEmpty()) Text(Marker, S.X, S.Y - 10 * UI + FMath::Sin(GetWorld()->GetRealTimeSeconds() * 4.f) * 5.f * UI, Marker == TEXT("?") ? FLinearColor(0.44f, 0.88f, 0.54f) : FLinearColor(1.f, 0.83f, 0.3f), 2.4f * UI);
+	}
+
 	// Top-down: a ring where a click-to-move is heading, and the name of what the cursor is on.
 	if (bTopDown)
 	{
@@ -116,6 +128,14 @@ void ARPGHUD::DrawHUD()
 			const FString Why = bTalk ? P->TalkBlocker(H) : FString();
 			const FLinearColor C = !bTalk ? FLinearColor(1.f, 0.35f, 0.3f) : Why.IsEmpty() ? FLinearColor(0.95f, 0.95f, 0.85f) : FLinearColor(0.6f, 0.6f, 0.6f);
 			if (S.Z > 0) Text(bTalk ? TEXT("Talk: ") + H->DisplayName : H->DisplayName, S.X, S.Y, C, 0.8f * UI);
+			// Why you can't talk to them, or (a foe waiting to hear you out) how to.
+			const FString Under = bTalk ? Why : H->IsPassive() && P->TalkBlocker(H).IsEmpty() ? FString(TEXT("E: talk")) : FString();
+			if (S.Z > 0 && !Under.IsEmpty()) Text(Under, S.X, S.Y + 18.f * UI, FLinearColor(0.8f, 0.8f, 0.78f), 0.6f * UI);
+		}
+		else if (const ATSInteractable* It = P->Control->ObjectUnderCursor())
+		{
+			const FVector S = Project(It->Top() + FVector(0, 0, 30), false);
+			if (S.Z > 0) Text(It->DisplayName, S.X, S.Y, FLinearColor(0.95f, 0.95f, 0.85f), 0.8f * UI);
 		}
 		// Talk mode: a label next to the cursor.
 		float MX = 0.f, MY = 0.f;
@@ -127,5 +147,13 @@ void ARPGHUD::DrawHUD()
 	if (ARPGCharacterBase* T = bTopDown ? nullptr : P->TalkTarget())
 	{
 		Text(FString::Printf(TEXT("[E] Talk to %s"), *T->DisplayName), Center.X, Canvas->ClipY * 0.72f, FLinearColor::White, 1.f * UI);
+	}
+
+	// Going through a door: a short fade to black and back.
+	if (const float Fade = Session->FadeAlpha(); Fade > 0.f)
+	{
+		FCanvasTileItem Black(FVector2D::ZeroVector, FVector2D(Canvas->ClipX, Canvas->ClipY), FLinearColor(0.f, 0.f, 0.f, Fade));
+		Black.BlendMode = SE_BLEND_Translucent;
+		Canvas->DrawItem(Black);
 	}
 }

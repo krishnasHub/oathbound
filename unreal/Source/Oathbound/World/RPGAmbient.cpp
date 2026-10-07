@@ -9,6 +9,8 @@
 #include "LMStory.h"
 #include "TSAreaEvents.h"
 #include "TSCharacter.h"
+#include "TSAmbientLife.h"
+#include "TSDressing.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -104,6 +106,54 @@ void ARPGAmbient::Init(ARPGWorldBuilder* InWorld)
 			if (Y < 11 && X < 16) Village.Add(C);
 		}
 	if (Grass.IsEmpty()) return;
+
+	// The rest of the world's life is Tessera's ambient system, on this map's areas; the session weights it by mood.
+	TArray<FVector> Road, Wild;
+	for (int32 Y = 1; Y < D.MapH - 1; ++Y)
+		for (int32 X = 1; X < D.MapW - 1; ++X)
+		{
+			const TCHAR T = D.Rows[Y][X];
+			if (T == TEXT(',')) Road.Add(D.TileCenter(X, Y));
+			if (T == TEXT('.') && Y > 13) Wild.Add(D.TileCenter(X, Y));
+		}
+	Life = ATSAmbientLife::Spawn(GetWorld());
+	if (Life)
+	{
+		// Walkers keep to open ground: grass, paths, ruins floor (never the river, the bridge, walls, trees or houses).
+		Life->CanStand = [this](const FVector& At)
+		{
+			const UTSData& Data = UTSData::Get(this);
+			const FIntPoint T = Data.TileOf(At);
+			const TCHAR C = Data.TileAt(T.X, T.Y, TEXT('#'));
+			return C == TEXT('.') || C == TEXT(',') || C == TEXT('r');
+		};
+		Life->SetArea(TEXT("grass"), Grass);
+		Life->SetArea(TEXT("village"), Village);
+		Life->SetArea(TEXT("road"), Road);
+		Life->SetArea(TEXT("wild"), Wild);
+	}
+	// Set dressing that follows the mood too: on the roads, on the house fronts, in the open.
+	TArray<FVector> Walls, Sunny;
+	for (int32 Y = 1; Y < D.MapH - 1; ++Y)
+		for (int32 X = 1; X < D.MapW - 1; ++X)
+		{
+			if (D.Rows[Y][X] == TEXT('H') && D.Rows[Y + 1][X] != TEXT('H'))   // a house's south face (toward the camera)
+			{
+				const FVector C = D.TileCenter(X, Y);
+				Walls.Add(FVector(C.X, C.Y + D.TileSize * 0.5f + 12.f, InWorld->GroundZ(C.X, C.Y + D.TileSize * 0.6f)));
+			}
+			if ((D.Rows[Y][X] == TEXT('.') || D.Rows[Y][X] == TEXT(',')) && Y < 12 && (X + Y) % 3 == 0) Sunny.Add(D.TileCenter(X, Y));
+		}
+	TArray<FVector> RoadGround = Road;
+	for (FVector& P : RoadGround) P.Z = InWorld->GroundZ(P.X, P.Y);
+	for (FVector& P : Sunny) P.Z = InWorld->GroundZ(P.X, P.Y);
+	if (ATSDressing* Dressing = ATSDressing::Spawn(GetWorld()))
+	{
+		Dressing->SetSpots(TEXT("road"), RoadGround);
+		Dressing->SetSpots(TEXT("walls"), Walls);
+		Dressing->SetSpots(TEXT("sunny"), Sunny);
+	}
+	if (URPGSession* S = URPGSession::Get(this)) S->ApplyMood();
 
 	for (int32 F = 0; F < 3; ++F)   // flocks of five
 	{

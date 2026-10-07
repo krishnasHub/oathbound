@@ -26,7 +26,7 @@ ARPGGhost::ARPGGhost()
 	Card->SetVisibility(false);
 }
 
-ARPGGhost* ARPGGhost::Rise(ATSCharacter* Body)
+ARPGGhost* ARPGGhost::Rise(ATSCharacter* Body, bool bCalm)
 {
 	UWorld* W = Body ? Body->GetWorld() : nullptr;
 	if (!W) return nullptr;
@@ -58,7 +58,8 @@ ARPGGhost* ARPGGhost::Rise(ATSCharacter* Body)
 	const float Vicinity = float(TSJson::Num(G, TEXT("scaredVicinity"), 1800));
 	for (TActorIterator<ARPGEnemy> It(W); It && bLast; ++It)
 		if (*It != Body && !It->IsDead() && !It->IsLeaving() && !It->IsPassive() && FVector::Dist2D(It->GetActorLocation(), Feet) < Vicinity) bLast = false;
-	Gh->bScared = TSCmd::Has(TEXT("GhostScared")) || (bLast && FMath::FRand() < TSJson::Num(G, TEXT("scaredChance"), 0.5));
+	Gh->bScared = !bCalm && (TSCmd::Has(TEXT("GhostScared")) || (bLast && FMath::FRand() < TSJson::Num(G, TEXT("scaredChance"), 0.5)));
+	if (bCalm) { Gh->Life *= 1.8f; Gh->RiseBy *= 1.6f; Gh->Wiggle *= 0.4f; Gh->Delay = 0.6f; }   // at peace: a slow, straight climb
 	if (Gh->bScared)
 	{
 		Gh->Life = float(TSJson::Num(G, TEXT("scaredLife"), 3.4));

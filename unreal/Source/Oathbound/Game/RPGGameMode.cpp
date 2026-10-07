@@ -11,6 +11,7 @@
 #include "RPGNPC.h"
 #include "RPGHUD.h"
 #include "RPGSelfTest.h"
+#include "RPGSession.h"
 #include "TSTestRunner.h"
 
 #include "Camera/CameraActor.h"
@@ -67,6 +68,7 @@ void ARPGGameMode::SpawnCharacters()
 		}
 	}
 	UE_LOG(LogRPG, Display, TEXT("Spawned %d villagers and %d enemies."), Npcs, Enemies);
+	URPGSession::Get(this)->SpawnInteractables();   // graves, lost things
 }
 
 void ARPGGameMode::RestartPlayer(AController* NewPlayer)

@@ -18,6 +18,7 @@ class UTSData;
  *   'T'       trees: wooden trunk + foliage crown
  *   'H'       each block of house tiles becomes one cottage (stone footing, plaster walls, timber frame, gabled roof)
  *   '='       a plank bridge with rails
+ *   areas     (map.areas) small separate maps off to the side: a dirt floor, rock walls ('#'), torches ("lights")
  *   + scattered bushes and rocks, a campfire in the village, torches at the bridge
  */
 UCLASS()
@@ -41,6 +42,8 @@ private:
 	void BuildBridge(const UTSData& D);
 	void BuildProps(const UTSData& D);
 	void BuildFlat2D();
+	/** Separate small maps (map.areas: the brute's cave): rock walls, an earth floor, torches, darkness all round. */
+	void BuildAreas(const UTSData& D);
 
 	float BaseHeight(int32 TX, int32 TY) const;   // per-tile target height
 	float NoiseAt(float X, float Y) const;

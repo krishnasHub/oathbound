@@ -18,6 +18,7 @@ import characters as ch
 import environment as env
 import ui_art as ui
 import extras as ex
+import life
 from tspixel.png import write_png, upscale
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -131,6 +132,8 @@ def main():
                      ("SPR_Bird", ex.spr_bird), ("SPR_Goose", ex.spr_goose), ("SPR_Ghost", ex.spr_ghost)):
         write_png(os.path.join(OUT, f"{name}.png"), fn()); n += 1
     write_png(os.path.join(OUT, "SPR_sneak.png"), ch.sheet(ex.SNEAK)); n += 1
+    for name, fn in life.SHEETS.items():   # world mood and Scholar quests (life.py)
+        write_png(os.path.join(OUT, f"{name}.png"), fn()); n += 1
     rows = map_rows()
     sizes = sorted({(w, h) for (_, _, w, h) in houses(rows)})
     for (w, h) in sizes:

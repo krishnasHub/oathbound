@@ -1,4 +1,5 @@
 {
+  "maxParallel": 4,
   "_doc": "How Tessera's tools (unreal/Plugins/Tessera/Tools/Tessera.ps1, via play.ps1) build, test and package this game. The command-line prefix (RPG) comes from unreal/Config/DefaultGame.ini [Tessera].",
   "engine": "5.8",
   "project": "unreal/Oathbound.uproject",
@@ -13,7 +14,7 @@
     "combat": "-RPGClass=knight", "block": "-RPGClass=knight", "elder": "-RPGClass=knight", "bridge": "-RPGClass=knight",
     "mage": "-RPGClass=mage", "thief": "-RPGClass=thief", "walk": "-RPGClass=knight", "picker": "-RPGClass=mage",
     "smoke": "-RPGClass=thief", "pause": "-RPGClass=knight", "click": "-RPGClass=knight",
-    "frost": "-RPGClass=mage", "barrier": "-RPGClass=mage", "night": "-RPGClass=mage -RPGHour=23", "scars": "-RPGClass=mage", "ghost": "-RPGClass=knight -RPGGhostScared"
+    "frost": "-RPGClass=mage", "barrier": "-RPGClass=mage", "night": "-RPGClass=mage -RPGHour=23", "scars": "-RPGClass=mage", "ghost": "-RPGClass=knight -RPGGhostScared", "talk": "-RPGClass=knight", "mood": "-RPGClass=knight", "skeletons": "-RPGClass=scholar", "brute": "-RPGClass=scholar", "trader": "-RPGClass=scholar", "cave": "-RPGClass=knight", "palette": "-RPGClass=knight -RPGHour=13", "palette_night": "-RPGClass=knight -RPGHour=23", "pacifist": "-RPGClass=scholar", "spree": "-RPGClass=knight", "tour_knight": "-RPGClass=knight", "tour_mage": "-RPGClass=mage", "tour_thief": "-RPGClass=thief", "tour_scholar": "-RPGClass=scholar"
   },
   "shots": {
     "out": "docs/screenshots",

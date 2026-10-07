@@ -368,9 +368,26 @@ int32 SRPGMinimap::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSl
 	int32 Layer, const FWidgetStyle& Style, bool bParentEnabled) const
 {
 	const FVector2D Sz = G.GetLocalSize();
-	FSlateDrawElement::MakeBox(Out, Layer, G.ToPaintGeometry(), &MapBrush, ESlateDrawEffect::None, FLinearColor::White);
-
 	const UTSData& D = UTSData::Get(World.Get());
+	if (const FTSArea* A = D.AreaAt(PlayerAt))
+	{
+		// In a separate area (a cave): its own little map, tile by tile, instead of the baked world map.
+		FSlateDrawElement::MakeBox(Out, Layer, G.ToPaintGeometry(), White(), ESlateDrawEffect::None, FLinearColor(0.02f, 0.018f, 0.016f));
+		const float TilePx = Sz.X / ViewTiles;
+		for (int32 Y = 0; Y < A->H; ++Y)
+			for (int32 X = 0; X < A->W; ++X)
+			{
+				const FVector At = D.TileCenter(A->Origin.X + X, A->Origin.Y + Y);
+				const FVector2D N((At.X - PlayerAt.X) / D.TileSize / ViewTiles * 2.f, (At.Y - PlayerAt.Y) / D.TileSize / ViewTiles * 2.f);
+				if (!Inside(N)) continue;
+				const TCHAR T = A->Rows[Y][X];
+				const FLinearColor Col = T == TEXT('#') ? FLinearColor(0.16f, 0.14f, 0.13f) : FLinearColor(0.36f, 0.3f, 0.24f);
+				const FVector2D C = Sz * 0.5f + N * Sz * 0.5f;
+				FSlateDrawElement::MakeBox(Out, Layer, G.ToPaintGeometry(FVector2D(TilePx + 1.f, TilePx + 1.f), FSlateLayoutTransform(C - FVector2D(TilePx * 0.5f))), White(), ESlateDrawEffect::None, Col);
+			}
+	}
+	else FSlateDrawElement::MakeBox(Out, Layer, G.ToPaintGeometry(), &MapBrush, ESlateDrawEffect::None, FLinearColor::White);
+
 	const ARPGPlayerCharacter* Player = PlayerOf(World);
 	const URPGSession* Session = SessionOf(World);
 	auto Dot = [&](const FVector& WorldAt, float Px, const FLinearColor& Col, int32 L)

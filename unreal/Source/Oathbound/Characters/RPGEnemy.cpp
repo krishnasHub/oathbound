@@ -10,6 +10,12 @@
 #include "TSProjectile.h"
 #include "TSPerception.h"
 #include "RPGLoot.h"
+#include "RPGGhost.h"
+#include "TSRoutine.h"
+#include "TSInteractable.h"
+#include "TSLook.h"
+#include "TSAssets.h"
+#include "Components/StaticMeshComponent.h"
 
 #include "ProceduralMeshComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -20,6 +26,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/World.h"
 #include "AIController.h"
+#include "EngineUtils.h"
 
 namespace
 {
@@ -57,17 +64,37 @@ void ARPGEnemy::Init(const FString& InType, const FVector& InHome)
 	const UTSData& D = UTSData::Get(this);
 	Type = InType;
 	Def = D.Entry(TEXT("enemies"), Type);
+	// "base": another enemy this one is a variant of (its fields, overridden by this one's).
+	if (const FString Base = TSJson::Str(Def, TEXT("base")); !Base.IsEmpty())
+		if (const TSJson::FObj B = D.Entry(TEXT("enemies"), Base))
+		{
+			const TSJson::FObj Merged = MakeShared<FJsonObject>();
+			for (const auto& KV : B->Values) Merged->SetField(KV.Key, KV.Value);
+			for (const auto& KV : Def->Values) Merged->SetField(KV.Key, KV.Value);
+			Def = Merged;
+		}
 	Home = InHome;
 	Region = D.RegionAt(Home.Y);
 	DisplayName = TSJson::Str(Def, TEXT("name"), Type);
 	DialogueRoot = TSJson::Str(Def, TEXT("dialogue"));
 	TalkKey = Type;
+	// Several of a kind, each with a mind of its own: a want of its own, and its own memory in the story.
+	if (const TArray<TSharedPtr<FJsonValue>> Wants = TSJson::Arr(Def, TEXT("wants")); Wants.Num())
+	{
+		const FIntPoint Tile(FMath::FloorToInt(Home.X / D.TileSize), FMath::FloorToInt(Home.Y / D.TileSize));
+		int32 Before = 0;   // round the list in spawn order, so neighbours want different things
+		for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (*It != this && It->Type == Type) ++Before;
+		Wish = Wants[Before % Wants.Num()]->AsString();
+		TalkKey = FString::Printf(TEXT("%s@%d,%d"), *Type, Tile.X, Tile.Y);
+	}
 	NameColor = FLinearColor(1.f, 0.85f, 0.78f);
 
-	SetLookFromData(Type);
+	const FString LookId = TSJson::Str(Def, TEXT("look"), Type);   // variants can borrow another's look
+	SetLookFromData(LookId);
+	if (TSJson::Has(Def, TEXT("scale"))) SetActorScale3D(FVector(float(TSJson::Num(Def, TEXT("scale"), 1))));
 	{
 		const TSJson::FObj W3 = D.World();
-		const FString Weapon = TSJson::Str(TSJson::Obj(TSJson::Obj(W3, TEXT("looks")), Type), TEXT("weapon"));
+		const FString Weapon = TSJson::Str(TSJson::Obj(TSJson::Obj(W3, TEXT("looks")), LookId), TEXT("weapon"));
 		TArray<FString> Kits;
 		for (const TSharedPtr<FJsonValue>& V : TSJson::Arr(TSJson::Obj(W3, TEXT("enemyKits")), Weapon)) Kits.Add(V->AsString());
 		SetWeaponKits(Kits);
@@ -87,10 +114,24 @@ void ARPGEnemy::Init(const FString& InType, const FVector& InHome)
 
 bool ARPGEnemy::IsPassive() const
 {
-	const FString F = FactionId();
-	if (F.IsEmpty()) return false;
 	const URPGSession* S = URPGSession::Get(this);
-	return S && S->Story()->Faction(F) != TEXT("hostile") && S->Duel.Get() != this;
+	const FString F = FactionId();
+	if (bPacified) return true;
+	if (!F.IsEmpty()) return S && S->Story()->Faction(F) != TEXT("hostile") && S->Duel.Get() != this && IsReasonable();
+	// No faction: it waits for a hero who can talk to it (its language, something to say), until provoked.
+	return !bProvoked && !DialogueRoot.IsEmpty() && IsReasonable();
+}
+
+bool ARPGEnemy::IsReasonable() const
+{
+	const URPGSession* S = URPGSession::Get(this);
+	const ARPGPlayerCharacter* P = S ? S->Player() : nullptr;
+	return P && P->Speaks(Speaks());
+}
+
+FString ARPGEnemy::NotReasonableWhy() const
+{
+	return Speaks().IsEmpty() ? FString(TEXT("It can't be reasoned with.")) : ARPGPlayerCharacter::CantSpeakWhy(this, Speaks());
 }
 
 FString ARPGEnemy::FactionId() const { return TSJson::Str(Def, TEXT("faction")); }
@@ -110,7 +151,7 @@ void ARPGEnemy::OnStruck(ATSCharacter* Src)
 {
 	if (Src->Team != ETSTeam::Player || FactionId().IsEmpty() || !IsPassive()) return;
 	URPGSession* Session = URPGSession::Get(this);
-	Session->SetHostile(FactionId(), Session->Duel.IsValid() ? TEXT("You broke the duel! The Red Hands attack!") : TEXT("You attacked the Red Hands!"));
+	Session->SetHostile(FactionId(), Session->Duel.IsValid() ? TEXT("You broke the duel! The Red Hands attack!") : TSJson::Str(Def, TEXT("struckBark"), TEXT("You attacked the Red Hands!")), /*bByHero*/ true);
 }
 
 bool ARPGEnemy::OnHurt(ATSCharacter* Src)
@@ -181,7 +222,7 @@ void ARPGEnemy::Tick(float Dt)
 	if (State == ERPGEnemyState::Leaving)
 	{
 		T -= Dt;
-		AddMovementInput(FVector(1, 0, 0), 1.f);   // walk off east, then gone for good
+		if (!bResting) AddMovementInput(FVector(1, 0, 0), 1.f);   // walk off east, then gone for good (or crumble where it stands)
 		if (T <= 0.f) { bDead = true; RespawnTimer = BIG_NUMBER; DeathHide = 0.f; GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision); }
 		return;
 	}
@@ -199,6 +240,13 @@ void ARPGEnemy::Tick(float Dt)
 		TelegraphMat->SetScalarParameterValue(TEXT("Opacity"), 0.12f + 0.38f * WindupProgress());
 	}
 
+	if (bPacified)
+	{
+		// Won over: stands easy, or (a trader) walks its rounds.
+		if (Routine) { const FVector Dir = Routine->Direction(Dt); if (!Dir.IsNearlyZero()) AddMovementInput(Dir, 1.f); }
+		PlaceSack();
+		return;
+	}
 	if (Tags.Has(TEXT("Staggered"))) return;
 	RunAI(Dt);
 }
@@ -438,12 +486,123 @@ void ARPGEnemy::PerformAttack()
 
 // ---------------------------------------------------------------------------------------------
 
-void ARPGEnemy::Leave()
+void ARPGEnemy::Leave(bool bRest)
 {
+	if (State == ERPGEnemyState::Leaving || bDead) return;
+	if (!bPacified) GrantPeace(TEXT("talked down "));
 	State = ERPGEnemyState::Leaving;
 	T = 3.f;
+	bResting = bRest;
+	if (bRest) { T = 0.7f; ARPGGhost::Rise(this, /*bCalm*/ true); GetCharacterMovement()->StopMovementImmediately(); }
 	Telegraph->SetVisibility(false);
 	GetCharacterMovement()->bOrientRotationToMovement = true;
+}
+
+void ARPGEnemy::GrantPeace(const TCHAR* How)
+{
+	// A peaceful win: worth at least what killing it was (data: tuning.peaceXpMul), and the world brightens.
+	const UTSData& D = UTSData::Get(this);
+	if (ARPGPlayerCharacter* P = URPGSession::Get(this)->Player())
+		P->GainXp(FMath::RoundToInt(float(TSJson::Num(Def, TEXT("xp"), 0)) * float(D.Tuning(TEXT("peaceXpMul"), 1.2))));
+	URPGSession::Get(this)->Story()->AddMood(float(D.Tuning(TEXT("moodPeace"), 3)), How + DisplayName);
+}
+
+void ARPGEnemy::Pacify(const TSJson::FObj& Become)
+{
+	if (bPacified || bDead || IsLeaving()) return;
+	GrantPeace(TEXT("won over "));
+	bPacified = true;
+	Team = ETSTeam::Neutral;
+	State = ERPGEnemyState::Idle;
+	Tags.Clear();
+	Telegraph->SetVisibility(false);
+	if (Become)
+	{
+		const TSJson::FObj Merged = MakeShared<FJsonObject>();
+		for (const auto& KV : Def->Values) Merged->SetField(KV.Key, KV.Value);
+		for (const auto& KV : Become->Values) Merged->SetField(KV.Key, KV.Value);
+		Def = Merged;
+		DisplayName = TSJson::Str(Def, TEXT("name"), DisplayName);
+		DialogueRoot = TSJson::Str(Def, TEXT("dialogue"), DialogueRoot);
+		TalkKey = Type + TEXT("_won");
+	}
+}
+
+void ARPGEnemy::BecomeTrader()
+{
+	const TSJson::FObj Trade = TSJson::Obj(Def, TEXT("trade"));
+	if (!Trade || Routine) return;
+	Pacify(TSJson::Obj(Trade, TEXT("become")));
+	// Its rounds (Tessera's routine): tiles in the data, uu here.
+	const UTSData& D = UTSData::Get(this);
+	Routine = NewObject<UTSRoutine>(this, TEXT("Routine"));
+	Routine->RegisterComponent();
+	for (const TSharedPtr<FJsonValue>& V : TSJson::Arr(Trade, TEXT("stops")))
+	{
+		const TSJson::FObj S = V->AsObject();
+		const TArray<TSharedPtr<FJsonValue>> At = TSJson::Arr(S, TEXT("at"));
+		if (At.Num() != 2) continue;
+		Routine->AddStop(D.TileCenter(int32(At[0]->AsNumber()), int32(At[1]->AsNumber())), float(TSJson::Num(S, TEXT("wait"), 4)),
+			FName(TSJson::Str(S, TEXT("when"), TEXT("any"))), FName(TSJson::Str(S, TEXT("tag"))));
+	}
+	Routine->ArriveDistance = 120.f + Radius();
+	// Its mine is in the cave: the routine walks to the door between areas, and through it.
+	Routine->FindDoor = [this](const FVector& From, const FVector& Goal, FVector& Door)
+	{
+		const UTSData& Data = UTSData::Get(this);
+		const FTSArea* Here = Data.AreaAt(From);
+		const FTSArea* There = Data.AreaAt(Goal);
+		if (Here == There) return false;
+		for (TActorIterator<ATSInteractable> It(GetWorld()); It; ++It)
+		{
+			const ATSInteractable* To = It->DoorTarget();
+			if (To && Data.AreaAt(It->GetActorLocation()) == Here && Data.AreaAt(To->GetActorLocation()) == There) { Door = It->GetActorLocation(); return true; }
+		}
+		return false;
+	};
+	Routine->ThroughDoor = [this](const FVector& Door)
+	{
+		for (TActorIterator<ATSInteractable> It(GetWorld()); It; ++It)
+			if (It->GetActorLocation().Equals(Door, 1.f))
+				if (const ATSInteractable* To = It->DoorTarget())
+					TeleportTo(To->ExitPoint(UTSData::Get(this).TileSize) + FVector(0, 0, GetSimpleCollisionHalfHeight() + 30.f), GetActorRotation(), false, true);
+	};
+	// Gold from the mine to the village; on the way back, its pay (food). The sack shows while it carries gold.
+	const FName CarryTo(TSJson::Str(Trade, TEXT("carryTo"), TEXT("village")));
+	const FString Delivered = TSJson::Str(Trade, TEXT("deliveredBark"));
+	Routine->OnDepart.AddWeakLambda(this, [this, CarryTo](int32, FName Tag) { bCarrying = Tag == CarryTo; });
+	Routine->OnArrive.AddWeakLambda(this, [this, CarryTo, Delivered](int32, FName Tag)
+	{
+		if (Tag != CarryTo) return;
+		bCarrying = false;
+		if (!Delivered.IsEmpty()) UTSFeedback::Get(this)->Float(Head() + FVector(0, 0, 40), Delivered, FLinearColor(1.f, 0.85f, 0.35f), 1.4f);
+	});
+	Sack = NewObject<UStaticMeshComponent>(this, TEXT("Sack"));
+	Sack->SetStaticMesh(TSAssets::Shape(TEXT("Plane")));
+	Sack->SetMaterial(0, TSLook::PropMaterial(TSJson::Str(Trade, TEXT("sack"), TEXT("PR_GoldSack"))));
+	Sack->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Sack->SetUsingAbsoluteRotation(true);
+	Sack->SetUsingAbsoluteScale(true);
+	Sack->SetupAttachment(RootComponent);
+	Sack->RegisterComponent();
+	Sack->SetVisibility(false);
+	GetCharacterMovement()->MaxWalkSpeed = D.Px(TSJson::Num(Trade, TEXT("speed"), 60));
+	Routine->Begin();
+}
+
+void ARPGEnemy::PlaceSack()
+{
+	if (!Sack) return;
+	Sack->SetVisibility(bCarrying && !bDead);
+	if (!bCarrying) return;
+	// Over its shoulder: a card beside the body, a little up, bobbing with the walk.
+	const FRotator R = TSLook::CardRotation();
+	const FVector Up = -FRotationMatrix(R).GetUnitAxis(EAxis::Y), Right = FRotationMatrix(R).GetUnitAxis(EAxis::X);
+	const float Bob = FMath::Abs(FMath::Sin(GetWorld()->GetTimeSeconds() * 6.f)) * 8.f * (GetVelocity().Size2D() > 10.f);
+	const FVector Feet = GetActorLocation() - FVector(0, 0, GetSimpleCollisionHalfHeight());
+	const float Size = 90.f;
+	Sack->SetWorldLocationAndRotation(Feet + Up * (GetSimpleCollisionHalfHeight() * 1.5f + Bob) + Right * (Radius() * 0.9f) + FRotationMatrix(R).GetUnitAxis(EAxis::Z) * 12.f, R);   // a little toward the camera: in front of him
+	Sack->SetWorldScale3D(FVector(Size / 100.f, Size / 100.f, 1.f));
 }
 
 void ARPGEnemy::ResetToHome()

@@ -53,6 +53,11 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Camera") TObjectPtr<USpringArmComponent> CameraBoom;
 	UPROPERTY(VisibleAnywhere, Category = "Camera") TObjectPtr<UCameraComponent> Camera;
 	UPROPERTY(VisibleAnywhere, Category = "Camera") TObjectPtr<UTSCameraRig> Rig;
+	/** Jump the camera to the hero (after a door), no lag swoop. */
+	void SnapCamera();
+	/** The map area the hero is in ("" = the main map); entering one names it and sets its mood (map.areas.<id>.look). */
+	FString AreaId;
+	void UpdateArea();
 	UPROPERTY(VisibleAnywhere, Category = "RPG") TObjectPtr<UTSHeroControl> Control;
 	UPROPERTY(VisibleAnywhere, Category = "RPG") TObjectPtr<UTSInventoryComponent> Inventory;
 	UPROPERTY(VisibleAnywhere, Category = "RPG") TObjectPtr<UTSAbilityComponent> Abilities;
@@ -125,6 +130,10 @@ public:
 	 *  (talk mode with nobody to talk to), "pointer", or NAME_None (no game cursor: UI, cutscenes, third person). */
 	FName CursorIcon() const;
 
+	/** Does the hero speak Language (classes.<id>.languages; "*" = every language)? An empty language: nobody does. */
+	bool Speaks(const FString& Language) const;
+	/** "It speaks the Old Tongue. You don't." (languages.<id>.name) */
+	static FString CantSpeakWhy(const UObject* WorldContext, const FString& Language);
 	/** Why the hero can't talk to C right now (empty = they can). Talk mode (E) and clicks: UTSHeroControl. */
 	FString TalkBlocker(const ATSCharacter* C) const;
 	/** Drop held buttons (UI opened: the game will not see their release). */
