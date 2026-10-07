@@ -39,6 +39,10 @@ private:
 		float Timer = 0.f, Anim = 0.f;
 		int32 State = 0;
 		bool bFacingLeft = false;
+		float Frozen = 0.f;                  // seconds left frozen in place (a frost nova)
+		FVector Thrown = FVector::ZeroVector;   // thrown by a barrier: sliding outward, slowing down
+		float Size = 100.f;                  // as last placed, to keep drawing it while it's thrown
+		int32 Col = 0, Row = 0;
 	};
 	struct FBird : FCard {};
 	struct FGoose : FCard { FVector Target = FVector::ZeroVector; };
@@ -53,6 +57,14 @@ private:
 	void TickGeese(float Dt, const FVector& Hero, bool bDay);
 	void TickProwler(float Dt, const FVector& Hero, bool bNight);
 	void TickFireflies(float Dt, const FVector& Hero, float Night);
+	/** An area effect (UTSAreaEvents): a "Frozen" area freezes the animals in it, tinted like frozen characters. */
+	void OnAreaStatus(const FVector& Center, float Radius, FName Tag, float Duration);
+	/** Count down a freeze; true while the card must stay put. */
+	static bool StayFrozen(FCard& C, float Dt);
+	/** A barrier went up (UTSAreaEvents::OnPush): birds inside burst into the air, geese and the prowler are thrown. */
+	void OnAreaPush(const FVector& Center, float Radius);
+	/** Slide a thrown card outward until it stops; true while it's still sliding. */
+	bool StayThrown(FCard& C, float Dt);
 
 	TWeakObjectPtr<ARPGWorldBuilder> World;
 	TArray<FVector> Grass, Village;

@@ -30,6 +30,7 @@ void ARPGNPC::Init(const FString& InId)
 void ARPGNPC::Tick(float Dt)
 {
 	Super::Tick(Dt);
+	if (IsFrozen()) return;
 	const ARPGPlayerCharacter* P = URPGSession::Get(this)->Player();
 	if (!P || FVector::Dist2D(P->GetActorLocation(), GetActorLocation()) > 600.f) return;
 	const FRotator Want(0, (P->GetActorLocation() - GetActorLocation()).GetSafeNormal2D().Rotation().Yaw, 0);

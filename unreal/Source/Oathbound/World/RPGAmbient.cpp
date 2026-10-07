@@ -7,6 +7,8 @@
 #include "RPGAssets.h"
 #include "RPGSession.h"
 #include "LMStory.h"
+#include "TSAreaEvents.h"
+#include "TSCharacter.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -54,6 +56,7 @@ float ARPGAmbient::Ground(const FVector& P) const
 void ARPGAmbient::Place(FCard& C, float SizeUU, int32 Col, int32 Row, bool bVisible)
 {
 	C.Mesh->SetVisibility(bVisible);
+	C.Size = SizeUU; C.Col = Col; C.Row = Row;
 	if (!bVisible || !C.Mat) return;
 	const FRotator R = TSLook::CardRotation();
 	const FVector Up = -FRotationMatrix(R).GetUnitAxis(EAxis::Y);
@@ -79,6 +82,11 @@ FVector ARPGAmbient::RandomGrass(const FVector& AwayFrom, float MinDist) const
 void ARPGAmbient::Init(ARPGWorldBuilder* InWorld)
 {
 	World = InWorld;
+	if (UTSAreaEvents* Events = UTSAreaEvents::Get(this))
+	{
+		Events->OnStatus.AddUObject(this, &ARPGAmbient::OnAreaStatus);
+		Events->OnPush.AddUObject(this, &ARPGAmbient::OnAreaPush);
+	}
 	Rand.Initialize(1234);
 	const UTSData& D = UTSData::Get(this);
 	const float U = TSLook::SpriteUnits();
@@ -168,10 +176,68 @@ void ARPGAmbient::Tick(float Dt)
 	TickFireflies(Dt, Hero, Night);
 }
 
+void ARPGAmbient::OnAreaStatus(const FVector& Center, float Radius, FName Tag, float Duration)
+{
+	FLinearColor Tint;
+	if (Tag != TEXT("Frozen") || !ATSCharacter::TintForTag(this, Tag, Tint)) return;
+	auto Freeze = [&](FCard& C)
+	{
+		if (!C.Mesh || !C.Mesh->IsVisible() || !C.Mat || FVector::Dist2D(C.Pos, Center) > Radius) return;
+		C.Frozen = Duration;
+		C.Mat->SetVectorParameterValue(TEXT("Tint"), Tint);
+	};
+	for (FBird& B : Birds) Freeze(B);
+	for (FGoose& G : Geese) Freeze(G);
+	Freeze(Prowler);
+}
+
+void ARPGAmbient::OnAreaPush(const FVector& Center, float Radius)
+{
+	auto Inside = [&](const FCard& C) { return C.Mesh && C.Mesh->IsVisible() && FVector::Dist2D(C.Pos, Center) < Radius; };
+	auto Out = [&](const FCard& C) { const FVector D = (C.Pos - Center).GetSafeNormal2D(); return D.IsNearlyZero() ? FVector(1, 0, 0) : D; };
+	for (FBird& B : Birds)
+	{
+		if (!Inside(B)) continue;
+		B.Frozen = 0.f;
+		B.State = BirdFlying;   // blasted into the air, away from the barrier
+		B.Vel = Out(B) * 950.f;
+		B.Timer = 2.5f;
+	}
+	auto Throw = [&](FCard& C)
+	{
+		if (!Inside(C)) return;
+		// Knockback-style: it slides ~1/6.2 of its starting speed before stopping, so it lands past the edge.
+		C.Thrown = Out(C) * (Radius - FVector::Dist2D(C.Pos, Center) + 120.f) * 6.2f;
+		C.Vel = C.Thrown;
+	};
+	for (FGoose& G : Geese) Throw(G);
+	Throw(Prowler);
+}
+
+bool ARPGAmbient::StayThrown(FCard& C, float Dt)
+{
+	if (C.Thrown.SizeSquared() < 400.f) { C.Thrown = FVector::ZeroVector; return false; }
+	C.Pos += C.Thrown * Dt;
+	C.Thrown *= FMath::Pow(0.002f, Dt);
+	C.Lift = FMath::Min(40.f, C.Thrown.Size() * 0.04f);   // a little airborne while it flies
+	Place(C, C.Size, C.Col, C.Row, true);
+	if (C.Thrown.SizeSquared() < 400.f) C.Lift = 0.f;
+	return true;
+}
+
+bool ARPGAmbient::StayFrozen(FCard& C, float Dt)
+{
+	if (C.Frozen <= 0.f) return false;
+	C.Frozen -= Dt;
+	if (C.Frozen <= 0.f && C.Mat) C.Mat->SetVectorParameterValue(TEXT("Tint"), FLinearColor::White);
+	return C.Frozen > 0.f;
+}
+
 void ARPGAmbient::TickBirds(float Dt, const FVector& Hero, bool bDay)
 {
 	for (FBird& B : Birds)
 	{
+		if (StayFrozen(B, Dt)) continue;   // stuck where it was, even mid-air
 		B.Anim += Dt;
 		B.Timer -= Dt;
 		if (!bDay && B.State == BirdGround) { B.State = BirdGone; B.Timer = 4.f; }
@@ -222,6 +288,8 @@ void ARPGAmbient::TickGeese(float Dt, const FVector& Hero, bool bDay)
 	URPGSession* Session = URPGSession::Get(this);
 	for (FGoose& G : Geese)
 	{
+		if (StayFrozen(G, Dt)) continue;
+		if (StayThrown(G, Dt)) { G.State = GooseFlee; G.Timer = 1.6f; G.Vel = G.Thrown.GetSafeNormal2D() * 300.f; continue; }   // then runs off
 		G.Anim += Dt;
 		G.Timer -= Dt;
 		if (!bDay) { G.Mesh->SetVisibility(false); continue; }   // asleep somewhere
@@ -274,7 +342,7 @@ void ARPGAmbient::TickGeese(float Dt, const FVector& Hero, bool bDay)
 void ARPGAmbient::TickProwler(float Dt, const FVector& Hero, bool bNight)
 {
 	FCard& M = Prowler;
-	if (!M.Mesh || ProwlRoute.IsEmpty()) return;
+	if (!M.Mesh || ProwlRoute.IsEmpty() || StayFrozen(M, Dt) || StayThrown(M, Dt)) return;
 	M.Anim += Dt;
 	M.Timer -= Dt;
 	if (!bNight) { M.Mesh->SetVisibility(false); M.State = ProwlGone; M.Timer = 0.f; return; }

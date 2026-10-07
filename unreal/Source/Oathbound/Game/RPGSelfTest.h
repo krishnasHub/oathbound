@@ -6,6 +6,7 @@
 
 class ARPGPlayerCharacter;
 class ARPGEnemy;
+class ARPGCharacterBase;
 
 /**
  * Scripted scenarios that drive the real game (real animation notifies, AI, dialogue, UI) and log the
@@ -20,6 +21,8 @@ class ARPGEnemy;
  *   -RPGTest=smoke    thief Smoke Bomb: foes in the blast stagger, the cloud clears after its duration
  *   -RPGTest=pause    Esc: picker first, then the pause menu; Resume; New Game reloads into character select
  *   -RPGTest=click    one real mouse click on a dialogue choice answers it (no double click)
+ *   -RPGTest=frost    mage Frost Nova: a slime and a villager in the sphere freeze, stay put, then thaw
+ *   -RPGTest=barrier  mage barrier: a slime closing in is held at the barrier's edge, never inside
  *
  * Combine with -RPGShot=<sec> to capture a frame mid-scenario. Stepping, reporting, quitting, screenshots and real
  * clicks come from Tessera's ATSTestRunner (TesseraTest).
@@ -44,4 +47,8 @@ private:
 	int32 Corners = 0;
 	float Started = 0.f;
 	FString ClickNode;   // click: the dialogue line before the click
+	TWeakObjectPtr<ARPGCharacterBase> Other;   // frost: the villager caught in the nova
+	FVector HeldAt = FVector::ZeroVector;      // frost: where the frozen slime stood
+	float MinDist = 0.f;                       // barrier: the closest the slime got
+	bool bShotTaken = false;
 };

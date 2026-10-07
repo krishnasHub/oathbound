@@ -176,6 +176,7 @@ void ARPGEnemy::Tick(float Dt)
 
 	RevealT -= Dt;
 	Stats->TickStats(Dt, [this](float H) { TSCombat::Heal(this, H); }, [this](float Dmg, AActor* Src) { TSCombat::Dot(this, Dmg, Src); });
+	if (IsFrozen()) return;   // frozen solid: the AI, a wind-up and its swing all wait for the thaw
 
 	if (State == ERPGEnemyState::Leaving)
 	{

@@ -10,6 +10,7 @@
 #include "SRPGWidgets.h"
 #include "GameFramework/GameModeBase.h"
 #include "RPGEnemy.h"
+#include "RPGNPC.h"
 #include "RPGLoot.h"
 #include "TSLoot.h"
 #include "TSInventory.h"
@@ -523,6 +524,98 @@ void ARPGSelfTest::RunStep()
 		}
 	}
 	// ---------------------------------------------------------------------------------------------
+	else if (Scenario == TEXT("frost"))
+	{
+		if (Step == 0)
+		{
+			while (Pl->Level() < 2) Pl->GainXp(ARPGPlayerCharacter::XpToNext(Pl, Pl->Level()) - Pl->Xp);
+			Pl->Stats->Pool(RPGStat::Mana).Current = Pl->Stats->Max(RPGStat::Mana);
+			Target = Find(TEXT("slime"));
+			Place(Target->GetActorLocation() - FVector(220, 0, 0), 0.f);
+			// A villager walks over to watch (teleported next to the mage, on the far side from the slime).
+			for (TActorIterator<ARPGNPC> It(GetWorld()); It; ++It) { Other = *It; break; }
+			if (Other.IsValid()) Other->SetActorLocation(Pl->GetActorLocation() + FVector(-200, 120, 0), false, nullptr, ETeleportType::TeleportPhysics);
+			Step = 1; Next = T + 0.4f;
+		}
+		else if (Step == 1)
+		{
+			AimAt(Target->GetActorLocation());
+			Pl->TestPress(TEXT("Ability2"), true);   // Frost Nova
+			Started = T;
+			Report(FString::Printf(TEXT("cast Frost Nova (cooldown now %.1fs)"), Pl->Abilities->Cooldowns.FindRef(TEXT("frost_nova"))));
+			Step = 2; Next = T + 0.3f;
+		}
+		else if (Step == 2)
+		{
+			Shot(TEXT("frost_nova"));   // the sphere swelling, the ground frozen
+			Step = 3; Next = T + 0.3f;
+		}
+		else if (Step == 3)
+		{
+			const bool bSlime = Target.IsValid() && Target->IsFrozen();
+			const bool bVillager = Other.IsValid() && Other->IsFrozen();
+			Report(FString::Printf(TEXT("%s: the slime is frozen (tint %s)"), bSlime ? TEXT("PASS") : TEXT("FAIL"), Target.IsValid() ? *Target->StatusTint().ToString() : TEXT("-")));
+			Report(FString::Printf(TEXT("%s: the villager (%s) is frozen too"), bVillager ? TEXT("PASS") : TEXT("FAIL"), Other.IsValid() ? *Other->DisplayName : TEXT("none")));
+			Report(FString::Printf(TEXT("%s: %s can't be talked to while frozen"), Other.IsValid() && !Pl->TalkBlocker(Other.Get()).IsEmpty() ? TEXT("PASS") : TEXT("FAIL"), Other.IsValid() ? *Other->DisplayName : TEXT("-")));
+			HeldAt = Target.IsValid() ? Target->GetActorLocation() : FVector::ZeroVector;
+			Step = 4; Next = T + 1.5f;
+		}
+		else if (Step == 4)
+		{
+			const float Moved = Target.IsValid() ? FVector::Dist2D(Target->GetActorLocation(), HeldAt) : 999.f;
+			Report(FString::Printf(TEXT("%s: frozen slime stayed put (moved %.0fuu in 1.5s, 220uu from the mage)"), Moved < 5.f ? TEXT("PASS") : TEXT("FAIL"), Moved));
+			Step = 5; Next = T + 1.8f;
+		}
+		else if (Step == 5)
+		{
+			const bool bThawed = Target.IsValid() && !Target->IsFrozen() && Target->StatusTint().Equals(FLinearColor::White);
+			if (!bThawed && T - Started < 6.f) { Next = T + 0.25f; return; }   // (3s of game time; allow for slow frames)
+			Report(FString::Printf(TEXT("%s: thawed after 3s (frozen left %.2fs, dead %d, tint %s)"), bThawed ? TEXT("PASS") : TEXT("FAIL"),
+				Target.IsValid() ? Target->Tags.Map.FindRef(TEXT("Frozen")) : -1.f, Target.IsValid() && Target->IsDead(), Target.IsValid() ? *Target->StatusTint().ToString() : TEXT("-")));
+			Quit(0.5f);
+		}
+	}
+	else if (Scenario == TEXT("barrier"))
+	{
+		// The mage's barrier: a slime already inside when it goes up is thrown clear; then, chasing, it is held at the edge.
+		const float KeepOut = D.Px(TSJson::Num(TSJson::Obj(Pl->Style(), TEXT("secondary")), TEXT("keepOut"), 0));
+		auto Edge = [&]() { return Target.IsValid() ? FVector::Dist2D(Target->GetActorLocation(), Pl->GetActorLocation()) - Target->Radius() : 0.f; };
+		if (Step == 0)
+		{
+			SetTickGroup(TG_PostUpdateWork);   // measure what's drawn: after all movement and the barrier's push
+			Target = Find(TEXT("slime"));
+			Place(Target->GetActorLocation() - FVector(Target->Radius() + 70.f, 0, 0), 0.f);   // right up against it
+			AimAt(Target->GetActorLocation());
+			Step = 1; Next = T + 0.3f;
+		}
+		else if (Step == 1)
+		{
+			Report(FString::Printf(TEXT("slime %.0fuu away (edge to edge); barrier up (keep-out %.0fuu)"), Edge(), KeepOut));
+			Pl->TestPress(TEXT("Secondary"), true);
+			Step = 2; Next = T + 1.0f;
+		}
+		else if (Step == 2)
+		{
+			Report(FString::Printf(TEXT("%s: the slime inside was thrown clear (now %.0fuu, barrier %.0fuu)"), Edge() >= KeepOut - 2.f ? TEXT("PASS") : TEXT("FAIL"), Edge(), KeepOut));
+			MinDist = BIG_NUMBER;
+			Started = T;
+			Step = 3; Next = T + 0.05f;
+		}
+		else if (Step == 3)
+		{
+			if (Target.IsValid() && !Target->IsDead())
+			{
+				Target->State = ERPGEnemyState::Chase;   // keep it coming at the mage
+				MinDist = FMath::Min(MinDist, Edge());
+			}
+			if (T - Started > 1.2f && !bShotTaken) { Shot(TEXT("barrier")); bShotTaken = true; }
+			if (T - Started < 3.f) { Next = T + 0.05f; return; }
+			Pl->TestPress(TEXT("Secondary"), false);
+			Report(FString::Printf(TEXT("%s: chasing, it pressed in but stayed outside (closest %.0fuu, barrier %.0fuu)"),
+				MinDist >= KeepOut - 2.f && MinDist < KeepOut + 80.f ? TEXT("PASS") : TEXT("FAIL"), MinDist, KeepOut));
+			Quit(0.5f);
+		}
+	}
 	else if (Scenario == TEXT("elder"))
 	{
 		// Walk up to Elder Maren, press E, screenshot the dialogue (the game is paused while talking,

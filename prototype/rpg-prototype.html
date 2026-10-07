@@ -206,6 +206,7 @@
     },
     "look": "hd2d",
     "dialoguePortraits": false,
+    "statusTints": { "_doc": "Characters (and ambient animals) tinted while they carry a tag.", "Frozen": "#bfe2ff" },
     "assets": {
       "_doc": "Assets Tessera loads by name. '/...' = object path; otherwise a Starter Content material name (RPGAssets::StarterMat).",
       "sprite": "/Game/RPG/Materials/M_RPG_Sprite.M_RPG_Sprite", "pixelWorld": "/Game/RPG/Materials/M_RPG_PixelWorld.M_RPG_PixelWorld",
@@ -331,7 +332,7 @@
       "styles": ["staff"],
       "abilities": ["fireball", "frost_nova", "blink", "chain_lightning"],
       "weapons": "Arcane bolts (free) and spells (mana).",
-      "defense": "Hold right click for an arcane barrier all around you: 80% less damage from any side, but it drains stamina while held.",
+      "defense": "Hold right click for an arcane barrier all around you: nothing can get inside it, and anything that reaches you through it (arrows, spells) does 80% less damage. It drains stamina while held.",
       "dialogue": { "style": "Hypnotize", "desc": "Compel NPCs to agree. It works, but they may resent it later." },
       "startItems": [ { "item": "oak_staff", "equip": true }, { "item": "potion", "qty": 2 } ]
     },
@@ -382,10 +383,10 @@
         { "mult": 1.5, "range": 64, "arc": 170, "windup": 0.28, "active": 0.12, "recover": 0.55, "stamina": 26, "poise": 60, "knockback": 420, "lunge": 200 } ] }
     },
     "staff": {
-      "name": "Staff", "hint": "LMB arcane bolt (free, hold to keep firing) · hold RMB for a barrier all around you (-80% damage, drains stamina)",
+      "name": "Staff", "hint": "LMB arcane bolt (free, hold to keep firing) · hold RMB for a barrier no foe can enter (-80% damage, drains stamina)",
       "primary": { "type": "bolt", "scaling": "focus", "damage": 5, "weaponRatio": 0.5, "cooldown": 0.45,
                    "speed": 480, "radius": 5, "range": 440, "poise": 10, "knockback": 60, "color": "#b9a4ff" },
-      "secondary": { "type": "block", "barrier": true, "reduction": 0.8, "arc": 360, "staminaPerDamage": 0.4, "staminaDrain": 12, "perfectWindow": 0, "moveMul": 0.5, "staminaRegenMul": 0 }
+      "secondary": { "type": "block", "barrier": true, "keepOut": 50, "reduction": 0.8, "arc": 360, "staminaPerDamage": 0.4, "staminaDrain": 12, "perfectWindow": 0, "moveMul": 0.5, "staminaRegenMul": 0 }
     },
     "daggers_bow": {
       "name": "Daggers & Bow", "hint": "LMB fast 4-hit daggers (hit from behind = backstab x2) · hold RMB to draw bow, release to fire",
@@ -429,8 +430,9 @@
                          "color": "#ff8a3d", "desc": "Hurl a fireball toward the cursor." },
     "frost_nova":      { "name": "Frost Nova", "type": "aoe", "unlockLevel": 2, "mana": 20, "cooldown": 8,
                          "damage": 10, "scaling": "focus", "radius": 110, "poise": 20, "knockback": 80,
-                         "applyTag": { "tag": "Slowed", "duration": 3 },
-                         "color": "#9fd8ff", "desc": "Burst of frost around you. Enemies hit move at 40% speed for 3s." },
+                         "applyTag": { "tag": "Frozen", "duration": 3, "everyone": true },
+                         "fx": { "shape": "sphere", "time": 0.8, "ground": 3, "groundColor": "#cfeaff" },
+                         "color": "#9fd8ff", "desc": "A sphere of frost bursts out around you. Everything caught in it, foe, villager or bird, freezes solid for 3s." },
     "blink":           { "name": "Blink", "type": "blink", "unlockLevel": 3, "mana": 15, "cooldown": 4,
                          "distance": 170, "iframes": 0.15,
                          "color": "#b9a4ff", "desc": "Teleport toward the cursor (can't pass walls or water)." },
@@ -1836,7 +1838,7 @@ class Enemy extends Character {
 function enemyAI(e, dt) {
   const p = player, def = e.def, d = dist(e, p);
   const hidden = p.tags.has('Hidden');                         // Smoke Bomb
-  const spd = def.speed * (e.tags.has('Slowed') ? 0.4 : 1);   // Frost Nova
+  const spd = def.speed * (e.tags.has('Slowed') ? 0.4 : 1) * (e.tags.has('Frozen') ? 0 : 1);   // Frost Nova freezes
   const ev = T.enemyVision;
   const inView = d < (def.hearRadius ?? ev.hearRadius) ||
                  Math.abs(angDiff(e.facing, angleTo(e, p))) <= (def.visionAngle ?? ev.coneAngle) * DEG / 2;

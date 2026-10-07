@@ -68,10 +68,10 @@ Developer loop (from `unreal/`):
 ```powershell
 .\Tools\rpg.ps1 build
 .\Tools\rpg.ps1 art               # redraw the pixel art (python3 + numpy), then: prepare
-.\Tools\rpg.ps1 test -Scenario combat|block|elder|bridge|mage|thief|walk|picker|smoke|pause|click
+.\Tools\rpg.ps1 test -Scenario combat|block|elder|bridge|mage|thief|walk|picker|smoke|pause|click|frost|barrier
 .\Tools\rpg.ps1 test -Scenario pose -Class mage|thief   # pose screenshots -> Saved/Screenshots/RPG/pose_*.png
 ```
-- **Last state (2026-10-06, after plugin phase 3):** all 11 tests PASS (combat, block, elder, bridge, mage, thief, walk, picker, smoke, pause, click). (Phase 2 also passed from a fresh clone with a clean build.)
+- **Last state (2026-10-07):** all 13 tests PASS (combat, block, elder, bridge, mage, thief, walk, picker, smoke, pause, click, frost, barrier). (Phase 2 also passed from a fresh clone with a clean build.)
   - `click` sends real mouse events; with 8 windows overlapping it sometimes hit another window. Fixed in phase 4: `ATSTestRunner::ClickAt` brings its window to the front (3 full runs in a row passed).
   - `prepare` can't overwrite the committed assets while they're read-only (Git LFS "lockable"): clear the flag first, and `git checkout -- unreal/Content` after a check-only run to avoid LFS churn.
 - **Self-test command-line flags:**
@@ -302,6 +302,17 @@ dynamic story. So the reusable code is moving into two plugins, each its own rep
   - `Tools/unreal/tessera_assets.py`: material builders + texture import; regenerated assets passed all tests.
   - `Tools/pixelart/tspixel`: PNG, colour, canvas helpers, sheet layout; the game's 101 images regenerate byte-identical.
   - Still in the game: its art definitions, minimap material, `audit_content.py` (lists this game's template assets), `sync-data.js` (inlines the HTML prototype).
+
+## 7h. Mage barrier and Frost Nova (2026-10-07)
+
+- **Barrier** (hold RMB): a glowing column around the mage, as wide as `keepOut` (50 px = 175 uu) on the staff's guard.
+  Anyone inside when it goes up is thrown clear (knockback + a short stagger); nobody gets in while it's up (held at the
+  edge after all movement each frame: Tessera's `UTSKeepOut`, post-physics). Animals: `UTSAreaEvents::OnPush` -> birds
+  burst into the air, geese and the prowler are thrown, then run. Trees and walls don't react.
+- **Frost Nova**: a light-blue sphere swells and fades (`ATSFX::Sphere`), the ground stays frosted for 3 s (`ATSFX::Stain`),
+  and every character in it (foes, villagers) gets `Frozen` for 3 s: no movement, AI, animation or talk, tinted
+  `world3d.statusTints.Frozen`. Animals freeze through `UTSAreaEvents::OnStatus`. (Replaced its old 40% slow.)
+- Mechanisms in Tessera; numbers, colours and the column's look in Oathbound. Tests: `frost`, `barrier`.
 
 ## 8. Next steps / open threads
 

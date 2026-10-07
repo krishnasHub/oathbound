@@ -12,7 +12,8 @@
   "tests": {
     "combat": "-RPGClass=knight", "block": "-RPGClass=knight", "elder": "-RPGClass=knight", "bridge": "-RPGClass=knight",
     "mage": "-RPGClass=mage", "thief": "-RPGClass=thief", "walk": "-RPGClass=knight", "picker": "-RPGClass=mage",
-    "smoke": "-RPGClass=thief", "pause": "-RPGClass=knight", "click": "-RPGClass=knight"
+    "smoke": "-RPGClass=thief", "pause": "-RPGClass=knight", "click": "-RPGClass=knight",
+    "frost": "-RPGClass=mage", "barrier": "-RPGClass=mage"
   },
   "shots": {
     "out": "docs/screenshots",

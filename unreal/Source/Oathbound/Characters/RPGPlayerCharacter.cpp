@@ -114,8 +114,8 @@ ARPGPlayerCharacter::ARPGPlayerCharacter()
 		C->SetStaticMesh(ConstructorHelpers::FObjectFinder<UStaticMesh>(Shape).Object);
 		return C;
 	};
-	ShieldBubble = MakeFX(TEXT("ShieldBubble"), TEXT("/Engine/BasicShapes/Sphere.Sphere"));
-	ShieldBubble->SetRelativeScale3D(FVector(1.5f, 1.5f, 2.1f));
+	// The Mage's barrier: a glowing column around the hero (the rim-lit material shows its sides, the caps stay faint).
+	ShieldBubble = MakeFX(TEXT("ShieldBubble"), TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 	GuardArc = MakeFX(TEXT("GuardArc"), TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 	GuardArc->SetRelativeLocationAndRotation(FVector(55, 0, 0), FRotator(90, 0, 0));
 	GuardArc->SetRelativeScale3D(FVector(1.1f, 1.1f, 0.03f));
@@ -435,6 +435,7 @@ float ARPGPlayerCharacter::TalkRange() const
 FString ARPGPlayerCharacter::TalkBlocker(const ATSCharacter* C) const
 {
 	if (!C || C->IsDead() || C->IsLeaving()) return TEXT("...");
+	if (C->IsFrozen()) return TEXT("Frozen solid.");
 	const ARPGEnemy* E = Cast<ARPGEnemy>(C);
 	if (C->DialogueRoot.IsEmpty())
 		return E && !TSJson::Bool(E->Def, TEXT("intelligent")) ? TEXT("It can't be reasoned with.") : TEXT("They have nothing to say.");
@@ -1135,16 +1136,16 @@ void ARPGPlayerCharacter::UpdateVisuals(float Dt)
 	ShieldBubble->SetVisibility(bShield);
 	if (bShield)
 	{
-		// Fully around the hero: centred on the drawn sprite (taller than the old mannequin), sized to enclose it.
-		if (Sprite)
-		{
-			ShieldBubble->SetWorldLocation(Sprite->GetComponentLocation());
-			const float D = Sprite->GetComponentScale().Y * 100.f * 1.25f;   // the card's height, plus a margin
-			ShieldBubble->SetWorldScale3D(FVector(D / 100.f));
-		}
+		// A column standing on the ground around the hero, as wide as the barrier's keep-out circle (nothing gets
+		// inside it) and a little taller than the drawn sprite (or the body in the 3D look).
+		const float R = UTSData::Get(this).Px(TSJson::Num(Guarding, TEXT("keepOut"), 40));
+		const float Half = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+		const float Height = (Sprite ? Sprite->GetComponentScale().Y * 100.f : Half * 2.f) * 1.15f;
+		ShieldBubble->SetWorldLocation(GetActorLocation() + FVector(0, 0, Height * 0.5f - Half));
+		ShieldBubble->SetWorldScale3D(FVector(R / 50.f, R / 50.f, Height / 100.f));
 		BarrierPulse += Dt;
-		BubbleMat->SetScalarParameterValue(TEXT("Opacity"), 0.12f + 0.2f * Stats->Pool(RPGStat::Stamina).Current / FMath::Max(1.f, Stats->Max(RPGStat::Stamina)) + 0.04f * FMath::Sin(BarrierPulse * 6.f));
-		BubbleMat->SetScalarParameterValue(TEXT("Intensity"), 3.f);
+		BubbleMat->SetScalarParameterValue(TEXT("Opacity"), 0.35f + 0.35f * Stats->Pool(RPGStat::Stamina).Current / FMath::Max(1.f, Stats->Max(RPGStat::Stamina)) + 0.06f * FMath::Sin(BarrierPulse * 6.f));
+		BubbleMat->SetScalarParameterValue(TEXT("Intensity"), 5.f);
 	}
 
 	// Raised guard: the left arm comes up into a guard pose (procedural, until real block
