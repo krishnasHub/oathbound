@@ -280,7 +280,7 @@ dynamic story. So the reusable code is moving into two plugins, each its own rep
   inventory, loot, `UTSFeedback`, sprite, pose mesh, anim notifies; game keeps looks, class rules, duels, quest drops via
   hooks; `world3d.assets` / `.text` / `.currencyKey` hold paths and words; the unused mana-shield code was dropped).
   Each phase: tests + package, the user tests the exe, then commit + push the plugins.
-  3 done, pending the user's test:
+  3 done, tested and pushed:
   - `TSPerception`: senses (cone, hearing, line of sight), "Hidden" stealth, threat sense; `ATSCharacter::IsHunting`.
     Enemies keep their territory rule.
   - `UTSCameraRig`: the camera set-up, zoom, tilt-shift focus and shake that were in the player.
