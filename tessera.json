@@ -1,7 +1,7 @@
 {
   "_doc": "How Tessera's tools (unreal/Plugins/Tessera/Tools/Tessera.ps1, via play.ps1) build, test and package this game. The command-line prefix (RPG) comes from unreal/Config/DefaultGame.ini [Tessera].",
   "engine": "5.8",
-  "project": "unreal/ActionRPG.uproject",
+  "project": "unreal/Oathbound.uproject",
   "dist": "Dist",
   "data": { "source": "data/game-data.json", "target": "unreal/Content/Data/game-data.json", "sync": "tools/sync-data.js" },
   "prepare": {

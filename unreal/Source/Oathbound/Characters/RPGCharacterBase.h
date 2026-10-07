@@ -19,7 +19,7 @@ namespace RPGStat
  * Manny / Quinn mannequins (combat anim blueprint, optional tint, scale) or a jelly slime blob.
  */
 UCLASS(Abstract)
-class ACTIONRPG_API ARPGCharacterBase : public ATSCharacter
+class OATHBOUND_API ARPGCharacterBase : public ATSCharacter
 {
 	GENERATED_BODY()
 

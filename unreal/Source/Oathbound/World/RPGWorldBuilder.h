@@ -21,7 +21,7 @@ class UTSData;
  *   + scattered bushes and rocks, a campfire in the village, torches at the bridge
  */
 UCLASS()
-class ACTIONRPG_API ARPGWorldBuilder : public ATSWorldBuilder
+class OATHBOUND_API ARPGWorldBuilder : public ATSWorldBuilder
 {
 	GENERATED_BODY()
 

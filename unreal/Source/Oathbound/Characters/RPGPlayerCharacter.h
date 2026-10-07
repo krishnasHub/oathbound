@@ -35,7 +35,7 @@ class UTSHeroControl;
  *   1-4              class abilities
  */
 UCLASS()
-class ACTIONRPG_API ARPGPlayerCharacter : public ARPGCharacterBase
+class OATHBOUND_API ARPGPlayerCharacter : public ARPGCharacterBase
 {
 	GENERATED_BODY()
 

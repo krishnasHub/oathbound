@@ -1,6 +1,6 @@
 #include "RPGPlayerController.h"
 #include "TSFeedback.h"
-#include "ActionRPG.h"
+#include "Oathbound.h"
 #include "RPGSession.h"
 #include "LMStory.h"
 #include "RPGPlayerCharacter.h"
@@ -160,7 +160,7 @@ void ARPGPlayerController::ShowTitle()
 
 	const TSJson::FObj TitleData = UTSData::Get(this).Section(TEXT("title"));
 	SAssignNew(Title, STSTitle).World(GetWorld())
-		.Title(TSJson::Str(TitleData, TEXT("name"), TEXT("Action RPG")))
+		.Title(TSJson::Str(TitleData, TEXT("name"), TEXT("Oathbound")))
 		.Tagline(TSJson::Str(TitleData, TEXT("tagline")))
 		.Footer(TSJson::Str(TitleData, TEXT("footer")))
 		.OnStart(FSimpleDelegate::CreateLambda([this]() { if (!bNoInput) ShowCharSelect(); }))

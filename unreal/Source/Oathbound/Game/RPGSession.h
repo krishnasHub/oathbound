@@ -23,7 +23,7 @@ class UTSFeedback;
  * Unreal: a tickable world subsystem — one per level, reachable from anywhere via URPGSession::Get().
  */
 UCLASS()
-class ACTIONRPG_API URPGSession : public UTickableWorldSubsystem
+class OATHBOUND_API URPGSession : public UTickableWorldSubsystem
 {
 	GENERATED_BODY()
 

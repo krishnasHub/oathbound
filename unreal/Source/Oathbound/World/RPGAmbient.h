@@ -19,7 +19,7 @@ class ARPGWorldBuilder;
  * Everything is a sprite card (or a glowing speck) driven here; nothing collides or can be fought.
  */
 UCLASS()
-class ACTIONRPG_API ARPGAmbient : public AActor
+class OATHBOUND_API ARPGAmbient : public AActor
 {
 	GENERATED_BODY()
 

@@ -1,8 +1,8 @@
 using UnrealBuildTool;
 
-public class ActionRPGTarget : TargetRules
+public class OathboundTarget : TargetRules
 {
-	public ActionRPGTarget(TargetInfo Target) : base(Target)
+	public OathboundTarget(TargetInfo Target) : base(Target)
 	{
 		Type = TargetType.Game;
 		DefaultBuildSettings = BuildSettingsVersion.V7;
@@ -15,6 +15,6 @@ public class ActionRPGTarget : TargetRules
 			WindowsPlatform.Compiler = WindowsCompiler.VisualStudio2026;
 		}
 
-		ExtraModuleNames.Add("ActionRPG");
+		ExtraModuleNames.Add("Oathbound");
 	}
 }

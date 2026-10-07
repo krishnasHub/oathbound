@@ -18,7 +18,7 @@ class ARPGWorldBuilder;
  *   -RPGQuitAfter=<sec>     exit after <sec> (logic-only runs with -nullrhi)
  */
 UCLASS()
-class ACTIONRPG_API ARPGGameMode : public AGameModeBase
+class OATHBOUND_API ARPGGameMode : public AGameModeBase
 {
 	GENERATED_BODY()
 

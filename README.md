@@ -41,7 +41,7 @@ game builds on the two plugins above, which are their own repos so other games c
 .\play.ps1 -Windowed                # in a window
 .\play.ps1 -Class mage -Sex female  # skip the title and character select
 .\play.ps1 -Test                    # every automated scenario, in parallel (sized to this PC), PASS/FAIL
-.\play.ps1 -Package                 # build a standalone Dist\Windows\ActionRPG.exe and run it
+.\play.ps1 -Package                 # build a standalone Dist\Windows\Oathbound.exe and run it
 ```
 
 `play.ps1` finds Unreal 5.8, syncs the data if you changed it, compiles only if the code changed, and generates

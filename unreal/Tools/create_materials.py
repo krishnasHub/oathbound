@@ -1,7 +1,7 @@
 """
 Creates the game's own materials (no clicking in the material editor), run headless by `rpg.ps1 prepare`:
 
-    UnrealEditor-Cmd.exe ActionRPG.uproject -run=pythonscript -script=Tools/create_materials.py
+    UnrealEditor-Cmd.exe Oathbound.uproject -run=pythonscript -script=Tools/create_materials.py
 
 The node graphs are Tessera's (Plugins/Tessera/Tools/unreal/tessera_assets.py); this picks the names, folder and
 colours. They are regenerated from scratch every run, so the scripts — not the .uasset — are the source of truth.

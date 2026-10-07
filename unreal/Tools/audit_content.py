@@ -1,7 +1,7 @@
 """
 Which Content assets does the game actually use? Run headless:
 
-    UnrealEditor-Cmd.exe ActionRPG.uproject -run=pythonscript -script=Tools/audit_content.py -unattended -nullrhi
+    UnrealEditor-Cmd.exe Oathbound.uproject -run=pythonscript -script=Tools/audit_content.py -unattended -nullrhi
 
 Starts from everything the C++ and game-data.json load by name (ROOTS below, plus all of /Game/RPG), follows
 every hard and soft dependency in the asset registry, and writes Saved/content_audit.txt (used and unused

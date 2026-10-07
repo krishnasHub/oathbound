@@ -11,7 +11,7 @@
  * Screen-space UI (bars, ability bar, panels, dialogue) is Slate — see SRPGWidgets.
  */
 UCLASS()
-class ACTIONRPG_API ARPGHUD : public AHUD
+class OATHBOUND_API ARPGHUD : public AHUD
 {
 	GENERATED_BODY()
 

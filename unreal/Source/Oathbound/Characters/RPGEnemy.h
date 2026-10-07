@@ -24,7 +24,7 @@ enum class ERPGEnemyState : uint8 { Idle, Chase, Windup, Recover, Return, Leavin
  * Unreal: no AIController/behaviour tree yet — the state machine ticks on the pawn, like the prototype.
  */
 UCLASS()
-class ACTIONRPG_API ARPGEnemy : public ARPGCharacterBase
+class OATHBOUND_API ARPGEnemy : public ARPGCharacterBase
 {
 	GENERATED_BODY()
 

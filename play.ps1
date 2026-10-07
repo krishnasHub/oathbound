@@ -17,7 +17,7 @@
   .\play.ps1 -Class mage -Sex female  # skip character select
   .\play.ps1 -Test                    # run every automated scenario (as many at once as this PC allows; -Parallel N) and report PASS/FAIL
   .\play.ps1 -Test -Scenario walk     # just one (or a few: walk,click)
-  .\play.ps1 -Package                 # build a standalone game (Dist\Windows\ActionRPG.exe) and run it (-NoLaunch: just build)
+  .\play.ps1 -Package                 # build a standalone game (Dist\Windows\Oathbound.exe) and run it (-NoLaunch: just build)
   .\play.ps1 -Rebuild                 # force a full recompile first
 #>
 param(

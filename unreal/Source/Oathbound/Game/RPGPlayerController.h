@@ -19,7 +19,7 @@ class SWidget;
  * Character select shows a preview camera on the hero; picking a class/sex updates the model live.
  */
 UCLASS()
-class ACTIONRPG_API ARPGPlayerController : public APlayerController
+class OATHBOUND_API ARPGPlayerController : public APlayerController
 {
 	GENERATED_BODY()
 

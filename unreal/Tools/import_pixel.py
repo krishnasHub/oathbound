@@ -3,7 +3,7 @@ Imports the generated pixel art (ImportSource/Pixel/*.png, made by tools/pixelar
 materials the 2D looks and the HUD use, with Tessera's builders (Plugins/Tessera/Tools/unreal/tessera_assets.py).
 Run headless:
 
-    UnrealEditor-Cmd.exe ActionRPG.uproject -run=pythonscript -script=Tools/import_pixel.py
+    UnrealEditor-Cmd.exe Oathbound.uproject -run=pythonscript -script=Tools/import_pixel.py
 
   textures          /Game/RPG/Pixel/<file name>   nearest filtering, no mips, uncompressed (crisp pixels)
   M_RPG_Sprite      masked, lit, two-sided card: plays one frame of a sprite sheet

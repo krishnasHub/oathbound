@@ -1,7 +1,7 @@
 """
 One-time asset fix-up, run headless by `rpg.ps1 prepare`:
 
-    UnrealEditor-Cmd.exe ActionRPG.uproject -run=pythonscript -script=Tools/fix_material_usage.py
+    UnrealEditor-Cmd.exe Oathbound.uproject -run=pythonscript -script=Tools/fix_material_usage.py
 
 The world builder draws trees, bushes, rocks and bridge planks with instanced static meshes. A material must be
 flagged "Used with Instanced Static Meshes" to render that way; the Starter Content materials are not, and a

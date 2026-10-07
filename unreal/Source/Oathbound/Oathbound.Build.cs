@@ -1,8 +1,8 @@
 using UnrealBuildTool;
 
-public class ActionRPG : ModuleRules
+public class Oathbound : ModuleRules
 {
-	public ActionRPG(ReadOnlyTargetRules Target) : base(Target)
+	public Oathbound(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
@@ -34,13 +34,13 @@ public class ActionRPG : ModuleRules
 		// Sub-folders are include roots so headers can be included by name.
 		PublicIncludePaths.AddRange(new string[]
 		{
-			"ActionRPG",
-			"ActionRPG/Core",
-			"ActionRPG/World",
-			"ActionRPG/Characters",
-			"ActionRPG/Combat",
-			"ActionRPG/Game",
-			"ActionRPG/UI"
+			"Oathbound",
+			"Oathbound/Core",
+			"Oathbound/World",
+			"Oathbound/Characters",
+			"Oathbound/Combat",
+			"Oathbound/Game",
+			"Oathbound/UI"
 		});
 	}
 }

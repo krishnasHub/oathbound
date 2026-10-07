@@ -6,7 +6,7 @@
 
 /** A villager you can talk to (game-data.json "npcs"). Turns to face the player when they come near. */
 UCLASS()
-class ACTIONRPG_API ARPGNPC : public ARPGCharacterBase
+class OATHBOUND_API ARPGNPC : public ARPGCharacterBase
 {
 	GENERATED_BODY()
 

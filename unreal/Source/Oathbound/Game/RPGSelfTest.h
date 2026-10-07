@@ -25,7 +25,7 @@ class ARPGEnemy;
  * clicks come from Tessera's ATSTestRunner (TesseraTest).
  */
 UCLASS()
-class ACTIONRPG_API ARPGSelfTest : public ATSTestRunner
+class OATHBOUND_API ARPGSelfTest : public ATSTestRunner
 {
 	GENERATED_BODY()
 
