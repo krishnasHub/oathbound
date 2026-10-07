@@ -6,6 +6,7 @@
 #include "Widgets/SLeafWidget.h"
 #include "Styling/SlateBrush.h"
 #include "UObject/StrongObjectPtr.h"
+#include "TSChoose.h"
 
 class UWorld;
 class SVerticalBox;
@@ -17,55 +18,12 @@ class UTexture2D;
 class UMaterialInstanceDynamic;
 
 /*
- * All screen-space UI, built in C++ with Slate (no UMG assets):
- *   SRPGHud         vitals, ability bar, XP, gold, quest tracker, toasts, boss bar, death screen
- *   SRPGDialogue    speaker, text, choices ([Verb] tags in class colour); keys 1-9, Esc
- *   SRPGTitle       title screen: Start New Game / Quit
+ * This game's screen-space UI, built in C++ with Slate (no UMG assets), on Tessera's UI kit (TesseraUI: the
+ * dialogue box, title, pause menu, cursor, night shade, toasts, ability picker, FTSChoose, TSUI helpers):
+ *   SRPGHud         vitals, ability bar, XP, gold, quest tracker, toasts, boss bar, minimap, death screen
  *   SRPGCharSelect  the hero animated on the left (every animation + ability effects), class / sex / stats / kit on the right
- *   SRPGPauseMenu   Resume / New Game / Quit
  *   SRPGPanel       Inventory / Character / Quests / Help
  */
-
-/**
- * How every menu reacts to a choice: the highlighted item is blue (hover, arrows, wheel); choosing it turns it
- * gold for a moment, the menu fades out, then the choice happens (and a menu that stays up fades back in).
- * Input is ignored while that plays, so one click is one choice.
- */
-struct FRPGChoose
-{
-	static FLinearColor Idle() { return FLinearColor(0.12f, 0.13f, 0.17f); }
-	static FLinearColor Highlighted() { return FLinearColor(0.09f, 0.2f, 0.46f); }
-	static FLinearColor Chosen() { return FLinearColor(0.9f, 0.56f, 0.06f); }
-	/** Button colour for item I given the highlighted item. */
-	FLinearColor Color(int32 I, int32 Highlight) const { return Item == I ? Chosen() : Highlight == I ? Highlighted() : Idle(); }
-
-	bool Busy() const { return Item >= 0; }
-	void Start(int32 InItem, TFunction<void()> InThen) { if (Busy()) return; Item = InItem; T = 0.f; Then = MoveTemp(InThen); }
-	/** Advance; returns the menu's opacity for this frame. */
-	float Tick(float Dt)
-	{
-		constexpr float Flash = 0.16f, Fade = 0.22f, FadeIn = 0.18f;
-		if (Busy())
-		{
-			T += Dt;
-			if (T < Flash) return 1.f;
-			if (T < Flash + Fade) return 1.f - (T - Flash) / Fade;
-			TFunction<void()> Run = MoveTemp(Then);
-			Item = -1;
-			InT = 0.f;
-			if (Run) Run();
-			return 0.f;
-		}
-		InT = FMath::Min(InT + Dt, FadeIn);
-		return InT / FadeIn;
-	}
-	/** Restart the fade-in (the menu was just shown). */
-	void Reset() { Item = -1; Then = nullptr; InT = 0.f; }
-
-	int32 Item = -1;
-	float T = 0.f, InT = 1.f;
-	TFunction<void()> Then;
-};
 
 class SRPGHud : public SCompoundWidget
 {
@@ -87,49 +45,6 @@ private:
  * a shield (Knight), a gold coin (Thief), an open book (Scholar). Dots: you (with a facing tick), foes (red,
  * orange while neutral), villagers (yellow), anyone with something for you (bigger, gold).
  */
-/**
- * Deep night (drawn under the HUD): near-black everywhere except around the hero and around fires / torches,
- * which keep their own pools of light. A UI material fed screen-space ellipses (the world circles projected,
- * so the camera's perspective is right).
- */
-/** The game's own mouse cursor (drawn above all the UI): what a click would do - attack with this class's weapon,
- *  talk, or just walk (ARPGPlayerCharacter::CursorIcon). Hidden whenever the OS cursor is (menus etc.). */
-class SRPGCursor : public SLeafWidget
-{
-public:
-	SLATE_BEGIN_ARGS(SRPGCursor) {}
-		SLATE_ARGUMENT(TWeakObjectPtr<UWorld>, World)
-	SLATE_END_ARGS()
-	void Construct(const FArguments& Args);
-	virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D(1, 1); }
-	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSlateRect& Cull, FSlateWindowElementList& Out,
-		int32 Layer, const FWidgetStyle& Style, bool bParentEnabled) const override;
-
-private:
-	TWeakObjectPtr<UWorld> World;
-	TMap<FName, FSlateBrush> Brushes;
-	TArray<TStrongObjectPtr<UTexture2D>> Keep;
-};
-
-class SRPGNightShade : public SLeafWidget
-{
-public:
-	SLATE_BEGIN_ARGS(SRPGNightShade) {}
-		SLATE_ARGUMENT(TWeakObjectPtr<UWorld>, World)
-	SLATE_END_ARGS()
-	void Construct(const FArguments& Args);
-	virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D(1, 1); }
-	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSlateRect& Cull, FSlateWindowElementList& Out,
-		int32 Layer, const FWidgetStyle& Style, bool bParentEnabled) const override;
-	virtual void Tick(const FGeometry& G, const double Time, const float Dt) override;
-
-private:
-	TWeakObjectPtr<UWorld> World;
-	TStrongObjectPtr<UMaterialInstanceDynamic> Mat;
-	FSlateBrush Brush;
-	float Strength = 0.f;
-};
-
 class SRPGMinimap : public SLeafWidget
 {
 public:
@@ -154,45 +69,6 @@ private:
 	TStrongObjectPtr<UMaterialInstanceDynamic> Mat;
 	TStrongObjectPtr<UTexture2D> FrameTex, MaskTex;
 	FSlateBrush MapBrush, FrameBrush;
-};
-
-class SRPGDialogue : public SCompoundWidget
-{
-public:
-	SLATE_BEGIN_ARGS(SRPGDialogue) {}
-		SLATE_ARGUMENT(TWeakObjectPtr<UWorld>, World)
-	SLATE_END_ARGS()
-	void Construct(const FArguments& Args);
-	void Refresh();
-	virtual bool SupportsKeyboardFocus() const override { return true; }
-	virtual FReply OnKeyDown(const FGeometry& G, const FKeyEvent& E) override;
-	virtual FReply OnMouseWheel(const FGeometry& G, const FPointerEvent& E) override;
-	virtual void Tick(const FGeometry& G, const double Time, const float Dt) override;
-	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSlateRect& Cull, FSlateWindowElementList& Out,
-		int32 Layer, const FWidgetStyle& Style, bool bParentEnabled) const override;
-	/** Where choice I is on screen (desktop pixels), for tests that click it. */
-	FVector2D ChoiceScreenCenter(int32 I) const;
-
-private:
-	/** Move the highlighted choice by Step, skipping disabled ones (mouse wheel, arrows, W/S, d-pad). */
-	void MoveHighlight(int32 Step);
-	/** Choose a reply (click, 1-9, Enter): gold flash, fade, then the story moves on. */
-	void Confirm(int32 Index);
-	TWeakObjectPtr<UWorld> World;
-	TSharedPtr<SVerticalBox> Choices;
-	int32 Highlight = 0;
-	FRPGChoose Fx;
-	// Portraits: the NPC on the left, the hero (mirrored, facing them) on the right; they slide up as it opens.
-	FSlateBrush NpcBrush, HeroBrush;
-	TStrongObjectPtr<UTexture2D> NpcTex, HeroTex;
-	TSharedPtr<SWidget> NpcPortrait, HeroPortrait;
-	TSharedPtr<SWidget> DialogBox;     // the darkness behind the conversation is centred on it
-	float FadeIn = 0.f;
-	FSlateBrush FadeBrush;
-	TStrongObjectPtr<UTexture2D> FadeTex;
-	float Appear = 0.f;
-	bool bWasOpen = false;
-	void SetPortrait(FSlateBrush& Brush, TStrongObjectPtr<UTexture2D>& Keep, const class ARPGCharacterBase* Who);
 };
 
 /**
@@ -280,7 +156,7 @@ private:
 	FString ClassId = TEXT("knight"), Sex = TEXT("male");
 	TArray<FString> ClassIds;
 	TSharedPtr<SBox> Right;
-	FRPGChoose Fx;   // Begin (item 1) / Back (item 0)
+	FTSChoose Fx;   // Begin (item 1) / Back (item 0)
 	int32 HoverButton = -1;
 
 	TArray<FStep> Steps;
@@ -293,68 +169,6 @@ private:
 	TSharedPtr<SImage> HeroImage, FxImage, StageImage;
 	TSharedPtr<SRPGBackdrop> Backdrop;
 	TSharedPtr<STextBlock> PopText;
-};
-
-/**
- * Title screen: the game's name over a slow drifting view of the world, Start New Game / Quit
- * (mouse, arrows / W S / wheel + Enter, d-pad + A). No saves yet.
- */
-class SRPGTitle : public SCompoundWidget
-{
-public:
-	SLATE_BEGIN_ARGS(SRPGTitle) {}
-		SLATE_ARGUMENT(TWeakObjectPtr<UWorld>, World)
-		SLATE_EVENT(FSimpleDelegate, OnStart)
-		SLATE_EVENT(FSimpleDelegate, OnQuit)
-	SLATE_END_ARGS()
-	void Construct(const FArguments& Args);
-	virtual bool SupportsKeyboardFocus() const override { return true; }
-	virtual FReply OnKeyDown(const FGeometry& G, const FKeyEvent& E) override;
-	virtual FReply OnMouseWheel(const FGeometry& G, const FPointerEvent& E) override;
-	virtual void Tick(const FGeometry& G, const double Time, const float Dt) override;
-
-private:
-	FSimpleDelegate OnStart, OnQuit;
-	FRPGChoose Fx;
-	FSlateBrush FadeBrush;
-	TStrongObjectPtr<UTexture2D> FadeTex;
-	int32 Highlight = 0;
-	float Clock = 0.f;
-	void Activate(int32 Index);
-};
-
-/**
- * Pause menu (Esc in game): Resume / New Game / Quit Game, over a dimmed, paused world. New Game and Quit
- * ask to confirm (there are no saves yet). Mouse, arrows / W S / wheel + Enter, Esc to go back; d-pad + A / B.
- */
-class SRPGPauseMenu : public SCompoundWidget
-{
-public:
-	SLATE_BEGIN_ARGS(SRPGPauseMenu) {}
-		SLATE_EVENT(FSimpleDelegate, OnResume)
-		SLATE_EVENT(FSimpleDelegate, OnNewGame)
-		SLATE_EVENT(FSimpleDelegate, OnQuit)
-	SLATE_END_ARGS()
-	void Construct(const FArguments& Args);
-	/** Show the main page with Resume highlighted. */
-	void Open();
-	virtual bool SupportsKeyboardFocus() const override { return true; }
-	virtual FReply OnKeyDown(const FGeometry& G, const FKeyEvent& E) override;
-	virtual FReply OnMouseWheel(const FGeometry& G, const FPointerEvent& E) override;
-	virtual void Tick(const FGeometry& G, const double Time, const float Dt) override;
-
-private:
-	enum class EPage : uint8 { Main, ConfirmNew, ConfirmQuit };
-	EPage Page = EPage::Main;
-	int32 Highlight = 0;
-	FRPGChoose Fx;
-	void Choose(int32 Index) { Fx.Start(Index, [this, Index]() { Activate(Index); }); }
-	FSimpleDelegate OnResume, OnNewGame, OnQuit;
-	TSharedPtr<SVerticalBox> List;
-	TArray<FString> Items() const;
-	void Rebuild();
-	void Activate(int32 Index);
-	void Back();
 };
 
 class SRPGPanel : public SCompoundWidget

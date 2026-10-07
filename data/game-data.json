@@ -1,5 +1,5 @@
 {
-  "title": { "_doc": "Title screen text (placeholder name until the game has one).", "name": "Action RPG", "tagline": "Talking matters as much as fighting." },
+  "title": { "_doc": "Title screen text (placeholder name until the game has one).", "name": "Action RPG", "tagline": "Talking matters as much as fighting.", "footer": "prototype  \u00b7  placeholder art" },
   "tuning": {
     "hpPerVitality": 10, "hpPerLevel": 5,
     "staminaBase": 80, "staminaPerAgility": 4, "staminaRegen": 38, "staminaRegenDelay": 0.55,
@@ -47,13 +47,17 @@
       "glow": "/Game/RPG/Materials/M_RPG_Glow.M_RPG_Glow", "flash": "/Game/RPG/Materials/M_RPG_Flash.M_RPG_Flash",
       "telegraph": "/Game/RPG/Materials/M_RPG_Telegraph.M_RPG_Telegraph",
       "hitEffect": "/Game/Variant_Combat/VFX/NS_Damage.NS_Damage", "smoke": "/Game/StarterContent/Particles/P_Smoke.P_Smoke",
-      "coin": "M_Metal_Gold", "kitPart": "M_Metal_Steel"
+      "coin": "M_Metal_Gold", "kitPart": "M_Metal_Steel",
+      "dialogueFade": "/Game/RPG/Pixel/UI_FadeRadial.UI_FadeRadial", "titleFade": "/Game/RPG/Pixel/UI_Fade.UI_Fade",
+      "nightShade": "/Game/RPG/Materials/M_RPG_NightShade.M_RPG_NightShade"
     },
     "currencyKey": "gold",
     "text": {
       "_doc": "Overrides for words Tessera shows (defaults are generic English).",
       "currencyGained": "+{n}g", "notEnough": "Not enough {pool}",
-      "bagFull": "Bag is full — salvage something (I, Shift+Click)"
+      "bagFull": "Bag is full — salvage something (I, Shift+Click)",
+      "progressLost": "There are no saves yet: your current progress will be lost.",
+      "pickerHint": "scroll to change   \u00b7   release Shift or click to cast at the cursor   \u00b7   RMB to cancel"
     },
     "looks2d": {
       "_doc": "Look tests. 'mesh3d' = mannequins + Starter Content. 'hd2d' = pixel-art sprite cards standing in the lit 3D world with pixel textures (Octopath style). 'flat2d' = orthographic top-down pixel map with flat sprites. Override per run with -RPGLook=hd2d|flat2d. Art: tools/pixelart, imported by unreal/Tools/import_pixel.py.",

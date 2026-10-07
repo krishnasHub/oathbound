@@ -17,6 +17,10 @@
 #include "TSInventory.h"
 #include "TSAbilities.h"
 #include "TSCombat.h"
+#include "TSHeroControl.h"
+#include "TSPerception.h"
+#include "TSUIStyle.h"
+#include "STSWidgets.h"
 
 #include "Widgets/SOverlay.h"
 #include "Widgets/SBoxPanel.h"
@@ -38,35 +42,16 @@
 
 namespace
 {
-	FSlateFontInfo Font(int32 Size, const TCHAR* Style = TEXT("Regular")) { return FCoreStyle::GetDefaultFontStyle(Style, Size); }
-	const FSlateBrush* White() { return FCoreStyle::Get().GetBrush("WhiteBrush"); }
-	const FLinearColor PanelColor(0.055f, 0.06f, 0.075f, 0.93f);
-	const FLinearColor Gold(1.f, 0.83f, 0.3f);
-	const FLinearColor Muted(0.62f, 0.64f, 0.68f);
+	using TSUI::Font;
+	using TSUI::White;
+	using TSUI::Bar;
+	const FLinearColor PanelColor = FTSUIStyle::Get().Panel;
+	const FLinearColor Gold = FTSUIStyle::Get().Accent;
+	const FLinearColor Muted = FTSUIStyle::Get().Muted;
 
 	URPGSession* SessionOf(const TWeakObjectPtr<UWorld>& W) { return W.IsValid() ? W->GetSubsystem<URPGSession>() : nullptr; }
 	ARPGPlayerCharacter* PlayerOf(const TWeakObjectPtr<UWorld>& W) { URPGSession* S = SessionOf(W); return S ? S->Player() : nullptr; }
 	FText T(const FString& S) { return FText::FromString(S); }
-
-	/** A horizontal bar: dark track, coloured fill (fraction from a lambda), optional label. */
-	TSharedRef<SWidget> Bar(float Width, float Height, TAttribute<FSlateColor> Color, TFunction<float()> Frac, TFunction<FString()> Label = nullptr)
-	{
-		return SNew(SBox).WidthOverride(Width).HeightOverride(Height)
-		[
-			SNew(SOverlay)
-			+ SOverlay::Slot()[ SNew(SImage).Image(White()).ColorAndOpacity(FLinearColor(0, 0, 0, 0.62f)) ]
-			+ SOverlay::Slot().HAlign(HAlign_Left)
-			[
-				SNew(SBox).WidthOverride_Lambda([Width, Frac]() { return FOptionalSize(Width * FMath::Clamp(Frac(), 0.f, 1.f)); })
-				[ SNew(SImage).Image(White()).ColorAndOpacity(Color) ]
-			]
-			+ SOverlay::Slot().VAlign(VAlign_Center).Padding(8, 0)
-			[
-				SNew(STextBlock).Font(Font(10, TEXT("Bold"))).ShadowOffset(FVector2D(1, 1))
-				.Text_Lambda([Label]() { return Label ? T(Label()) : FText::GetEmpty(); })
-			]
-		];
-	}
 
 	/** Same numbers as the prototype's character-select preview, straight from the data. */
 	struct FClassPreview { float HP, Stamina, Mana, Speed, Armor, Attack, Magic, Crit; };
@@ -158,22 +143,6 @@ void SRPGHud::Construct(const FArguments& Args)
 				return T(Out); })
 		];
 
-	auto Toasts = SNew(SVerticalBox);
-	for (int32 I = 0; I < 5; ++I)
-	{
-		Toasts->AddSlot().AutoHeight().HAlign(HAlign_Center).Padding(0, 3)
-		[
-			SNew(SBorder).BorderImage(White()).BorderBackgroundColor(FLinearColor(0, 0, 0, 0.6f)).Padding(FMargin(14, 5))
-			.Visibility_Lambda([W, I]() { const URPGSession* S = SessionOf(W); return S && UTSFeedback::Get(S)->Toasts.IsValidIndex(I) ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
-			[
-				SNew(STextBlock).Font(Font(13))
-				.Text_Lambda([W, I]() { const URPGSession* S = SessionOf(W); return S && UTSFeedback::Get(S)->Toasts.IsValidIndex(I) ? T(UTSFeedback::Get(S)->Toasts[I].Text) : FText::GetEmpty(); })
-				.ColorAndOpacity_Lambda([W, I]() { const URPGSession* S = SessionOf(W); if (!S || !UTSFeedback::Get(S)->Toasts.IsValidIndex(I)) return FSlateColor(FLinearColor::White);
-					FLinearColor C = UTSFeedback::Get(S)->Toasts[I].Color; C.A = FMath::Clamp((3.4f - UTSFeedback::Get(S)->Toasts[I].Age) * 2.f, 0.f, 1.f); return FSlateColor(C); })
-			]
-		];
-	}
-
 	auto BossBar = SNew(SVerticalBox)
 		.Visibility_Lambda([W]() {
 			if (!W.IsValid()) return EVisibility::Collapsed;
@@ -195,66 +164,13 @@ void SRPGHud::Construct(const FArguments& Args)
 	auto Slots = SNew(SHorizontalBox);
 	for (int32 I = 0; I < 5; ++I) Slots->AddSlot().AutoWidth().Padding(4, 0)[ AbilitySlot(I) ];
 
-	// Ability picker (Shift + wheel): the four abilities over a translucent backdrop, the highlighted one
-	// in gold with its description. The world runs in slow motion while it's open.
-	auto PickDef = [W](int32 I) -> TSJson::FObj { const ARPGPlayerCharacter* P = PlayerOf(W); return P && P->Abilities->Ids.IsValidIndex(I) ? P->Abilities->Def(P->Abilities->Ids[I]) : nullptr; };
-	auto PickCards = SNew(SHorizontalBox);
-	for (int32 I = 0; I < 4; ++I)
-	{
-		PickCards->AddSlot().AutoWidth().Padding(6, 0)
-		[
-			SNew(SBorder).BorderImage(White()).Padding(3)
-			.BorderBackgroundColor_Lambda([W, I]() { const ARPGPlayerCharacter* P = PlayerOf(W);
-				return FSlateColor(P && P->PickerSlot() == I ? Gold : FLinearColor(1, 1, 1, 0.12f)); })
-			[
-				SNew(SBox).WidthOverride_Lambda([W, I]() { const ARPGPlayerCharacter* P = PlayerOf(W); return FOptionalSize(P && P->PickerSlot() == I ? 132.f : 112.f); })
-				.HeightOverride_Lambda([W, I]() { const ARPGPlayerCharacter* P = PlayerOf(W); return FOptionalSize(P && P->PickerSlot() == I ? 96.f : 80.f); })
-				[
-					SNew(SBorder).BorderImage(White()).BorderBackgroundColor(FLinearColor(0.05f, 0.06f, 0.08f, 0.92f)).Padding(6)
-					.HAlign(HAlign_Center).VAlign(VAlign_Center)
-					[
-						SNew(STextBlock).Justification(ETextJustify::Center).AutoWrapText(true)
-						.Font_Lambda([W, I]() { const ARPGPlayerCharacter* P = PlayerOf(W); return Font(P && P->PickerSlot() == I ? 14 : 11, TEXT("Bold")); })
-						.Text_Lambda([W, I, PickDef]() { const ARPGPlayerCharacter* P = PlayerOf(W); const TSJson::FObj D = PickDef(I);
-							if (!P || !D) return FText::GetEmpty();
-							const FString Id = P->Abilities->Ids[I];
-							if (!P->Abilities->Unlocked(Id)) return T(FString::Printf(TEXT("%d  %s\nLv %d"), I + 1, *TSJson::Str(D, TEXT("name")), int32(TSJson::Num(D, TEXT("unlockLevel"), 1))));
-							const float Cd = P->Abilities->Cooldowns.FindRef(Id);
-							return T(FString::Printf(TEXT("%d  %s%s"), I + 1, *TSJson::Str(D, TEXT("name")), Cd > 0.f ? *FString::Printf(TEXT("\n%.1fs"), Cd) : TEXT(""))); })
-						.ColorAndOpacity_Lambda([W, I, PickDef]() { const ARPGPlayerCharacter* P = PlayerOf(W); const TSJson::FObj D = PickDef(I);
-							if (!P || !D || !P->Abilities->Unlocked(P->Abilities->Ids[I])) return FSlateColor(FLinearColor(0.45f, 0.45f, 0.48f));
-							return FSlateColor(TSJson::Color(TSJson::Str(D, TEXT("color")))); })
-					]
-				]
-			]
-		];
-	}
-	auto Picker = SNew(SBorder).BorderImage(White()).BorderBackgroundColor(FLinearColor(0.f, 0.f, 0.f, 0.55f)).Padding(FMargin(28, 18))
-		.Visibility_Lambda([W]() { const ARPGPlayerCharacter* P = PlayerOf(W); return P && P->PickerSlot() >= 0 ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
-		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0, 0, 0, 12)
-			[ SNew(STextBlock).Font(Font(12, TEXT("Bold"))).ColorAndOpacity(Muted).Text(T(TEXT("CHOOSE AN ABILITY"))) ]
-			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)[ PickCards ]
-			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0, 14, 0, 2)
-			[
-				SNew(STextBlock).Font(Font(16, TEXT("Bold"))).ColorAndOpacity(Gold)
-				.Text_Lambda([W, PickDef]() { const ARPGPlayerCharacter* P = PlayerOf(W); const TSJson::FObj D = P ? PickDef(P->PickerSlot()) : nullptr; if (!D) return FText::GetEmpty();
-					const double Mana = TSJson::Num(D, TEXT("mana"), 0), Sta = TSJson::Num(D, TEXT("stamina"), 0);
-					return T(TSJson::Str(D, TEXT("name")) + (Mana > 0 ? FString::Printf(TEXT("   ·   %.0f mana"), Mana) : Sta > 0 ? FString::Printf(TEXT("   ·   %.0f stamina"), Sta) : FString())
-						+ FString::Printf(TEXT("   ·   %.0fs cooldown"), TSJson::Num(D, TEXT("cooldown"), 0))); })
-			]
-			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
-			[
-				SNew(SBox).WidthOverride(560)
-				[
-					SNew(STextBlock).Font(Font(12)).AutoWrapText(true).Justification(ETextJustify::Center).ColorAndOpacity(FLinearColor(0.9f, 0.9f, 0.88f))
-					.Text_Lambda([W, PickDef]() { const ARPGPlayerCharacter* P = PlayerOf(W); const TSJson::FObj D = P ? PickDef(P->PickerSlot()) : nullptr; return D ? T(TSJson::Str(D, TEXT("desc"))) : FText::GetEmpty(); })
-				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0, 12, 0, 0)
-			[ SNew(STextBlock).Font(Font(10)).ColorAndOpacity(Muted).Text(T(TEXT("scroll to change   ·   release Shift or click to cast at the cursor   ·   RMB to cancel"))) ]
-		];
+	// Ability picker (Shift + wheel; Tessera's): the world runs in slow motion while it's open.
+	auto Picker = SNew(STSAbilityPicker).World(W)
+		.Abilities([W]() -> UTSAbilityComponent* { ARPGPlayerCharacter* P = PlayerOf(W); return P ? P->Abilities.Get() : nullptr; })
+		.Slot([W]() { const ARPGPlayerCharacter* P = PlayerOf(W); return P ? P->Control->PickerSlot() : -1; })
+		.CostText([](const TSJson::FObj& D) {
+			const double Mana = TSJson::Num(D, TEXT("mana"), 0), Sta = TSJson::Num(D, TEXT("stamina"), 0);
+			return Mana > 0 ? FString::Printf(TEXT("%.0f mana"), Mana) : Sta > 0 ? FString::Printf(TEXT("%.0f stamina"), Sta) : FString(); });
 
 	// Low health: a red vignette creeps in below 40% health, deeper and pulsing faster the closer to death.
 	if (UTexture2D* Vig = TSAssets::Load<UTexture2D>(TEXT("/Game/RPG/Pixel/UI_Vignette.UI_Vignette")))
@@ -277,7 +193,7 @@ void SRPGHud::Construct(const FArguments& Args)
 	ChildSlot
 	[
 		SNew(SOverlay).Visibility(EVisibility::HitTestInvisible)
-		+ SOverlay::Slot()[ SNew(SRPGNightShade).World(W) ]
+		+ SOverlay::Slot()[ SNew(STSNightShade).World(W) ]
 		+ SOverlay::Slot()[ LowHealth ]
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(24)[ Vitals ]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(24)[ Tracker ]
@@ -285,7 +201,7 @@ void SRPGHud::Construct(const FArguments& Args)
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()[ BossBar ]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0, 14)[ Toasts ]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0, 14)[ SNew(STSToasts).World(W) ]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(0, 0, 0, 22)
 		[
@@ -391,93 +307,6 @@ TSharedRef<SWidget> SRPGHud::AbilitySlot(int32 Index)
 }
 
 // =============================================================================================
-// Game cursor
-// =============================================================================================
-
-void SRPGCursor::Construct(const FArguments& Args)
-{
-	World = Args._World;
-	SetVisibility(EVisibility::HitTestInvisible);
-	for (const TCHAR* N : { TEXT("pointer"), TEXT("sword"), TEXT("dagger"), TEXT("wand"), TEXT("arrow"), TEXT("talk"), TEXT("talk_off") })
-	{
-		UTexture2D* Tex = TSAssets::Load<UTexture2D>(TSAssets::ObjPath(TEXT("/Game/RPG/Pixel"), FString(TEXT("CUR_")) + N));
-		if (!Tex) continue;
-		Keep.Add(TStrongObjectPtr<UTexture2D>(Tex));
-		FSlateBrush& B = Brushes.Add(N);
-		B.SetResourceObject(Tex);
-		B.ImageSize = FVector2D(40, 40);
-		B.DrawAs = ESlateBrushDrawType::Image;
-	}
-}
-
-int32 SRPGCursor::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSlateRect& Cull, FSlateWindowElementList& Out,
-	int32 Layer, const FWidgetStyle& Style, bool bParentEnabled) const
-{
-	const APlayerController* PC = World.IsValid() ? World->GetFirstPlayerController() : nullptr;
-	const ARPGPlayerController* RPC = Cast<ARPGPlayerController>(PC);
-	const ARPGPlayerCharacter* P = PlayerOf(World);
-	if (!RPC || !P || !RPC->IsInGameplay() || !FSlateApplication::IsInitialized()) return Layer;
-	const FName Icon = P->CursorIcon();
-	const FSlateBrush* B = Brushes.Find(Icon);
-	if (!B) return Layer;
-	// The talk bubble is centred on the point; weapons and the pointer have their tip there.
-	const bool bCentre = Icon == TEXT("talk") || Icon == TEXT("talk_off");
-	const FVector2D At = G.AbsoluteToLocal(FSlateApplication::Get().GetCursorPos()) - (bCentre ? FVector2D(20, 20) : FVector2D(2, 2));
-	FSlateDrawElement::MakeBox(Out, Layer, G.ToPaintGeometry(FVector2D(40, 40), FSlateLayoutTransform(At)), B, ESlateDrawEffect::None, FLinearColor::White);
-	return Layer + 1;
-}
-
-// =============================================================================================
-// Night shade
-// =============================================================================================
-
-void SRPGNightShade::Construct(const FArguments& Args)
-{
-	World = Args._World;
-	if (UMaterialInterface* Base = TSAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_NightShade.M_RPG_NightShade")))
-		Mat.Reset(UMaterialInstanceDynamic::Create(Base, GetTransientPackage()));
-	Brush.SetResourceObject(Mat.Get());
-	Brush.DrawAs = ESlateBrushDrawType::Image;
-}
-
-void SRPGNightShade::Tick(const FGeometry& G, const double Time, const float Dt)
-{
-	SLeafWidget::Tick(G, Time, Dt);
-	Strength = ATSSky::Darkness();
-	const ARPGPlayerCharacter* P = PlayerOf(World);
-	APlayerController* PC = World.IsValid() ? World->GetFirstPlayerController() : nullptr;
-	if (!Mat || !P || !PC || Strength < 0.001f || !GEngine || !GEngine->GameViewport) return;
-	FVector2D Vp;
-	GEngine->GameViewport->GetViewportSize(Vp);
-	if (Vp.X < 1.f || Vp.Y < 1.f) return;
-
-	// A world circle (centre, radius) as a screen ellipse in 0..1 UV: project the centre and a point east and north.
-	const float Z = P->GetActorLocation().Z;
-	auto Ellipse = [&](const FVector& At, float R) -> FLinearColor
-	{
-		FVector2D S0, SX, SY;
-		const FVector C(At.X, At.Y, Z);
-		if (!PC->ProjectWorldLocationToScreen(C, S0) || !PC->ProjectWorldLocationToScreen(C + FVector(R, 0, 0), SX) || !PC->ProjectWorldLocationToScreen(C + FVector(0, -R, 0), SY))
-			return FLinearColor(0, 0, 0, 0);
-		return FLinearColor(S0.X / Vp.X, S0.Y / Vp.Y, FMath::Max(FVector2D::Distance(S0, SX) / Vp.X, 0.001f), FMath::Max(FVector2D::Distance(S0, SY) / Vp.Y, 0.001f));
-	};
-	Mat->SetScalarParameterValue(TEXT("Night"), Strength);
-	Mat->SetVectorParameterValue(TEXT("Hero"), Ellipse(P->GetActorLocation(), ATSSky::HeroSight()));
-	const FVector At = P->GetActorLocation();
-	TArray<FVector> Lights = ATSSky::NightLights();
-	Lights.Sort([&At](const FVector& A, const FVector& B) { return FVector::DistSquared2D(A, At) < FVector::DistSquared2D(B, At); });
-	for (int32 I = 0; I < 8; ++I)
-		Mat->SetVectorParameterValue(*FString::Printf(TEXT("Light%d"), I), Lights.IsValidIndex(I) ? Ellipse(FVector(Lights[I].X, Lights[I].Y, 0), Lights[I].Z) : FLinearColor(0, 0, 0, 0));
-}
-
-int32 SRPGNightShade::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSlateRect& Cull, FSlateWindowElementList& Out,
-	int32 Layer, const FWidgetStyle& Style, bool bParentEnabled) const
-{
-	if (Strength >= 0.001f && Mat) FSlateDrawElement::MakeBox(Out, Layer, G.ToPaintGeometry(), &Brush, ESlateDrawEffect::None, FLinearColor::White);
-	return Layer + 1;
-}
-
-// =============================================================================================
 // Minimap
 // =============================================================================================
 
@@ -572,211 +401,6 @@ int32 SRPGMinimap::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSl
 	}
 	FSlateDrawElement::MakeBox(Out, Layer + 5, G.ToPaintGeometry(), &FrameBrush, ESlateDrawEffect::None, FLinearColor::White);
 	return Layer + 6;
-}
-
-// =============================================================================================
-// Dialogue
-// =============================================================================================
-
-void SRPGDialogue::Construct(const FArguments& Args)
-{
-	World = Args._World;
-	if (UTexture2D* Fade = TSAssets::Load<UTexture2D>(TEXT("/Game/RPG/Pixel/UI_FadeRadial.UI_FadeRadial")))
-	{
-		FadeTex.Reset(Fade);
-		FadeBrush.SetResourceObject(Fade);
-		FadeBrush.DrawAs = ESlateBrushDrawType::Image;
-	}
-	TWeakObjectPtr<UWorld> W = World;
-	constexpr float PortraitH = 580.f;
-	auto Portrait = [](FSlateBrush* Brush) -> TSharedRef<SWidget>
-	{
-		return SNew(SBox).HeightOverride(PortraitH).WidthOverride(PortraitH * 1.1f)
-			[ SNew(SScaleBox).Stretch(EStretch::ScaleToFit).VAlign(VAlign_Bottom)[ SNew(SImage).Image(Brush) ] ];
-	};
-	ChildSlot
-	[
-		SNew(SOverlay)
-		// The world, dimmed and paused behind the conversation.
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(10, 0, 0, 0)
-		[ SAssignNew(NpcPortrait, SBox).Visibility(EVisibility::HitTestInvisible)[ Portrait(&NpcBrush) ] ]
-		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(0, 0, 10, 0)
-		[ SAssignNew(HeroPortrait, SBox).Visibility(EVisibility::HitTestInvisible).RenderTransformPivot(FVector2D(0.5f, 0.5f))[ Portrait(&HeroBrush) ] ]
-		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(0, 0, 0, 140)
-		[
-			SAssignNew(DialogBox, SBox).WidthOverride(820)
-			[
-				SNew(SBorder).BorderImage(White()).BorderBackgroundColor(PanelColor).Padding(FMargin(22, 16))
-				[
-					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-					[
-						SNew(STextBlock).Font(Font(15, TEXT("Bold")))
-						.Text_Lambda([W]() { const URPGSession* S = SessionOf(W); return S ? T(S->Story()->SpeakerInfo().Name) : FText::GetEmpty(); })
-						.ColorAndOpacity_Lambda([W]() { const URPGSession* S = SessionOf(W); return FSlateColor(S ? S->Story()->SpeakerInfo().Color : FLinearColor::White); })
-					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 12)
-					[
-						SNew(STextBlock).Font(Font(13)).AutoWrapText(true).ColorAndOpacity(FLinearColor(0.92f, 0.91f, 0.89f))
-						.Text_Lambda([W]() { const URPGSession* S = SessionOf(W); return S ? T(S->Story()->DialogueText) : FText::GetEmpty(); })
-					]
-					+ SVerticalBox::Slot().AutoHeight()[ SAssignNew(Choices, SVerticalBox) ]
-				]
-			]
-		]
-	];
-}
-
-void SRPGDialogue::SetPortrait(FSlateBrush& Brush, TStrongObjectPtr<UTexture2D>& Keep, const ARPGCharacterBase* Who)
-{
-	UTexture2D* Tex = nullptr;
-	if (Who && Who->Sprite)
-		Tex = LoadObject<UTexture2D>(nullptr, *TSAssets::ObjPath(TEXT("/Game/RPG/Pixel"), TEXT("POR_") + Who->Sprite->SheetName));
-	Keep.Reset(Tex);
-	Brush = FSlateBrush();
-	Brush.DrawAs = Tex ? ESlateBrushDrawType::Image : ESlateBrushDrawType::NoDrawType;
-	if (Tex)
-	{
-		Brush.SetResourceObject(Tex);
-		Brush.ImageSize = FVector2D(Tex->GetSizeX(), Tex->GetSizeY());
-	}
-}
-
-void SRPGDialogue::Refresh()
-{
-	Choices->ClearChildren();
-	URPGSession* S = SessionOf(World);
-	if (!S) return;
-	if (!Fx.Busy()) Fx.Reset();   // a new line fades in
-	if (!bWasOpen)   // just opened: who's talking, and slide the portraits in
-	{
-		// Portraits are off until there's proper illustrated art (world3d.dialoguePortraits).
-		const bool bPortraits = TSJson::Bool(UTSData::Get(World.Get()).World(), TEXT("dialoguePortraits"), false);
-		SetPortrait(NpcBrush, NpcTex, bPortraits ? S->DialogueNpc() : nullptr);
-		SetPortrait(HeroBrush, HeroTex, bPortraits ? S->Player() : nullptr);
-		Appear = 0.f;
-	}
-	bWasOpen = true;
-	Highlight = -1;
-	MoveHighlight(1);   // first enabled choice
-	for (int32 I = 0; I < S->Story()->ChoiceViews.Num(); ++I)
-	{
-		const FLMChoiceView& V = S->Story()->ChoiceViews[I];
-		// Class verbs ([Honor], [Hypnotize]...) in the hero's colour, shared ones ([Persuade]) in gold.
-		const ARPGPlayerCharacter* Hero = S->Player();
-		const bool bClassVerb = TSJson::Has(UTSData::Get(World.Get()).Entry(TEXT("dialogueVerbs"), V.VerbId), TEXT("class"));
-		const FLinearColor VerbColor = bClassVerb && Hero ? Hero->NameColor : FLinearColor(1.f, 0.83f, 0.3f);
-		TWeakObjectPtr<UWorld> W = World;
-		Choices->AddSlot().AutoHeight().Padding(0, 3)
-		[
-			SNew(SButton).IsFocusable(false).IsEnabled(V.bEnabled)
-			.ButtonColorAndOpacity_Lambda([this, I]() { return Fx.Color(I, Highlight); })
-			.OnHovered_Lambda([this, I, bOn = V.bEnabled]() { if (bOn && !Fx.Busy()) Highlight = I; })
-			.OnClicked_Lambda([this, I]() { Confirm(I); return FReply::Handled(); })
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(4, 2)[ SNew(STextBlock).Font(Font(12)).ColorAndOpacity(Muted).Text(T(FString::Printf(TEXT("%d."), I + 1))) ]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(2, 2)
-				[ SNew(STextBlock).Font(Font(12, TEXT("Bold"))).ColorAndOpacity(VerbColor).Text(T(V.Verb.IsEmpty() ? FString() : TEXT("[") + V.Verb + TEXT("]"))) ]
-				+ SHorizontalBox::Slot().FillWidth(1).Padding(4, 2)[ SNew(STextBlock).Font(Font(12)).AutoWrapText(true).Text(T(V.Text)) ]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(6, 2)[ SNew(STextBlock).Font(Font(11)).ColorAndOpacity(Muted).Text(T(V.Odds)) ]
-			]
-		];
-	}
-}
-
-int32 SRPGDialogue::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSlateRect& Cull, FSlateWindowElementList& Out,
-	int32 Layer, const FWidgetStyle& Style, bool bParentEnabled) const
-{
-	// Behind the conversation, the world darkens around the dialogue box and fades back to clear away from it.
-	if (DialogBox && FadeTex)
-	{
-		const FGeometry& BG = DialogBox->GetPaintSpaceGeometry();
-		const FVector2D Size = BG.GetLocalSize();
-		if (Size.X > 1.f)
-		{
-			const FVector2D Centre = G.AbsoluteToLocal(BG.LocalToAbsolute(Size * 0.5f));
-			const FVector2D FadeSize(Size.X * 2.6f, Size.Y * 4.2f);
-			FSlateDrawElement::MakeBox(Out, Layer, G.ToPaintGeometry(FadeSize, FSlateLayoutTransform(Centre - FadeSize * 0.5f)), &FadeBrush,
-				ESlateDrawEffect::None, FLinearColor(1, 1, 1, FadeIn));
-		}
-	}
-	return SCompoundWidget::OnPaint(Args, G, Cull, Out, Layer + 1, Style, bParentEnabled);
-}
-
-FVector2D SRPGDialogue::ChoiceScreenCenter(int32 I) const
-{
-	FChildren* Kids = Choices->GetChildren();
-	if (!Kids || I < 0 || I >= Kids->Num()) return FVector2D::ZeroVector;
-	return Kids->GetChildAt(I)->GetCachedGeometry().GetAbsolutePositionAtCoordinates(FVector2D(0.5f, 0.5f));
-}
-
-void SRPGDialogue::Confirm(int32 Index)
-{
-	URPGSession* S = SessionOf(World);
-	if (!S || Fx.Busy() || !S->Story()->ChoiceViews.IsValidIndex(Index) || !S->Story()->ChoiceViews[Index].bEnabled) return;
-	Highlight = Index;
-	TWeakObjectPtr<UWorld> W = World;
-	Fx.Start(Index, [W, Index]() { if (URPGSession* St = SessionOf(W)) St->Story()->Choose(Index); });
-}
-
-void SRPGDialogue::Tick(const FGeometry& G, const double Time, const float Dt)
-{
-	SCompoundWidget::Tick(G, Time, Dt);
-	SetRenderOpacity(Fx.Tick(Dt));
-	const URPGSession* Session = SessionOf(World);
-	if (!Session || !Session->Story()->IsDialogueOpen()) bWasOpen = false;
-	Appear = FMath::Min(1.f, Appear + Dt * 4.f);
-	const float Ease = 1.f - FMath::Square(1.f - Appear);
-	const float Rise = (1.f - Ease) * 220.f;
-	FadeIn = Ease;
-	if (NpcPortrait) { NpcPortrait->SetRenderTransform(FSlateRenderTransform(FVector2D(-Rise * 0.5f, Rise))); NpcPortrait->SetRenderOpacity(Ease); }
-	if (HeroPortrait)   // mirrored so the hero faces the person they're talking to
-	{
-		HeroPortrait->SetRenderTransform(FSlateRenderTransform(FScale2D(-1.f, 1.f), FVector2D(Rise * 0.5f, Rise)));
-		HeroPortrait->SetRenderOpacity(Ease);
-	}
-	// Modal: if a click (or anything else) took keyboard focus away, take it back so 1-9 / Esc keep working.
-	const URPGSession* S = SessionOf(World);
-	if (S && S->Story()->IsDialogueOpen() && !HasKeyboardFocus()) FSlateApplication::Get().SetKeyboardFocus(AsShared(), EFocusCause::SetDirectly);
-}
-
-FReply SRPGDialogue::OnKeyDown(const FGeometry& G, const FKeyEvent& E)
-{
-	URPGSession* S = SessionOf(World);
-	if (!S || !S->Story()->IsDialogueOpen()) return FReply::Unhandled();
-	static const FKey Digits[] = { EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four, EKeys::Five, EKeys::Six, EKeys::Seven, EKeys::Eight, EKeys::Nine };
-	if (Fx.Busy()) return FReply::Handled();
-	for (int32 I = 0; I < 9; ++I) if (E.GetKey() == Digits[I]) { Confirm(I); return FReply::Handled(); }
-	const FKey K = E.GetKey();
-	if (K == EKeys::Up || K == EKeys::W || K == EKeys::Gamepad_DPad_Up) { MoveHighlight(-1); return FReply::Handled(); }
-	if (K == EKeys::Down || K == EKeys::S || K == EKeys::Gamepad_DPad_Down) { MoveHighlight(1); return FReply::Handled(); }
-	if ((K == EKeys::Enter || K == EKeys::SpaceBar || K == EKeys::E || K == EKeys::Gamepad_FaceButton_Bottom) && S->Story()->ChoiceViews.IsValidIndex(Highlight))
-	{
-		Confirm(Highlight);
-		return FReply::Handled();
-	}
-	if (K == EKeys::Escape || K == EKeys::Gamepad_FaceButton_Right) { S->Story()->CloseDialogue(); return FReply::Handled(); }
-	return FReply::Unhandled();
-}
-
-FReply SRPGDialogue::OnMouseWheel(const FGeometry& G, const FPointerEvent& E)
-{
-	const URPGSession* S = SessionOf(World);
-	if (!S || !S->Story()->IsDialogueOpen()) return FReply::Unhandled();
-	MoveHighlight(E.GetWheelDelta() > 0.f ? -1 : 1);
-	return FReply::Handled();
-}
-
-void SRPGDialogue::MoveHighlight(int32 Step)
-{
-	const URPGSession* S = SessionOf(World);
-	const int32 N = S ? S->Story()->ChoiceViews.Num() : 0;
-	for (int32 I = 1; I <= N; ++I)
-	{
-		const int32 C = ((Highlight + Step * I) % N + N) % N;   // wraps around
-		if (S->Story()->ChoiceViews[C].bEnabled) { Highlight = C; return; }
-	}
 }
 
 // =============================================================================================
@@ -1222,7 +846,7 @@ void SRPGCharSelect::Rebuild()
 		const bool bSel = Id == ClassId;
 		Cards->AddSlot().FillWidth(1).Padding(4)
 		[
-			SNew(SButton).IsFocusable(false).ButtonColorAndOpacity(bSel ? FRPGChoose::Highlighted() : FRPGChoose::Idle())
+			SNew(SButton).IsFocusable(false).ButtonColorAndOpacity(bSel ? FTSChoose::Highlighted() : FTSChoose::Idle())
 			.OnClicked_Lambda([this, Id]() { Select(Id); return FReply::Handled(); })
 			[
 				SNew(SHorizontalBox)
@@ -1240,7 +864,7 @@ void SRPGCharSelect::Rebuild()
 	// Sex.
 	auto SexButton = [this](const FString& Value, const FString& Label)
 	{
-		return SNew(SButton).IsFocusable(false).HAlign(HAlign_Center).ButtonColorAndOpacity(Sex == Value ? FRPGChoose::Highlighted() : FRPGChoose::Idle())
+		return SNew(SButton).IsFocusable(false).HAlign(HAlign_Center).ButtonColorAndOpacity(Sex == Value ? FTSChoose::Highlighted() : FTSChoose::Idle())
 			.OnClicked_Lambda([this, Value]() { SetSex(Value); return FReply::Handled(); })[ SNew(STextBlock).Font(Font(12)).Text(T(Label)) ];
 	};
 
@@ -1374,7 +998,7 @@ void SRPGCharSelect::Rebuild()
 				+ SHorizontalBox::Slot().AutoWidth()
 				[
 					SNew(SButton).IsFocusable(false).ContentPadding(FMargin(22, 8))
-					.ButtonColorAndOpacity_Lambda([this]() { return Fx.Item == 1 ? FRPGChoose::Chosen() : HoverButton == 1 ? FRPGChoose::Highlighted() : FLinearColor(0.3f, 0.22f, 0.06f); })
+					.ButtonColorAndOpacity_Lambda([this]() { return Fx.Item == 1 ? FTSChoose::Chosen() : HoverButton == 1 ? FTSChoose::Highlighted() : FLinearColor(0.3f, 0.22f, 0.06f); })
 					.OnHovered_Lambda([this]() { HoverButton = 1; }).OnUnhovered_Lambda([this]() { if (HoverButton == 1) HoverButton = -1; })
 					.OnClicked_Lambda([this]() { Fx.Start(1, [this]() { OnBegin.ExecuteIfBound(ClassId, Sex); }); return FReply::Handled(); })
 					[ SNew(STextBlock).Font(Font(15, TEXT("Bold"))).ColorAndOpacity(Gold)
@@ -1466,86 +1090,6 @@ FReply SRPGCharSelect::OnKeyDown(const FGeometry& G, const FKeyEvent& E)
 	if (K == EKeys::Enter || K == EKeys::Gamepad_FaceButton_Bottom) { Fx.Start(1, [this]() { OnBegin.ExecuteIfBound(ClassId, Sex); }); return FReply::Handled(); }
 	if (K == EKeys::Escape || K == EKeys::Gamepad_FaceButton_Right) { Fx.Start(0, [this]() { OnBack.ExecuteIfBound(); }); return FReply::Handled(); }
 	return FReply::Unhandled();
-}
-
-// =============================================================================================
-// Title screen
-// =============================================================================================
-
-void SRPGTitle::Construct(const FArguments& Args)
-{
-	OnStart = Args._OnStart;
-	OnQuit = Args._OnQuit;
-	if (UTexture2D* Fade = TSAssets::Load<UTexture2D>(TEXT("/Game/RPG/Pixel/UI_Fade.UI_Fade")))
-	{
-		FadeTex.Reset(Fade);
-		FadeBrush.SetResourceObject(Fade);
-		FadeBrush.DrawAs = ESlateBrushDrawType::Image;
-	}
-	const TSJson::FObj TitleData = UTSData::Get(Args._World.Get()).Section(TEXT("title"));
-	const FString Name = TSJson::Str(TitleData, TEXT("name"), TEXT("Action RPG"));
-	const FString Tagline = TSJson::Str(TitleData, TEXT("tagline"));
-
-	auto Item = [this](int32 I, const FString& Label)
-	{
-		return SNew(SButton).IsFocusable(false).ContentPadding(FMargin(18, 10)).HAlign(HAlign_Left)
-			.ButtonColorAndOpacity_Lambda([this, I]() { return Fx.Color(I, Highlight); })
-			.OnHovered_Lambda([this, I]() { if (!Fx.Busy()) Highlight = I; })
-			.OnClicked_Lambda([this, I]() { Activate(I); return FReply::Handled(); })
-			[
-				SNew(STextBlock).Font(Font(20, TEXT("Bold"))).Text(T(Label)).ColorAndOpacity(FLinearColor(0.95f, 0.95f, 0.93f))
-			];
-	};
-	ChildSlot
-	[
-		SNew(SOverlay)
-		// A soft dark band down the left so the text reads over the world.
-		+ SOverlay::Slot().HAlign(HAlign_Left)[ SNew(SBox).WidthOverride(1100)[ SNew(SImage).Image(&FadeBrush).ColorAndOpacity(FLinearColor(1, 1, 1, 0.85f)) ] ]
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center).Padding(90, 0, 0, 40)
-		[
-			SNew(SBox).WidthOverride(560)
-			[
-				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight()[ SNew(STextBlock).Font(Font(64, TEXT("Bold"))).ColorAndOpacity(Gold).ShadowOffset(FVector2D(3, 3)).Text(T(Name)) ]
-				+ SVerticalBox::Slot().AutoHeight().Padding(4, 2, 0, 46)[ SNew(STextBlock).Font(Font(16)).ColorAndOpacity(FLinearColor(0.88f, 0.86f, 0.8f)).ShadowOffset(FVector2D(1, 1)).Text(T(Tagline)) ]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0, 4)[ SNew(SBox).WidthOverride(340)[ Item(0, TEXT("Start New Game")) ] ]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0, 4)[ SNew(SBox).WidthOverride(340)[ Item(1, TEXT("Quit")) ] ]
-				+ SVerticalBox::Slot().AutoHeight().Padding(4, 30, 0, 0)
-				[ SNew(STextBlock).Font(Font(11)).ColorAndOpacity(Muted).Text(T(TEXT("\u2191\u2193 or wheel, Enter to choose"))) ]
-			]
-		]
-		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(0, 0, 24, 16)
-		[ SNew(STextBlock).Font(Font(10)).ColorAndOpacity(Muted).Text(T(TEXT("prototype  \u00b7  placeholder art"))) ]
-	];
-}
-
-void SRPGTitle::Activate(int32 Index)
-{
-	Highlight = Index;
-	Fx.Start(Index, [this, Index]() { if (Index == 0) OnStart.ExecuteIfBound(); else OnQuit.ExecuteIfBound(); });
-}
-
-FReply SRPGTitle::OnKeyDown(const FGeometry& G, const FKeyEvent& E)
-{
-	if (Fx.Busy()) return FReply::Handled();
-	const FKey K = E.GetKey();
-	if (K == EKeys::Up || K == EKeys::W || K == EKeys::Gamepad_DPad_Up || K == EKeys::Down || K == EKeys::S || K == EKeys::Gamepad_DPad_Down) { Highlight = 1 - Highlight; return FReply::Handled(); }
-	if (K == EKeys::Enter || K == EKeys::SpaceBar || K == EKeys::Gamepad_FaceButton_Bottom) { Activate(Highlight); return FReply::Handled(); }
-	return FReply::Unhandled();
-}
-
-FReply SRPGTitle::OnMouseWheel(const FGeometry& G, const FPointerEvent& E)
-{
-	if (!Fx.Busy()) Highlight = 1 - Highlight;
-	return FReply::Handled();
-}
-
-void SRPGTitle::Tick(const FGeometry& G, const double Time, const float Dt)
-{
-	SCompoundWidget::Tick(G, Time, Dt);
-	Clock += Dt;
-	SetRenderOpacity(Fx.Tick(Dt));
-	if (!HasKeyboardFocus() && GetVisibility().IsVisible()) FSlateApplication::Get().SetKeyboardFocus(AsShared(), EFocusCause::SetDirectly);
 }
 
 // =============================================================================================
@@ -1737,135 +1281,6 @@ FReply SRPGPanel::OnKeyDown(const FGeometry& G, const FKeyEvent& E)
 		return FReply::Handled();
 	}
 	return FReply::Unhandled();
-}
-
-// =============================================================================================
-// Pause menu
-// =============================================================================================
-
-void SRPGPauseMenu::Construct(const FArguments& Args)
-{
-	OnResume = Args._OnResume;
-	OnNewGame = Args._OnNewGame;
-	OnQuit = Args._OnQuit;
-	ChildSlot
-	[
-		SNew(SOverlay)
-		+ SOverlay::Slot()[ SNew(SImage).Image(White()).ColorAndOpacity(FLinearColor(0.f, 0.f, 0.02f, 0.55f)) ]   // dim the paused world
-		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
-		[
-			SNew(SBox).WidthOverride(440)
-			[
-				SNew(SBorder).BorderImage(White()).BorderBackgroundColor(PanelColor).Padding(FMargin(30, 24))
-				[
-					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
-					[
-						SNew(STextBlock).Font(Font(26, TEXT("Bold"))).ColorAndOpacity(Gold)
-						.Text_Lambda([this]() { return T(Page == EPage::Main ? TEXT("Paused") : Page == EPage::ConfirmNew ? TEXT("Start a new game?") : TEXT("Quit the game?")); })
-					]
-					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0, 6, 0, 18)
-					[
-						SNew(STextBlock).Font(Font(12)).ColorAndOpacity(Muted).Justification(ETextJustify::Center).AutoWrapText(true)
-						.Text_Lambda([this]() { return T(Page == EPage::Main ? TEXT("The world waits for you.")
-							: TEXT("There are no saves yet: your current progress will be lost.")); })
-					]
-					+ SVerticalBox::Slot().AutoHeight()[ SAssignNew(List, SVerticalBox) ]
-					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0, 16, 0, 0)
-					[
-						SNew(STextBlock).Font(Font(10)).ColorAndOpacity(Muted)
-						.Text_Lambda([this]() { return T(Page == EPage::Main ? TEXT("Esc to resume   \u00b7   \u2191\u2193 or wheel, Enter to choose")
-							: TEXT("Esc to go back   \u00b7   \u2191\u2193 or wheel, Enter to choose")); })
-					]
-				]
-			]
-		]
-	];
-	Rebuild();
-}
-
-TArray<FString> SRPGPauseMenu::Items() const
-{
-	if (Page == EPage::ConfirmNew) return { TEXT("Yes, start over"), TEXT("Cancel") };
-	if (Page == EPage::ConfirmQuit) return { TEXT("Yes, quit"), TEXT("Cancel") };
-	return { TEXT("Resume"), TEXT("New Game"), TEXT("Quit Game") };
-}
-
-void SRPGPauseMenu::Rebuild()
-{
-	List->ClearChildren();
-	const TArray<FString> Names = Items();
-	for (int32 I = 0; I < Names.Num(); ++I)
-	{
-		List->AddSlot().AutoHeight().Padding(0, 4)
-		[
-			SNew(SButton).IsFocusable(false).HAlign(HAlign_Center).ContentPadding(FMargin(10, 9))
-			.ButtonColorAndOpacity_Lambda([this, I]() { return Fx.Color(I, Highlight); })
-			.OnHovered_Lambda([this, I]() { if (!Fx.Busy()) Highlight = I; })
-			.OnClicked_Lambda([this, I]() { Choose(I); return FReply::Handled(); })
-			[
-				SNew(STextBlock).Font(Font(16, TEXT("Bold"))).Text(T(Names[I])).ColorAndOpacity(FLinearColor(0.95f, 0.95f, 0.93f))
-			]
-		];
-	}
-}
-
-void SRPGPauseMenu::Open()
-{
-	Fx.Reset();
-	Page = EPage::Main;
-	Highlight = 0;
-	Rebuild();
-}
-
-void SRPGPauseMenu::Back()
-{
-	if (Page == EPage::Main) { OnResume.ExecuteIfBound(); return; }
-	Highlight = Page == EPage::ConfirmNew ? 1 : 2;   // back onto the item you came from
-	Page = EPage::Main;
-	Rebuild();
-}
-
-void SRPGPauseMenu::Activate(int32 Index)
-{
-	if (Page == EPage::Main)
-	{
-		if (Index == 0) { OnResume.ExecuteIfBound(); return; }
-		Page = Index == 1 ? EPage::ConfirmNew : EPage::ConfirmQuit;
-		Highlight = 1;   // default to Cancel: a slip of Enter shouldn't throw progress away
-		Rebuild();
-		return;
-	}
-	if (Index != 0) { Back(); return; }
-	if (Page == EPage::ConfirmNew) OnNewGame.ExecuteIfBound();
-	else OnQuit.ExecuteIfBound();
-}
-
-FReply SRPGPauseMenu::OnKeyDown(const FGeometry& G, const FKeyEvent& E)
-{
-	if (Fx.Busy()) return FReply::Handled();
-	const FKey K = E.GetKey();
-	const int32 N = Items().Num();
-	if (K == EKeys::Escape || K == EKeys::Gamepad_FaceButton_Right || K == EKeys::Gamepad_Special_Right) { Back(); return FReply::Handled(); }
-	if (K == EKeys::Up || K == EKeys::W || K == EKeys::Gamepad_DPad_Up) { Highlight = (Highlight + N - 1) % N; return FReply::Handled(); }
-	if (K == EKeys::Down || K == EKeys::S || K == EKeys::Gamepad_DPad_Down) { Highlight = (Highlight + 1) % N; return FReply::Handled(); }
-	if (K == EKeys::Enter || K == EKeys::SpaceBar || K == EKeys::E || K == EKeys::Gamepad_FaceButton_Bottom) { Choose(Highlight); return FReply::Handled(); }
-	return FReply::Unhandled();
-}
-
-FReply SRPGPauseMenu::OnMouseWheel(const FGeometry& G, const FPointerEvent& E)
-{
-	const int32 N = Items().Num();
-	Highlight = (Highlight + (E.GetWheelDelta() > 0.f ? N - 1 : 1)) % N;
-	return FReply::Handled();
-}
-
-void SRPGPauseMenu::Tick(const FGeometry& G, const double Time, const float Dt)
-{
-	SCompoundWidget::Tick(G, Time, Dt);
-	SetRenderOpacity(Fx.Tick(Dt));
-	// Modal: keep keyboard focus while shown (a click elsewhere mustn't strand the keys).
-	if (GetVisibility() == EVisibility::Visible && !HasKeyboardFocus()) FSlateApplication::Get().SetKeyboardFocus(AsShared(), EFocusCause::SetDirectly);
 }
 
 #undef LOCTEXT_NAMESPACE

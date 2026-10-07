@@ -8,6 +8,7 @@
 #include "LMStory.h"
 #include "RPGPlayerCharacter.h"
 #include "TSProjectile.h"
+#include "TSPerception.h"
 #include "RPGLoot.h"
 
 #include "ProceduralMeshComponent.h"
@@ -203,23 +204,11 @@ void ARPGEnemy::Tick(float Dt)
 
 bool ARPGEnemy::CanSeePlayer(float Dist) const
 {
+	// Territory first: it only notices the player in its own region, unless provoked.
 	const UTSData& D = UTSData::Get(this);
 	const ARPGPlayerCharacter* P = URPGSession::Get(this)->Player();
-	if (!P || P->IsDead() || P->Tags.Has(TEXT("Hidden"))) return false;
-	const bool bSameSide = bProvoked || D.RegionAt(P->GetActorLocation().Y) == Region;
-	if (!bSameSide || Dist >= D.Px(TSJson::Num(Def, TEXT("aggro"), 170))) return false;
-
-	const TSJson::FObj EV = TSJson::Obj(D.Section(TEXT("tuning")), TEXT("enemyVision"));
-	const float Hear = D.Px(TSJson::Num(Def, TEXT("hearRadius"), TSJson::Num(EV, TEXT("hearRadius"), 70)));
-	const float Cone = float(TSJson::Num(Def, TEXT("visionAngle"), TSJson::Num(EV, TEXT("coneAngle"), 120)));
-	const FVector To = (P->GetActorLocation() - GetActorLocation()).GetSafeNormal2D();
-	const bool bInView = Dist < Hear || FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(Facing(), To))) <= Cone * 0.5f;
-	if (!bInView) return false;
-
-	FHitResult Hit;
-	FCollisionQueryParams Q(SCENE_QUERY_STAT(EnemySight), false, this);
-	Q.AddIgnoredActor(P);
-	return !GetWorld()->LineTraceSingleByChannel(Hit, Head(), P->Head(), ECC_Visibility, Q);
+	if (!P || !(bProvoked || D.RegionAt(P->GetActorLocation().Y) == Region)) return false;
+	return TSPerception::CanNotice(this, P, FTSSenses::Read(this, Def, D.Px(TSJson::Num(Def, TEXT("aggro"), 170)), TEXT("enemyVision")));
 }
 
 void ARPGEnemy::MoveToward(const FVector& Target, float SpeedMul)
@@ -253,7 +242,7 @@ void ARPGEnemy::RunAI(float Dt)
 
 	const FVector PL = P->GetActorLocation();
 	const float Dist = FVector::Dist2D(PL, GetActorLocation());
-	const bool bPlayerHidden = P->Tags.Has(TEXT("Hidden"));
+	const bool bPlayerHidden = TSPerception::IsHidden(P);
 	const bool bSameSide = bProvoked || D.RegionAt(PL.Y) == Region;
 
 	switch (State)
@@ -441,7 +430,7 @@ void ARPGEnemy::PerformAttack()
 			D.Px(TSJson::Num(Pr, TEXT("radius"), 4)), TSJson::Color(TSJson::Str(Pr, TEXT("fletch"), TEXT("#c83a2a"))), Hit);
 	}
 
-	RevealT = float(TSJson::Num(TSJson::Obj(D.Section(TEXT("tuning")), TEXT("threatSense")), TEXT("revealAfterAttack"), 1.5));
+	RevealT = TSPerception::RevealAfterAttack(this);
 	++AtkIndex;
 	Cool = float(TSJson::Num(A, TEXT("cooldown"), 0));
 }

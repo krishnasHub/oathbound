@@ -10,6 +10,10 @@
 #include "TSLoot.h"
 #include "TSInventory.h"
 #include "RPGPlayerController.h"
+#include "TSAssets.h"
+#include "TSSprite.h"
+#include "TSPerception.h"
+#include "Engine/Texture2D.h"
 
 #include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
@@ -123,6 +127,44 @@ FString URPGSession::MarkerFor(const ATSCharacter* Npc) const
 }
 
 ARPGCharacterBase* URPGSession::DialogueNpc() const { return Cast<ARPGCharacterBase>(Story()->Speaker()); }
+
+FTSDialogueView URPGSession::DialogueView()
+{
+	TWeakObjectPtr<URPGSession> Self = this;
+	FTSDialogueView V;
+	V.IsOpen = [Self]() { return Self.IsValid() && Self->Story()->IsDialogueOpen(); };
+	V.SpeakerName = [Self]() { return Self.IsValid() ? Self->Story()->SpeakerInfo().Name : FString(); };
+	V.SpeakerColor = [Self]() { return Self.IsValid() ? Self->Story()->SpeakerInfo().Color : FLinearColor::White; };
+	V.Text = [Self]() { return Self.IsValid() ? Self->Story()->DialogueText : FString(); };
+	V.Choices = [Self]()
+	{
+		TArray<FTSDialogueChoice> Out;
+		if (!Self.IsValid()) return Out;
+		const ARPGPlayerCharacter* Hero = Self->Player();
+		for (const FLMChoiceView& C : Self->Story()->ChoiceViews)
+		{
+			// Class verbs ([Honor], [Hypnotize]...) in the hero's colour, shared ones ([Persuade]) in gold.
+			const bool bClassVerb = TSJson::Has(UTSData::Get(Self.Get()).Entry(TEXT("dialogueVerbs"), C.VerbId), TEXT("class"));
+			FTSDialogueChoice& Ch = Out.AddDefaulted_GetRef();
+			Ch.Text = C.Text;
+			Ch.Verb = C.Verb;
+			Ch.VerbColor = bClassVerb && Hero ? Hero->NameColor : FLinearColor(1.f, 0.83f, 0.3f);
+			Ch.bEnabled = C.bEnabled;
+			Ch.Odds = C.Odds;
+		}
+		return Out;
+	};
+	V.Choose = [Self](int32 I) { if (Self.IsValid()) Self->Story()->Choose(I); };
+	V.Close = [Self]() { if (Self.IsValid()) Self->Story()->CloseDialogue(); };
+	// Portraits are off until there's proper illustrated art (world3d.dialoguePortraits): POR_<sprite sheet>.
+	V.Portrait = [Self](bool bHero) -> UTexture2D*
+	{
+		if (!Self.IsValid() || !TSJson::Bool(UTSData::Get(Self.Get()).World(), TEXT("dialoguePortraits"), false)) return nullptr;
+		const ARPGCharacterBase* Who = bHero ? Cast<ARPGCharacterBase>(Self->Player()) : Self->DialogueNpc();
+		return Who && Who->Sprite ? LoadObject<UTexture2D>(nullptr, *TSAssets::ObjPath(TEXT("/Game/RPG/Pixel"), TEXT("POR_") + Who->Sprite->SheetName)) : nullptr;
+	};
+	return V;
+}
 
 // ---------------------------------------------------------------------------------------------
 // The game's half of the story rules, registered with Loom
@@ -263,7 +305,7 @@ void URPGSession::Bind(ULMStory* L)
 	});
 	L->OnDialogueOpened.AddLambda([this]()
 	{
-		if (ARPGPlayerCharacter* P = Player()) P->Tags.Remove(TEXT("Hidden"));
+		TSPerception::Reveal(Player());   // talking breaks stealth
 		UGameplayStatics::SetGamePaused(this, true);
 		if (ARPGPlayerController* PC = Cast<ARPGPlayerController>(GetWorld()->GetFirstPlayerController())) PC->EnterUI();
 	});

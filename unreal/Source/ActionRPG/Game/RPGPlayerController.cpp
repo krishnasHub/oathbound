@@ -5,6 +5,11 @@
 #include "LMStory.h"
 #include "RPGPlayerCharacter.h"
 #include "SRPGWidgets.h"
+#include "STSDialogueBox.h"
+#include "STSMenus.h"
+#include "STSWidgets.h"
+#include "TSCameraRig.h"
+#include "TSData.h"
 #include "TSLook.h"
 
 #include "Camera/CameraActor.h"
@@ -30,17 +35,21 @@ void ARPGPlayerController::BeginPlay()
 	TWeakObjectPtr<UWorld> W = GetWorld();
 
 	SAssignNew(Hud, SRPGHud).World(W);
-	SAssignNew(Dialogue, SRPGDialogue).World(W);
+	SAssignNew(Dialogue, STSDialogueBox).World(W).View(URPGSession::Get(this)->DialogueView());
 	SAssignNew(Panel, SRPGPanel).World(W).OnClose(SRPGPanel::FOnClose::CreateUObject(this, &ARPGPlayerController::ClosePanel));
 	GEngine->GameViewport->AddViewportWidgetContent(Hud.ToSharedRef(), 10);
 	GEngine->GameViewport->AddViewportWidgetContent(Dialogue.ToSharedRef(), 20);
 	GEngine->GameViewport->AddViewportWidgetContent(Panel.ToSharedRef(), 30);
-	SAssignNew(PauseMenu, SRPGPauseMenu)
+	SAssignNew(PauseMenu, STSPauseMenu).World(W)
 		.OnResume(FSimpleDelegate::CreateUObject(this, &ARPGPlayerController::ResumeGame))
 		.OnNewGame(FSimpleDelegate::CreateUObject(this, &ARPGPlayerController::NewGame))
 		.OnQuit(FSimpleDelegate::CreateUObject(this, &ARPGPlayerController::QuitGame));
 	GEngine->GameViewport->AddViewportWidgetContent(PauseMenu.ToSharedRef(), 50);
-	SAssignNew(Cursor, SRPGCursor).World(W);
+	// The game's own cursor: what a click would do now (ARPGPlayerCharacter::CursorIcon), only while playing.
+	SAssignNew(Cursor, STSCursor).IconFolder(TEXT("/Game/RPG/Pixel")).IconPrefix(TEXT("CUR_"))
+		.Icons({ TEXT("pointer"), TEXT("sword"), TEXT("dagger"), TEXT("wand"), TEXT("arrow"), TEXT("talk"), TEXT("talk_off") })
+		.Centred({ TEXT("talk"), TEXT("talk_off") })
+		.IconFn([this]() { const ARPGPlayerCharacter* P = Cast<ARPGPlayerCharacter>(GetPawn()); return P && IsInGameplay() ? P->CursorIcon() : FName(NAME_None); });
 	GEngine->GameViewport->AddViewportWidgetContent(Cursor.ToSharedRef(), 100);   // on top of everything
 	Dialogue->SetVisibility(EVisibility::Collapsed);
 	Panel->SetVisibility(EVisibility::Collapsed);
@@ -52,7 +61,7 @@ void ARPGPlayerController::BeginPlay()
 
 	// Automated runs: ignore the real keyboard/mouse so someone typing elsewhere can't steer the test.
 	bNoInput = FParse::Param(FCommandLine::Get(), TEXT("RPGNoInput"));
-	if (P) P->bInputLocked = bNoInput;
+	if (P) P->SetInputLocked(bNoInput);
 
 	// Boot: the title screen. New Game from the pause menu reopens the level with ?RPGNewGame and goes straight
 	// to character select; -RPGClass= (automated runs) skips both.
@@ -91,7 +100,7 @@ void ARPGPlayerController::EndPlay(const EEndPlayReason::Type Reason)
 
 void ARPGPlayerController::EnterGameplay()
 {
-	if (ARPGPlayerCharacter::IsTopDown(this))
+	if (UTSCameraRig::IsTopDown(this))
 	{
 		// Top-down: the cursor stays visible (it aims) and is kept inside the window.
 		FInputModeGameAndUI Mode;
@@ -99,7 +108,7 @@ void ARPGPlayerController::EnterGameplay()
 		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::LockAlways);
 		SetInputMode(Mode);
 		bShowMouseCursor = true;
-		CurrentMouseCursor = DefaultMouseCursor = EMouseCursor::None;   // the game draws its own (SRPGCursor)
+		CurrentMouseCursor = DefaultMouseCursor = EMouseCursor::None;   // the game draws its own (STSCursor)
 		return;
 	}
 	SetInputMode(FInputModeGameOnly());
@@ -149,7 +158,11 @@ void ARPGPlayerController::ShowTitle()
 	bAutoManageActiveCameraTarget = false;
 	SetViewTarget(PreviewCam);
 
-	SAssignNew(Title, SRPGTitle).World(GetWorld())
+	const TSJson::FObj TitleData = UTSData::Get(this).Section(TEXT("title"));
+	SAssignNew(Title, STSTitle).World(GetWorld())
+		.Title(TSJson::Str(TitleData, TEXT("name"), TEXT("Action RPG")))
+		.Tagline(TSJson::Str(TitleData, TEXT("tagline")))
+		.Footer(TSJson::Str(TitleData, TEXT("footer")))
 		.OnStart(FSimpleDelegate::CreateLambda([this]() { if (!bNoInput) ShowCharSelect(); }))
 		.OnQuit(FSimpleDelegate::CreateUObject(this, &ARPGPlayerController::QuitGame));
 	GEngine->GameViewport->AddViewportWidgetContent(Title.ToSharedRef(), 45);

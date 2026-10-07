@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "TSJson.h"
+#include "STSDialogueBox.h"
 #include "RPGSession.generated.h"
 
 class ARPGCharacterBase;
@@ -57,6 +58,8 @@ public:
 	FString MarkerFor(const ATSCharacter* Npc) const;
 	/** Who the open dialogue is with. */
 	ARPGCharacterBase* DialogueNpc() const;
+	/** Loom's conversation as Tessera's dialogue box shows it (verbs in the hero's colour when class-only). */
+	FTSDialogueView DialogueView();
 
 private:
 	void Bind(ULMStory* L);

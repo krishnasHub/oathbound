@@ -1,7 +1,7 @@
 # SO FAR — Action RPG handoff
 
 Read this first at the start of a session. It records where the project stands, how it is built, the conventions that matter, and what to do next.
-Last updated: 2026-10-06 (HD-2D, front end, day/night, ambient life, shields, parallel tests, screenshots, slim git; Tessera + Loom plugins, phase 1).
+Last updated: 2026-10-06 (HD-2D, front end, day/night, ambient life, shields, parallel tests, screenshots, slim git; Tessera + Loom plugins, phases 1-3).
 
 ---
 
@@ -68,7 +68,8 @@ Developer loop (from `unreal/`):
 .\Tools\rpg.ps1 test -Scenario combat|block|elder|bridge|mage|thief|walk|picker|smoke|pause|click
 .\Tools\rpg.ps1 test -Scenario pose -Class mage|thief   # pose screenshots -> Saved/Screenshots/RPG/pose_*.png
 ```
-- **Last state (2026-10-06):** all 11 tests PASS (combat, block, elder, bridge, mage, thief, walk, picker, smoke, pause, click), including from a fresh clone with a clean build.
+- **Last state (2026-10-06, after plugin phase 3):** all 11 tests PASS (combat, block, elder, bridge, mage, thief, walk, picker, smoke, pause, click). (Phase 2 also passed from a fresh clone with a clean build.)
+  - `click` sends real mouse events to the window, so it can fail when 8 windows run side by side (it passed alone, and in the next full run).
 - **Self-test command-line flags:**
   - `-RPGTest=<scenario>`, `-RPGClass`, `-RPGSex`
   - `-RPGNoInput`: use it in automated runs, otherwise keyboard typing leaks into the game window.
@@ -147,7 +148,9 @@ Third-person (`mode: "third"`): WASD move, mouse look, LMB attack, Space jump, L
   - `URPGSession`: this game's glue to Loom (conditions, actions, placeholders, verb costs, quest rewards), duels,
     the bridge-crossing rule, floaters / toasts / shake.
   - `ARPGSelfTest`: scenarios.
-- **UI/:** Slate widgets (`SRPGHud`, `SRPGDialogue`, `SRPGCharSelect`, `SRPGPanel`) plus the `ARPGHUD` canvas for world text, markers and threat arrows.
+- **UI/:** Slate widgets (`SRPGHud`, `SRPGCharSelect`, `SRPGPanel`, `SRPGMinimap`) plus the `ARPGHUD` canvas for world text and markers,
+  on Tessera's UI kit (dialogue box, title, pause menu, cursor, night shade, toasts, ability picker, threat arrows).
+  - The dialogue box reads Loom through `URPGSession::DialogueView()` (an `FTSDialogueView`).
   - Dialogue uses `FInputModeUIOnly` with focus reclaim. This fixed the freeze when pressing 1 at Brask's surrender.
 - **Characters/:**
   - `ARPGCharacterBase`
@@ -266,15 +269,28 @@ dynamic story. So the reusable code is moving into two plugins, each its own rep
   register conditions / actions / placeholders / verb rules and listen to events (`OnQuest`, `OnDialogueOpened`...).
 - **Tessera** (`TS` prefix): `TesseraCore` (`UTSData`, `TSLook`, `TSAssets`, `TSJson`, `TSCmd`, `TSConfig`) and
   `TesseraWorld` (`ATSWorldBuilder`: helpers, height field, cutaways, flicker, navmesh; `ATSSky`: sky and day/night),
-  `TesseraGameplay` (characters, stats, combat, abilities, items, loot, feedback).
-- **Rule:** nothing in either plugin may name a game. File names, sections, map symbols, material paths, switch
-  prefixes and wording come from the game's data, `[Tessera]` config or registered hooks.
+  `TesseraGameplay` (characters, stats, combat, abilities, items, loot, feedback, `TSPerception`),
+  `TesseraHero` (`UTSCameraRig`, `UTSHeroControl`), `TesseraUI` (Slate kit, `TSHUDDraw`).
+- **Rule (the user's tenet):** the plugins are a framework / library, as generic and abstract as possible, with no
+  game logic. Nothing in either plugin may name a game. File names, sections, map symbols, material paths, switch
+  prefixes, data keys of the game's own (e.g. `enemyVision` is passed in), wording and colours come from the game's
+  data, `[Tessera]` config, `FTSUIStyle` or registered hooks.
 - **Phases:** 1 done (Loom; Tessera core + world). 2 done, tested and pushed (TesseraGameplay: `ATSCharacter`,
   data-defined stats pools in the `stats` section, `TSCombat`, `UTSAbilityComponent` + type registry, projectiles, FX,
   inventory, loot, `UTSFeedback`, sprite, pose mesh, anim notifies; game keeps looks, class rules, duels, quest drops via
   hooks; `world3d.assets` / `.text` / `.currencyKey` hold paths and words; the unused mana-shield code was dropped).
-  Each phase: tests + package, the user tests the exe, then commit + push the plugins. 3: top-down hero controls, perception (stealth), UI kit,
-  Loom-to-UI dialogue box. 4: tooling (launcher, test harness, import scripts, pixel-art primitives).
+  Each phase: tests + package, the user tests the exe, then commit + push the plugins.
+  3 done, pending the user's test:
+  - `TSPerception`: senses (cone, hearing, line of sight), "Hidden" stealth, threat sense; `ATSCharacter::IsHunting`.
+    Enemies keep their territory rule.
+  - `UTSCameraRig`: the camera set-up, zoom, tilt-shift focus and shake that were in the player.
+  - `UTSHeroControl`: cursor picking, aim assist, click-to-move / attack / talk, talk mode, ability picker. The player
+    supplies the rules as hooks (`InAttackRange`, `Attack`, `TalkBlocker`, `Talk`) and still owns its keys, attacks, bow and guard.
+  - TesseraUI: `STSDialogueBox` (+ `FTSDialogueView`), `STSTitle`, `STSPauseMenu`, `STSCursor`, `STSNightShade`,
+    `STSToasts`, `STSAbilityPicker`, `FTSChoose`, `FTSUIStyle` / `TSUI`, `TSHUDDraw`. New data: `world3d.assets`
+    { dialogueFade, titleFade, nightShade }, `world3d.text` { progressLost, pickerHint }, `title.footer`.
+  - Still in the game: HUD layout, minimap (class-shaped frames), character select, panels, ability bar.
+  4: tooling (launcher, test harness, import scripts, pixel-art primitives).
 - Backup of everything before the split: `C:\Users\krish\dev\action-rpg-backup-2026-10-06` (full copy incl. `.git`).
 
 ## 8. Next steps / open threads

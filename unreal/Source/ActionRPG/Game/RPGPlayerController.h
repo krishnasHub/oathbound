@@ -5,12 +5,12 @@
 #include "RPGPlayerController.generated.h"
 
 class SRPGHud;
-class SRPGDialogue;
+class STSDialogueBox;
 class SRPGCharSelect;
 class SRPGPanel;
-class SRPGPauseMenu;
-class SRPGTitle;
-class SRPGCursor;
+class STSPauseMenu;
+class STSTitle;
+class STSCursor;
 class ACameraActor;
 class SWidget;
 
@@ -45,7 +45,7 @@ public:
 	void NewGame();
 	void QuitGame();
 	bool IsPauseMenuOpen() const { return bPauseMenu; }
-	TSharedPtr<SRPGDialogue> GetDialogue() const { return Dialogue; }
+	TSharedPtr<STSDialogueBox> GetDialogue() const { return Dialogue; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -58,12 +58,12 @@ private:
 	void HandleKey(FName Key);
 
 	TSharedPtr<SRPGHud> Hud;
-	TSharedPtr<SRPGDialogue> Dialogue;
+	TSharedPtr<STSDialogueBox> Dialogue;
 	TSharedPtr<SRPGCharSelect> CharSelect;
 	TSharedPtr<SRPGPanel> Panel;
-	TSharedPtr<SRPGPauseMenu> PauseMenu;
-	TSharedPtr<SRPGTitle> Title;
-	TSharedPtr<SRPGCursor> Cursor;
+	TSharedPtr<STSPauseMenu> PauseMenu;
+	TSharedPtr<STSTitle> Title;
+	TSharedPtr<STSCursor> Cursor;
 	bool bTitle = false;
 	float TitleT = 0.f;
 	FVector TitleFrom = FVector::ZeroVector;

@@ -16,7 +16,7 @@ enum class ERPGEnemyState : uint8 { Idle, Chase, Windup, Recover, Return, Leavin
  *
  *   idle (wander) -> chase -> windup (telegraphed) -> attack -> recover -> chase ...  | return (leash)
  *
- * Senses: a sight cone (tuning.enemyVision) + short hearing radius, line of sight through the world.
+ * Senses: TSPerception (a sight cone + short hearing radius from tuning.enemyVision, line of sight, stealth).
  * Territory: only engages the player inside its home map region unless provoked.
  * Factions: neutral faction members stand and watch until provoked (or a duel starts); they can be
  * talked to if they have dialogue, and they walk off the map when their gang disbands.
@@ -55,6 +55,7 @@ public:
 	virtual bool IsReasonable() const override { return TSJson::Bool(Def, TEXT("intelligent")); }
 	virtual FString ParleyNode() const override { return TSJson::Str(Def, TEXT("parleyDialogue")); }
 	virtual bool IsWindingUp() const override { return bSpriteHold || State == ERPGEnemyState::Windup; }
+	virtual bool IsHunting() const override { return !IsPassive() && (State == ERPGEnemyState::Chase || State == ERPGEnemyState::Windup || State == ERPGEnemyState::Recover); }
 	FString YieldDialogueId() const { return TSJson::Str(Def, TEXT("yieldDialogue")); }
 	virtual void OnStaggered() override;
 	virtual void Die(AActor* Killer) override;

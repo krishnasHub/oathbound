@@ -5,6 +5,7 @@
 #include "RPGSession.h"
 #include "LMStory.h"
 #include "RPGPlayerCharacter.h"
+#include "TSHeroControl.h"
 #include "RPGPlayerController.h"
 #include "SRPGWidgets.h"
 #include "GameFramework/GameModeBase.h"
@@ -127,7 +128,7 @@ void ARPGSelfTest::Tick(float Dt)
 		else if (Step == 10)
 		{
 			if (S->Story()->IsDialogueOpen()) { Report(TEXT("FAIL: a dialogue opened by itself")); Quit(0.5f); return; }
-			Pl->TryTalk(Brask);   // the player chooses to talk (E + click on Brask)
+			Pl->Control->TryTalk(Brask);   // the player chooses to talk (E + click on Brask)
 			Report(TEXT("chose to talk to Brask"));
 			Step = 1; Next = T + 2.f;
 		}
@@ -283,15 +284,15 @@ void ARPGSelfTest::Tick(float Dt)
 		}
 		else if (Step == 1)
 		{
-			Pl->TestClick(WalkGoal);
+			Pl->Control->TestClick(WalkGoal);
 			Corners = 0;
 			Started = T;
 			Step = 2; Next = T + 0.2f;
 		}
 		else if (Step == 2)
 		{
-			Corners = FMath::Max(Corners, Pl->GetPath().Num());
-			if (Pl->GetClickGoal() == ARPGPlayerCharacter::EClickGoal::None)
+			Corners = FMath::Max(Corners, Pl->Control->GetPath().Num());
+			if (Pl->Control->GetGoal() == ETSClickGoal::None)
 			{
 				const float Miss = FVector::Dist2D(Pl->GetActorLocation(), WalkGoal);
 				Report(FString::Printf(TEXT("%s: arrived %.0fuu from the click in %.1fs, path had %d points (%s)"),
@@ -307,7 +308,7 @@ void ARPGSelfTest::Tick(float Dt)
 			for (TActorIterator<ARPGCharacterBase> It(GetWorld()); It; ++It) if (It->TalkKey == TEXT("elder")) Elder = *It;
 			if (!Elder) { Report(TEXT("FAIL: no elder")); Quit(0.5f); return; }
 			Place(Ground(Elder->GetActorLocation().X + 550.f, Elder->GetActorLocation().Y + 250.f), 180.f);
-			Pl->TestClick(Elder->GetActorLocation(), Elder);
+			Pl->Control->TestClick(Elder->GetActorLocation(), Elder);
 			Started = T;
 			Step = 4; Next = T + 0.2f;
 		}
@@ -342,7 +343,7 @@ void ARPGSelfTest::Tick(float Dt)
 			}
 			if (T - Started > 25.f) { Report(TEXT("FAIL: slime never died")); Quit(0.5f); return; }
 			Pl->Stats->Pool(RPGStat::Stamina).Current = Pl->Stats->Max(RPGStat::Stamina);
-			Pl->TestClick(Target->GetActorLocation(), Target.Get());
+			Pl->Control->TestClick(Target->GetActorLocation(), Target.Get());
 			++Swings;
 			Next = T + 0.45f;
 		}
@@ -420,10 +421,10 @@ void ARPGSelfTest::Tick(float Dt)
 		if (Step == 0)
 		{
 			S->Story()->StartQuest(TEXT("slime_cull"));   // some progress, so New Game has something to wipe
-			Pl->TestPicker(0, true);
+			Pl->Control->TestPicker(0, true);
 			Pl->TestPress(TEXT("Escape"), true);
 			Report(FString::Printf(TEXT("%s: Esc with the ability picker open closes the picker only: picker=%d, menu=%d"),
-				Pl->PickerSlot() < 0 && !PC->IsPauseMenuOpen() ? TEXT("PASS") : TEXT("FAIL"), Pl->PickerSlot(), PC->IsPauseMenuOpen()));
+				Pl->Control->PickerSlot() < 0 && !PC->IsPauseMenuOpen() ? TEXT("PASS") : TEXT("FAIL"), Pl->Control->PickerSlot(), PC->IsPauseMenuOpen()));
 			Step = 1; Next = T + 0.5f;
 		}
 		else if (Step == 1)
@@ -508,26 +509,26 @@ void ARPGSelfTest::Tick(float Dt)
 			Pl->Stats->Pool(RPGStat::Mana).Current = Pl->Stats->Max(RPGStat::Mana);
 			Target = Find(TEXT("slime"));
 			if (Target.IsValid()) { Place(Target->GetActorLocation() - FVector(700, 0, 0), 0.f); AimAt(Target->GetActorLocation()); }
-			Pl->TestPicker(0, true);
-			Report(FString::Printf(TEXT("%s: Shift+wheel opened the picker on slot %d (time dilation was %.2f)"), Pl->PickerSlot() >= 0 ? TEXT("PASS") : TEXT("FAIL"), Pl->PickerSlot(), Dil));
+			Pl->Control->TestPicker(0, true);
+			Report(FString::Printf(TEXT("%s: Shift+wheel opened the picker on slot %d (time dilation was %.2f)"), Pl->Control->PickerSlot() >= 0 ? TEXT("PASS") : TEXT("FAIL"), Pl->Control->PickerSlot(), Dil));
 			Step = 1; Next = T + 0.3f;   // (real seconds pass slower now; Next is in game time)
 		}
 		else if (Step == 1)
 		{
 			Report(FString::Printf(TEXT("%s: while open, time dilation %.2f"), Dil < 0.5f ? TEXT("PASS") : TEXT("FAIL"), Dil));
-			const int32 Before = Pl->PickerSlot();
-			Pl->TestPicker(1, true);
-			Report(FString::Printf(TEXT("%s: scrolled one notch: slot %d -> %d"), Pl->PickerSlot() != Before ? TEXT("PASS") : TEXT("FAIL"), Before, Pl->PickerSlot()));
+			const int32 Before = Pl->Control->PickerSlot();
+			Pl->Control->TestPicker(1, true);
+			Report(FString::Printf(TEXT("%s: scrolled one notch: slot %d -> %d"), Pl->Control->PickerSlot() != Before ? TEXT("PASS") : TEXT("FAIL"), Before, Pl->Control->PickerSlot()));
 			Step = 2; Next = T + 1.2f;   // leave it up for a screenshot (-RPGShot=1)
 		}
 		else if (Step == 2)
 		{
-			const int32 Slot = Pl->PickerSlot();
+			const int32 Slot = Pl->Control->PickerSlot();
 			const FString Id = Pl->Abilities->Ids.IsValidIndex(Slot) ? Pl->Abilities->Ids[Slot] : FString();
-			Pl->TestPickerRelease(true);
+			Pl->Control->ClosePicker(true);
 			Report(FString::Printf(TEXT("%s: released on %s: cooldown %.1fs, time dilation back to %.2f, picker %d"),
-				Pl->Abilities->Cooldowns.FindRef(Id) > 0.f && UGameplayStatics::GetGlobalTimeDilation(this) > 0.99f && Pl->PickerSlot() < 0 ? TEXT("PASS") : TEXT("FAIL"),
-				*Id, Pl->Abilities->Cooldowns.FindRef(Id), UGameplayStatics::GetGlobalTimeDilation(this), Pl->PickerSlot()));
+				Pl->Abilities->Cooldowns.FindRef(Id) > 0.f && UGameplayStatics::GetGlobalTimeDilation(this) > 0.99f && Pl->Control->PickerSlot() < 0 ? TEXT("PASS") : TEXT("FAIL"),
+				*Id, Pl->Abilities->Cooldowns.FindRef(Id), UGameplayStatics::GetGlobalTimeDilation(this), Pl->Control->PickerSlot()));
 			Step = 3; Next = T + 1.f;
 		}
 		else if (Step == 3)
@@ -537,11 +538,11 @@ void ARPGSelfTest::Tick(float Dt)
 			Report(FString::Printf(TEXT("%s: talk to a slime -> \"%s\""), SlimeWhy.IsEmpty() ? TEXT("FAIL") : TEXT("PASS"), *SlimeWhy));
 			ARPGEnemy* Bandit = Find(TEXT("bandit_lt"));   // Wren: a bandit with something to say
 			if (!Bandit) { Report(TEXT("FAIL: no Wren")); Quit(0.5f); return; }
-			Pl->TestClick(Bandit->GetActorLocation(), Bandit);
-			const bool bFight = Pl->GetClickGoal() == ARPGPlayerCharacter::EClickGoal::Attack;
+			Pl->Control->TestClick(Bandit->GetActorLocation(), Bandit);
+			const bool bFight = Pl->Control->GetGoal() == ETSClickGoal::Attack;
 			Pl->ClearHeldInput();   // don't actually start a war
-			Pl->TryTalk(Bandit);
-			const bool bTalk = Pl->GetClickGoal() == ARPGPlayerCharacter::EClickGoal::Talk;
+			Pl->Control->TryTalk(Bandit);
+			const bool bTalk = Pl->Control->GetGoal() == ETSClickGoal::Talk;
 			Pl->ClearHeldInput();
 			Report(FString::Printf(TEXT("%s: click on a neutral bandit = %s; E on him = %s (talk blocker: \"%s\")"), bFight && bTalk ? TEXT("PASS") : TEXT("FAIL"),
 				bFight ? TEXT("fight") : TEXT("NOT fight"), bTalk ? TEXT("talk") : TEXT("NOT talk"), *Pl->TalkBlocker(Bandit)));
