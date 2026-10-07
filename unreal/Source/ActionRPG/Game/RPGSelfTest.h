@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
+#include "TSTestRunner.h"
 #include "RPGSelfTest.generated.h"
 
 class ARPGPlayerCharacter;
@@ -21,28 +21,23 @@ class ARPGEnemy;
  *   -RPGTest=pause    Esc: picker first, then the pause menu; Resume; New Game reloads into character select
  *   -RPGTest=click    one real mouse click on a dialogue choice answers it (no double click)
  *
- * Combine with -RPGShot=<sec> to capture a frame mid-scenario.
+ * Combine with -RPGShot=<sec> to capture a frame mid-scenario. Stepping, reporting, quitting, screenshots and real
+ * clicks come from Tessera's ATSTestRunner (TesseraTest).
  */
 UCLASS()
-class ACTIONRPG_API ARPGSelfTest : public AActor
+class ACTIONRPG_API ARPGSelfTest : public ATSTestRunner
 {
 	GENERATED_BODY()
 
-public:
-	ARPGSelfTest();
-	FString Scenario;
-	virtual void Tick(float DeltaSeconds) override;
+protected:
+	virtual void RunStep() override;
 
 private:
 	ARPGPlayerCharacter* P() const;
 	ARPGEnemy* Find(const FString& Type) const;
 	void Place(const FVector& At, float Yaw);
 	void AimAt(const FVector& Point);
-	void Report(const FString& Line);
 
-	float T = 0.f;
-	int32 Step = 0;
-	float Next = 0.f;
 	TWeakObjectPtr<ARPGEnemy> Target;
 	int32 Swings = 0;
 	FVector WalkGoal = FVector::ZeroVector;   // walk: where the ground click went

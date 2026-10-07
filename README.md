@@ -19,7 +19,7 @@ one) as the game changes.
 
 | Folder | What |
 |---|---|
-| `play.ps1` | **Start here.** One-click launcher: play, test, package |
+| `play.ps1` | **Start here.** One-click launcher: play, test, package (Tessera's tools, configured by `tessera.json`) |
 | `unreal/` | The Unreal Engine 5.8 game (C++). See `unreal/README.md` |
 | `unreal/Plugins/Tessera` | Shared framework for top-down HD-2D games (git submodule: github.com/krishnasHub/tessera) |
 | `unreal/Plugins/Loom` | Shared story engine: dialogue, checks, quests, consequences (git submodule: github.com/krishnasHub/loom) |

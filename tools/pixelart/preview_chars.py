@@ -1,6 +1,6 @@
 import numpy as np
 from characters import SPECS, sheet, N as S
-from png import write_png, upscale
+from tspixel.png import write_png, upscale
 names = list(SPECS)
 sheets = {n: sheet(SPECS[n]) for n in names}
 # preview: per character, row of: down idle0, down walk1, down attack0..3, side walk1, side attack2, up idle0, up attack2, dead

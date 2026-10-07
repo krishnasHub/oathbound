@@ -9,25 +9,14 @@ Procedural pixel-art environment for the 2D look tests.
 import numpy as np
 
 from characters import C, mix, shadow_of, light_of
+from tspixel import canvas
+from tspixel.canvas import rng, speckle, blank, ellipse_mask, outline  # noqa: F401  (also used by ui_art / extras)
 
 T = 32
 
 
-def rng(seed):
-    return np.random.default_rng(seed)
-
-
 def solid(col):
-    a = np.zeros((T, T, 4), np.uint8)
-    a[...] = col
-    return a
-
-
-def speckle(a, r, cols, p):
-    m = r.random((a.shape[0], a.shape[1])) < p
-    idx = r.integers(0, len(cols), size=m.sum())
-    a[m] = np.array(cols, np.uint8)[idx]
-    return a
+    return canvas.solid(col, T)
 
 
 def grass(seed=1, flowers=True):
@@ -156,22 +145,6 @@ TEXTURES = {
 
 
 # --- props (3/4 view) ---------------------------------------------------------------------------
-
-def blank(w, h):
-    return np.zeros((h, w, 4), np.uint8)
-
-
-def ellipse_mask(w, h, cx, cy, rx, ry):
-    Y, X = np.mgrid[0:h, 0:w]
-    return ((X - cx) / rx) ** 2 + ((Y - cy) / ry) ** 2 <= 1
-
-
-def outline(a, col=(34, 26, 44, 255)):
-    m = a[..., 3] > 0
-    d = m | np.roll(m, 1, 0) | np.roll(m, -1, 0) | np.roll(m, 1, 1) | np.roll(m, -1, 1)
-    a[d & ~m] = col
-    return a
-
 
 def tree(seed=20, w=56, h=72):
     r = rng(seed)

@@ -13,11 +13,12 @@ import os
 
 import numpy as np
 
+import tessera_path  # noqa: F401
 import characters as ch
 import environment as env
 import ui_art as ui
 import extras as ex
-from png import write_png, upscale
+from tspixel.png import write_png, upscale
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUT = os.path.join(ROOT, "unreal", "ImportSource", "Pixel")

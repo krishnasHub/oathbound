@@ -28,17 +28,18 @@ Last updated: 2026-10-06 (HD-2D, front end, day/night, ambient life, shields, pa
 
 | Path | What |
 |---|---|
-| `play.ps1` | **Root launcher**: "just play it". See §3. |
+| `play.ps1` | **Root launcher**: "just play it". See §3. A thin wrapper over Tessera's `Tools/Tessera.ps1` |
+| `tessera.json` | This game's settings for Tessera's tools: project, data sync, prepare scripts, art build, test scenarios (+ their switches), screenshot list |
 | `data/game-data.json` | **Single source of truth** for all gameplay data (classes, enemies, abilities, quests, dialogue, map, `world3d` visuals) |
 | `tools/sync-data.js` | Copies the data into `prototype/rpg-prototype.html` and `unreal/Content/Data/game-data.json`. Run it after every data edit (play.ps1 also runs it automatically). |
 | `prototype/rpg-prototype.html` | Standalone HTML top-down prototype |
 | `unreal/` | The UE 5.8 project (`ActionRPG.uproject`) |
 | `unreal/Plugins/Tessera` | Shared top-down HD-2D framework, **git submodule** (github.com/krishnasHub/tessera). See §7g |
 | `unreal/Plugins/Loom` | Shared story engine, **git submodule** (github.com/krishnasHub/loom). See §7g |
-| `unreal/Tools/rpg.ps1` | Developer commands: build, run, editor, prepare, shot, sync, test |
-| `unreal/Tools/*.py` | Headless editor scripts: `create_materials.py` (M_RPG_Glow/Telegraph/Fresnel/Flash), `fix_material_usage.py`, `import_pixel.py` (imports the pixel art; builds M_RPG_Sprite / PixelWorld / Minimap / NightShade), `audit_content.py` (which Content assets the game uses; writes `Content/.gitignore`) |
-| `tools/pixelart/` | Python + numpy (no PIL): `characters.py` (sprite sheets, portraits), `environment.py` (textures, props), `ui_art.py` (UI, minimap frames, fades), `extras.py` (cursors, backdrops, effects, ambient creatures), `build_all.py` (writes `unreal/ImportSource/Pixel/`) |
-| `tools/screenshots.ps1` | Retakes the README gallery (`docs/screenshots/*.jpg`) in parallel; `-Only <part of a name>` |
+| `unreal/Tools/rpg.ps1` | Developer commands (wrapper over Tessera.ps1): build, run, editor, prepare, art, shot, sync, test |
+| `unreal/Tools/*.py` | Headless editor scripts, on Tessera's `Tools/unreal/tessera_assets.py`: `create_materials.py` (M_RPG_Glow/Telegraph/Fresnel/Flash), `fix_material_usage.py`, `import_pixel.py` (imports the pixel art; builds M_RPG_Sprite / PixelWorld / NightShade and this game's Minimap), `audit_content.py` (which Content assets the game uses; writes `Content/.gitignore`) |
+| `tools/pixelart/` | Python + numpy (no PIL), on Tessera's `Tools/pixelart/tspixel` (PNG, colours, drawing, sheet layout; `tessera_path.py` puts it on the path): `characters.py` (sprite sheets, portraits), `environment.py` (textures, props), `ui_art.py` (UI, minimap frames, fades), `extras.py` (cursors, backdrops, effects, ambient creatures), `build_all.py` (writes `unreal/ImportSource/Pixel/`) |
+| `tools/screenshots.ps1` | Retakes the README gallery (`docs/screenshots/*.jpg`, list in `tessera.json`) in parallel; `-Only <part of a name>` |
 | `lookdev/` | Look comparisons (`index.html`: 3D / HD-2D / flat 2D; `crisp.html`: fog vs tilt-shift). Local only, not in git |
 | `Dist/Windows/ActionRPG.exe` | Packaged standalone game (rebuilt 2026-10-06) |
 | `README.md`, `unreal/README.md` | Controls, how to run, architecture |
@@ -57,7 +58,8 @@ cd C:\Users\krish\dev\action-rpg
 .\play.ps1                      # full-screen game, character select
 .\play.ps1 -Windowed -Class thief -Sex female   # skip character select
 .\play.ps1 -Test                # all self-test scenarios in parallel (sized to this PC; -Parallel N) -> PASS/FAIL table
-.\play.ps1 -Package             # build Dist\Windows\ActionRPG.exe (then launches it)
+.\play.ps1 -Test -Scenario walk  # one (or a few: walk,click), with its log lines
+.\play.ps1 -Package             # build Dist\Windows\ActionRPG.exe (then launches it; -NoLaunch: just build)
 .\play.ps1 -Rebuild             # force C++ rebuild
 ```
 `play.ps1` finds UE 5.8 automatically, syncs data if it is newer, rebuilds C++ if the source is newer than the DLL, and creates the materials if they are missing.
@@ -65,11 +67,13 @@ cd C:\Users\krish\dev\action-rpg
 Developer loop (from `unreal/`):
 ```powershell
 .\Tools\rpg.ps1 build
+.\Tools\rpg.ps1 art               # redraw the pixel art (python3 + numpy), then: prepare
 .\Tools\rpg.ps1 test -Scenario combat|block|elder|bridge|mage|thief|walk|picker|smoke|pause|click
 .\Tools\rpg.ps1 test -Scenario pose -Class mage|thief   # pose screenshots -> Saved/Screenshots/RPG/pose_*.png
 ```
 - **Last state (2026-10-06, after plugin phase 3):** all 11 tests PASS (combat, block, elder, bridge, mage, thief, walk, picker, smoke, pause, click). (Phase 2 also passed from a fresh clone with a clean build.)
-  - `click` sends real mouse events to the window, so it can fail when 8 windows run side by side (it passed alone, and in the next full run).
+  - `click` sends real mouse events; with 8 windows overlapping it sometimes hit another window. Fixed in phase 4: `ATSTestRunner::ClickAt` brings its window to the front (3 full runs in a row passed).
+  - `prepare` can't overwrite the committed assets while they're read-only (Git LFS "lockable"): clear the flag first, and `git checkout -- unreal/Content` after a check-only run to avoid LFS churn.
 - **Self-test command-line flags:**
   - `-RPGTest=<scenario>`, `-RPGClass`, `-RPGSex`
   - `-RPGNoInput`: use it in automated runs, otherwise keyboard typing leaks into the game window.
@@ -290,7 +294,14 @@ dynamic story. So the reusable code is moving into two plugins, each its own rep
     `STSToasts`, `STSAbilityPicker`, `FTSChoose`, `FTSUIStyle` / `TSUI`, `TSHUDDraw`. New data: `world3d.assets`
     { dialogueFade, titleFade, nightShade }, `world3d.text` { progressLost, pickerHint }, `title.footer`.
   - Still in the game: HUD layout, minimap (class-shaped frames), character select, panels, ability bar.
-  4: tooling (launcher, test harness, import scripts, pixel-art primitives).
+  4 done, tested and pushed (tools in any language are fine in a plugin, but never Unreal assets):
+  - `TesseraTest`: `ATSTestRunner` (the game's `ARPGSelfTest` derives: `RunStep`, `Report`, `Quit`, `Shot`, `ClickAt`) and
+    `TSTestSwitches` (`-RPGTest/Shot/ShotName/Cam/QuitAfter`; the game mode keeps `-RPGProbe`, `-RPGLowHP`).
+  - `Tools/Tessera.ps1`: the launcher (UE discovery, data sync, change-detecting build, first-run prepare, parallel
+    tests, package, shots, art); prefix and shot folder from `DefaultGame.ini [Tessera]`, the rest from `tessera.json`.
+  - `Tools/unreal/tessera_assets.py`: material builders + texture import; regenerated assets passed all tests.
+  - `Tools/pixelart/tspixel`: PNG, colour, canvas helpers, sheet layout; the game's 101 images regenerate byte-identical.
+  - Still in the game: its art definitions, minimap material, `audit_content.py` (lists this game's template assets), `sync-data.js` (inlines the HTML prototype).
 - Backup of everything before the split: `C:\Users\krish\dev\action-rpg-backup-2026-10-06` (full copy incl. `.git`).
 
 ## 8. Next steps / open threads

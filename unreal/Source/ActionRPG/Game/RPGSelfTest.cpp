@@ -31,12 +31,6 @@
 #include "Particles/ParticleSystemComponent.h"
 #include "UObject/UObjectIterator.h"
 
-ARPGSelfTest::ARPGSelfTest()
-{
-	PrimaryActorTick.bCanEverTick = true;
-	PrimaryActorTick.bTickEvenWhenPaused = true;   // keeps driving dialogue while the game is paused
-}
-
 ARPGPlayerCharacter* ARPGSelfTest::P() const { return URPGSession::Get(this)->Player(); }
 
 ARPGEnemy* ARPGSelfTest::Find(const FString& Type) const
@@ -60,21 +54,12 @@ void ARPGSelfTest::AimAt(const FVector& Point)
 	if (AController* C = Pl->GetController()) C->SetControlRotation(FRotator(-10, R.Yaw, 0));
 }
 
-void ARPGSelfTest::Report(const FString& Line)
+void ARPGSelfTest::RunStep()
 {
-	UE_LOG(LogRPG, Display, TEXT("[TEST %s t=%.1f] %s"), *Scenario, T, *Line);
-}
-
-void ARPGSelfTest::Tick(float Dt)
-{
-	Super::Tick(Dt);
-	T += Dt;
 	URPGSession* S = URPGSession::Get(this);
 	ARPGPlayerCharacter* Pl = P();
-	if (!Pl || T < Next) return;
+	if (!Pl) return;
 	const UTSData& D = UTSData::Get(this);
-	auto Quit = [&](float After) { Next = T + After; Step = 1000; };
-	if (Step == 1000) { Report(TEXT("done")); FPlatformMisc::RequestExit(false); Step = 1001; return; }
 
 	// ---------------------------------------------------------------------------------------------
 	if (Scenario == TEXT("combat"))
@@ -175,10 +160,7 @@ void ARPGSelfTest::Tick(float Dt)
 		{
 			// A left click in the middle of the game view, delivered through Slate like a real mouse.
 			TSharedPtr<SWindow> Win = GEngine && GEngine->GameViewport ? GEngine->GameViewport->GetWindow() : nullptr;
-			const FVector2D At = Win ? Win->GetPositionInScreen() + Win->GetSizeInScreen() * FVector2D(0.5f, 0.4f) : FVector2D(640, 300);
-			TSet<FKey> Held = { EKeys::LeftMouseButton };
-			FSlateApplication::Get().ProcessMouseButtonDownEvent(nullptr, FPointerEvent(0, 0, At, At, Held, EKeys::LeftMouseButton, 0, FModifierKeysState()));
-			FSlateApplication::Get().ProcessMouseButtonUpEvent(FPointerEvent(0, 0, At, At, TSet<FKey>(), EKeys::LeftMouseButton, 0, FModifierKeysState()));
+			ClickAt(Win ? Win->GetPositionInScreen() + Win->GetSizeInScreen() * FVector2D(0.5f, 0.4f) : FVector2D(640, 300));
 			Report(TEXT("clicked the game view while the dialogue is open"));
 			Step = 30; Next = T + 0.5f;
 		}
@@ -233,7 +215,7 @@ void ARPGSelfTest::Tick(float Dt)
 		}
 		else if (Step == 2)
 		{
-			FScreenshotRequest::RequestScreenshot(FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots/RPG/block.png")), true, false);
+			Shot(TEXT("block"));
 			Swings = int32(Pl->Stats->Health());
 			Target->State = ERPGEnemyState::Chase;
 			Step = 20; Next = T + 0.5f;   // let the slime attack the raised shield
@@ -360,12 +342,7 @@ void ARPGSelfTest::Tick(float Dt)
 		{
 			// Like playing: click on the game view first (the viewport takes the mouse), then the dialogue opens.
 			Place(Elder->GetActorLocation() + FVector(160, 140, -90), 0);
-			FSlateApplication& App = FSlateApplication::Get();
-			const FVector2D Mid = App.GetActiveTopLevelWindow().IsValid() ? App.GetActiveTopLevelWindow()->GetPositionInScreen() + App.GetActiveTopLevelWindow()->GetSizeInScreen() * 0.5f : FVector2D(800, 450);
-			TSet<FKey> Held = { EKeys::LeftMouseButton };
-			App.ProcessMouseMoveEvent(FPointerEvent(0, 0, Mid, Mid, TSet<FKey>(), EKeys::Invalid, 0, FModifierKeysState()));
-			App.ProcessMouseButtonDownEvent(nullptr, FPointerEvent(0, 0, Mid, Mid, Held, EKeys::LeftMouseButton, 0, FModifierKeysState()));
-			App.ProcessMouseButtonUpEvent(FPointerEvent(0, 0, Mid, Mid, TSet<FKey>(), EKeys::LeftMouseButton, 0, FModifierKeysState()));
+			ClickAt(WindowCentre());
 			Step = 10; Next = T + 0.3f;
 		}
 		else if (Step == 10)
@@ -380,17 +357,13 @@ void ARPGSelfTest::Tick(float Dt)
 			int32 Choice = INDEX_NONE;
 			for (int32 I = 0; I < S->Story()->ChoiceViews.Num() && Choice == INDEX_NONE; ++I) if (S->Story()->ChoiceViews[I].bEnabled) Choice = I;
 			const FVector2D At = PC->GetDialogue()->ChoiceScreenCenter(Choice);
-			FSlateApplication& App = FSlateApplication::Get();
-			App.ProcessMouseMoveEvent(FPointerEvent(0, 0, At, At - FVector2D(4, 0), TSet<FKey>(), EKeys::Invalid, 0, FModifierKeysState()));
-			TSet<FKey> Held = { EKeys::LeftMouseButton };
-			App.ProcessMouseButtonDownEvent(nullptr, FPointerEvent(0, 0, At, At, Held, EKeys::LeftMouseButton, 0, FModifierKeysState()));
-			App.ProcessMouseButtonUpEvent(FPointerEvent(0, 0, At, At, TSet<FKey>(), EKeys::LeftMouseButton, 0, FModifierKeysState()));
+			ClickAt(At);
 			Report(FString::Printf(TEXT("one click on choice %d (\"%s\") at %.0f,%.0f"), Choice + 1, *S->Story()->ChoiceViews[Choice].Text.Left(40), At.X, At.Y));
 			Step = 2; Next = T + 0.12f;
 		}
 		else if (Step == 2)
 		{
-			FScreenshotRequest::RequestScreenshot(FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots/RPG/click_chosen.png")), true, false);
+			Shot(TEXT("click_chosen"));
 			Step = 3; Next = T + 0.8f;
 		}
 		else if (Step == 3)
@@ -436,7 +409,7 @@ void ARPGSelfTest::Tick(float Dt)
 		}
 		else if (Step == 2)
 		{
-			FScreenshotRequest::RequestScreenshot(FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots/RPG/pause.png")), true, false);
+			Shot(TEXT("pause"));
 			Step = 3; Next = T + 1.f;
 		}
 		else if (Step == 3)
@@ -574,8 +547,7 @@ void ARPGSelfTest::Tick(float Dt)
 		}
 		else if (Step == 2)
 		{
-			const FString File = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots/RPG/elder.png"));
-			FScreenshotRequest::RequestScreenshot(File, true, false);
+			Shot(TEXT("elder"));
 			Step = 3; Next = T + 1.5f;
 		}
 		else if (Step == 3)
@@ -655,7 +627,7 @@ void ARPGSelfTest::Tick(float Dt)
 		if (Sh.Press) Pl->TestPress(Sh.Press, Sh.bDown);
 		if (Sh.Name)
 		{
-			FScreenshotRequest::RequestScreenshot(FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots/RPG") / FString(Sh.Name) + TEXT(".png")), true, false);
+			Shot(Sh.Name);
 			Report(FString::Printf(TEXT("%s (drawing=%d)"), Sh.Name, Pl->IsDrawing()));
 		}
 		++Swings;

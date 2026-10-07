@@ -24,8 +24,8 @@ From PowerShell in this folder (`action-rpg\unreal`):
 .\Tools\rpg.ps1 sync                  # copy ../data/game-data.json here and into the HTML prototype
 ```
 
-Data changes need no rebuild: sync and restart. Art changes: `python3 ../tools/pixelart/build_all.py`, then
-`prepare`.
+Data changes need no rebuild: sync and restart. Art changes: `.\Tools\rpg.ps1 art`, then `prepare`.
+These commands are Tessera's (`Plugins/Tessera/Tools/Tessera.ps1`), configured by `../tessera.json`.
 
 ## Controls
 

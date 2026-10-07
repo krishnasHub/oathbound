@@ -11,6 +11,7 @@
 #include "RPGNPC.h"
 #include "RPGHUD.h"
 #include "RPGSelfTest.h"
+#include "TSTestRunner.h"
 
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -95,46 +96,8 @@ void ARPGGameMode::RunSelfTests()
 
 	if (FParse::Param(Cmd, TEXT("RPGProbe"))) Probe();
 
-	FString CamSpec;
-	if (FParse::Value(Cmd, TEXT("RPGCam="), CamSpec, /*bShouldStopOnSeparator*/ false))
-	{
-		TArray<FString> P;
-		CamSpec.ParseIntoArray(P, TEXT(","));
-		if (P.Num() == 5)
-		{
-			const FVector Loc(FCString::Atof(*P[0]), FCString::Atof(*P[1]), FCString::Atof(*P[2]));
-			const FRotator Rot(FCString::Atof(*P[3]), FCString::Atof(*P[4]), 0);
-			ACameraActor* CamActor = GetWorld()->SpawnActor<ACameraActor>(Loc, Rot);
-			CamActor->GetCameraComponent()->SetFieldOfView(70.f);
-			CamActor->GetCameraComponent()->bConstrainAspectRatio = false;
-			// The controller re-targets its pawn on possession, so take over the view a moment later.
-			FTimerHandle H;
-			GetWorldTimerManager().SetTimer(H, [this, CamActor]()
-			{
-				if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
-				{
-					PC->bAutoManageActiveCameraTarget = false;
-					PC->SetViewTarget(CamActor);
-				}
-			}, 0.25f, false);
-		}
-	}
-
-	float ShotAt = 0.f;
-	if (FParse::Value(Cmd, TEXT("RPGShot="), ShotAt))
-	{
-		FString Name = TEXT("shot");
-		FParse::Value(Cmd, TEXT("RPGShotName="), Name);
-		const FString File = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots/RPG") / Name + TEXT(".png"));
-		FTimerHandle H;
-		GetWorldTimerManager().SetTimer(H, [File]()
-		{
-			FScreenshotRequest::RequestScreenshot(File, /*bShowUI*/ true, /*bAddFilenameSuffix*/ false);
-			UE_LOG(LogRPG, Display, TEXT("Screenshot requested: %s"), *File);
-		}, ShotAt, false);
-		FTimerHandle Q;
-		GetWorldTimerManager().SetTimer(Q, []() { FPlatformMisc::RequestExit(false); }, ShotAt + 2.f, false);
-	}
+	// -RPGTest= / -RPGShot= / -RPGCam= / -RPGQuitAfter= (Tessera's automation switches, with this game's runner).
+	TSTestSwitches::Run(GetWorld(), ARPGSelfTest::StaticClass());
 
 	// -RPGLowHP: drop the hero to 15% health after 3 s (to see the low-health warning).
 	if (FParse::Param(Cmd, TEXT("RPGLowHP")))
@@ -147,20 +110,6 @@ void ARPGGameMode::RunSelfTests()
 		}, 3.f, false);
 	}
 
-	FString Scenario;
-	if (FParse::Value(Cmd, TEXT("RPGTest="), Scenario))
-	{
-		ARPGSelfTest* Test = GetWorld()->SpawnActor<ARPGSelfTest>();
-		Test->Scenario = Scenario;
-		UE_LOG(LogRPG, Display, TEXT("Running self-test scenario '%s'"), *Scenario);
-	}
-
-	float QuitAfter = 0.f;
-	if (FParse::Value(Cmd, TEXT("RPGQuitAfter="), QuitAfter))
-	{
-		FTimerHandle Q;
-		GetWorldTimerManager().SetTimer(Q, []() { UE_LOG(LogRPG, Display, TEXT("Self-test run complete.")); FPlatformMisc::RequestExit(false); }, QuitAfter, false);
-	}
 }
 
 void ARPGGameMode::Probe()

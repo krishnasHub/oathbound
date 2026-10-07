@@ -15,21 +15,16 @@ import math
 
 import numpy as np
 
+import tessera_path  # noqa: F401
+from tspixel import sheet as layout
+from tspixel.color import hex_color as C, mix  # noqa: F401  (C and mix are used across the art modules)
+
 S = 32          # logical frame size: all drawing coordinates are in these units
 RES = 2         # output texels per logical unit (64 x 64 frames): smoother curves, finer outlines
 N = S * RES     # frame size in texels
-DIRS = ("down", "up", "side")
-ACTIONS = (("idle", 2), ("walk", 4), ("attack", 4), ("hurt", 1))
+DIRS = layout.DIRS
+ACTIONS = layout.ACTIONS
 OUTLINE = (34, 26, 44, 255)
-
-
-def C(hexstr, a=255):
-    h = hexstr.lstrip("#")
-    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), a)
-
-
-def mix(c, d, t):
-    return tuple(int(round(c[i] * (1 - t) + d[i] * t)) for i in range(3)) + (c[3],)
 
 
 def shadow_of(c):
@@ -553,24 +548,14 @@ def slime(spec, d, action, f):
 
 def sheet(spec):
     draw = slime if spec.get("kind") == "slime" else humanoid
-    out = np.zeros((N * 13, N * 4, 4), np.uint8)
-    for di, d in enumerate(DIRS):
-        for ai, (action, n) in enumerate(ACTIONS):
-            for f in range(n):
-                row = di * 4 + ai
-                out[row * N:(row + 1) * N, f * N:(f + 1) * N] = draw(spec, d, action, f)
     # dead: the front idle frame lying on its side, sunk to the ground
-    dead = np.rot90(draw(spec, "down", "hurt", 0), k=-1 if spec.get("kind") != "slime" else 0)
     if spec.get("kind") == "slime":
-        dead = draw(dict(spec, torso="#4a8a3a"), "down", "hurt", 0)
-        dead = np.roll(dead, 3 * RES, axis=0)
+        dead = np.roll(draw(dict(spec, torso="#4a8a3a"), "down", "hurt", 0), 3 * RES, axis=0)
     else:
-        dead = np.roll(dead, 6 * RES, axis=0)
-    out[12 * N:13 * N, 0:N] = dead
-    # guard (shield raised), one frame per direction: row 12, columns 1-3 = down, up, side
-    for di, d in enumerate(DIRS):
-        out[12 * N:13 * N, (1 + di) * N:(2 + di) * N] = draw(spec, d, "guard" if spec.get("kind") != "slime" else "idle", 0)
-    return out
+        dead = np.roll(np.rot90(draw(spec, "down", "hurt", 0), k=-1), 6 * RES, axis=0)
+    # guard (shield raised), one frame per direction
+    guard = lambda d: draw(spec, d, "guard" if spec.get("kind") != "slime" else "idle", 0)
+    return layout.build(lambda d, action, f: draw(spec, d, action, f), N, dead, guard)
 
 
 SPECS = {

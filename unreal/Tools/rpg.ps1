@@ -1,17 +1,19 @@
 <#
-  Build / run / test the Unreal version of the action RPG.
+  Developer commands for the Unreal version of the action RPG, on Tessera's tools
+  (Plugins/Tessera/Tools/Tessera.ps1, configured by ../tessera.json).
 
     .\Tools\rpg.ps1 build                 compile the C++ (needed after any code change)
     .\Tools\rpg.ps1 run                   play (windowed). Add -Class mage -Sex female to skip character select
     .\Tools\rpg.ps1 editor                open the project in the Unreal Editor
-    .\Tools\rpg.ps1 prepare               one-time asset fix-ups (material flags) — already done, rerun if Content changes
+    .\Tools\rpg.ps1 prepare               regenerate the materials and pixel textures (Content/RPG)
+    .\Tools\rpg.ps1 art                   redraw the pixel art (tools/pixelart -> ImportSource/Pixel); then prepare
     .\Tools\rpg.ps1 shot -Name village -Cam "2100,3600,900,-18,-70"   screenshot from a fixed camera, then quit
     .\Tools\rpg.ps1 sync                  copy data/game-data.json into this project and the HTML prototype
-
-  Requires Unreal Engine 5.8 at the path below (change $UE if yours lives elsewhere).
+    .\Tools\rpg.ps1 test -Scenario walk   one self-test scenario (or several: walk,click), with its log lines
+    .\Tools\rpg.ps1 test -Scenario pose -Class thief   pose screenshots -> Saved/Screenshots/RPG/pose_*.png
 #>
 param(
-    [Parameter(Position = 0)] [ValidateSet("build", "run", "editor", "prepare", "shot", "sync", "test")] [string] $Command = "run",
+    [Parameter(Position = 0)] [ValidateSet("build", "run", "editor", "prepare", "art", "shot", "sync", "test")] [string] $Command = "run",
     [string] $Class = "",
     [string] $Sex = "",
     [string] $Name = "shot",
@@ -21,53 +23,17 @@ param(
     [string] $Scenario = "combat"
 )
 
-$ErrorActionPreference = "Stop"
-$UE = "C:\Program Files\Epic Games\UE_5.8"
-$ProjDir = Split-Path -Parent $PSScriptRoot
-$Proj = Join-Path $ProjDir "ActionRPG.uproject"
-$Editor = Join-Path $UE "Engine\Binaries\Win64\UnrealEditor.exe"
-
-function Game-Args {
-    $a = @("`"$Proj`"", "-game", "-windowed", "-ResX=1600", "-ResY=900", "-log")
-    if ($Class) { $a += "-RPGClass=$Class" }
-    if ($Sex) { $a += "-RPGSex=$Sex" }
-    if ($Extra) { $a += $Extra }
-    return $a
-}
+$tessera = Join-Path $PSScriptRoot "..\Plugins\Tessera\Tools\Tessera.ps1"
+$config = Join-Path $PSScriptRoot "..\..\tessera.json"
+$extraArgs = @()
+if ($Class) { $extraArgs += "-RPGClass=$Class" }
+if ($Sex) { $extraArgs += "-RPGSex=$Sex" }
+if ($Extra) { $extraArgs += ($Extra -split " " | Where-Object { $_ }) }
 
 switch ($Command) {
-    "build" {
-        & "$UE\Engine\Build\BatchFiles\Build.bat" ActionRPGEditor Win64 Development -Project="$Proj" -WaitMutex
-        if ($LASTEXITCODE -ne 0) { throw "Build failed" }
-    }
-    "run" {
-        Start-Process -FilePath $Editor -ArgumentList (Game-Args)
-    }
-    "editor" {
-        Start-Process -FilePath $Editor -ArgumentList "`"$Proj`""
-    }
-    "prepare" {
-        foreach ($script in @("fix_material_usage.py", "create_materials.py", "import_pixel.py")) {
-            & "$UE\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "$Proj" -run=pythonscript -script="$PSScriptRoot\$script" -unattended -nosplash -nullrhi
-        }
-    }
-    "shot" {
-        $a = (Game-Args) + @("-RPGShot=$At", "-RPGShotName=$Name")
-        if ($Cam) { $a += "-RPGCam=$Cam" }
-        $p = Start-Process -FilePath $Editor -ArgumentList $a -PassThru
-        $p.WaitForExit()
-        Write-Host "Screenshot: $ProjDir\Saved\Screenshots\RPG\$Name.png"
-    }
-    "test" {
-        $cls = if ($Class) { $Class } else { @{ combat = "knight"; bridge = "knight"; mage = "mage"; thief = "thief"; elder = "knight"; block = "knight"; pose = "mage"; walk = "knight"; picker = "mage"; smoke = "thief"; pause = "knight"; click = "knight" }[$Scenario] }
-        $a = @("`"$Proj`"", "-game", "-windowed", "-ResX=1280", "-ResY=720", "-log", "-RPGNoInput", "-RPGTest=$Scenario", "-RPGClass=$cls")
-        if ($At -ne 25) { $a += @("-RPGShot=$At", "-RPGShotName=$(if ($Name -ne "shot") { $Name } else { $Scenario })") }
-        if ($Extra) { $a += $Extra }
-        $p = Start-Process -FilePath $Editor -ArgumentList $a -PassThru
-        $p.WaitForExit()
-        Select-String -Path (Join-Path $ProjDir "Saved\Logs\ActionRPG.log") -Pattern "\[TEST" | ForEach-Object { $_.Line -replace "^\[.*?\]\[.*?\]LogRPG: Display: ", "" }
-    }
-    "sync" {
-        node (Join-Path (Split-Path -Parent $ProjDir) "tools\sync-data.js")
-    }
+    "run"  { & $tessera -Config $config play -Windowed -GameArgs $extraArgs }
+    "shot" { & $tessera -Config $config shot -Name $Name -At $At -Cam $Cam -GameArgs $extraArgs }
+    "test" { & $tessera -Config $config test -Scenario $Scenario -GameArgs $extraArgs }
+    default { & $tessera -Config $config $Command }
 }
+exit $LASTEXITCODE

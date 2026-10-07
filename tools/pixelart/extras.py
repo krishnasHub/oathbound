@@ -18,39 +18,15 @@ import numpy as np
 import characters as ch
 from characters import C, mix, shadow_of, light_of
 from environment import blank, ellipse_mask, outline
+from tspixel.canvas import disc, line, poly_mask, vgrad, noise_band  # noqa: F401
 
 OUT_LINE = (34, 26, 44, 255)
-
-
-def disc(a, cx, cy, r, col):
-    h, w, _ = a.shape
-    a[ellipse_mask(w, h, cx, cy, r, r)] = col
-
-
-def line(a, x0, y0, x1, y1, col, width=1):
-    n = int(max(abs(x1 - x0), abs(y1 - y0)) * 2) + 1
-    h, w, _ = a.shape
-    for i in range(n + 1):
-        t = i / n
-        x, y = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
-        for dx in range(-(width // 2), width - width // 2):
-            for dy in range(-(width // 2), width - width // 2):
-                xi, yi = int(round(x + dx)), int(round(y + dy))
-                if 0 <= xi < w and 0 <= yi < h:
-                    a[yi, xi] = col
 
 
 # --- cursors ----------------------------------------------------------------------------------------
 
 def _poly_mask(pts, n=40):
-    Y, X = np.mgrid[0:n, 0:n] + 0.5
-    inside = np.zeros((n, n), bool)
-    m = len(pts)
-    for i in range(m):
-        x0, y0 = pts[i]; x1, y1 = pts[(i + 1) % m]
-        cond = ((y0 > Y) != (y1 > Y)) & (X < (x1 - x0) * (Y - y0) / (y1 - y0 + 1e-9) + x0)
-        inside ^= cond
-    return inside
+    return poly_mask(pts, n)
 
 
 def cur_pointer():
@@ -148,22 +124,6 @@ CURSORS = {"pointer": cur_pointer, "sword": cur_sword, "dagger": cur_dagger, "wa
 # --- backdrops -------------------------------------------------------------------------------------
 
 W, H, FLOOR = 240, 200, 160
-
-
-def vgrad(a, y0, y1, c0, c1):
-    for y in range(y0, y1):
-        t = (y - y0) / max(1, y1 - y0 - 1)
-        a[y, :] = mix(C(c0), C(c1), t)
-
-
-def noise_band(a, y0, y1, base, seed, jag=6, step=3):
-    r = np.random.default_rng(seed)
-    h = 0.0
-    for x in range(0, W):
-        if x % step == 0:
-            h = np.clip(h + r.uniform(-jag, jag) * 0.4, -jag, jag)
-        top = int(y0 + h)
-        a[max(0, top):y1, x] = C(base)
 
 
 def bd_knight():

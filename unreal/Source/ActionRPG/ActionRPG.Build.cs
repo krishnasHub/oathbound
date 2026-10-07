@@ -27,6 +27,7 @@ public class ActionRPG : ModuleRules
 			"TesseraGameplay",          // characters, stats, combat, abilities, items, loot, feedback, perception
 			"TesseraHero",              // camera rig, click-to-move, cursor, talk mode, ability picker
 			"TesseraUI",                // dialogue box, title, pause menu, cursor, night shade, toasts, HUD drawing
+			"TesseraTest",              // self-test runner and automation switches
 			"Loom"                      // story engine (Plugins/Loom)
 		});
 

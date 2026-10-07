@@ -1,0 +1,33 @@
+{
+  "_doc": "How Tessera's tools (unreal/Plugins/Tessera/Tools/Tessera.ps1, via play.ps1) build, test and package this game. The command-line prefix (RPG) comes from unreal/Config/DefaultGame.ini [Tessera].",
+  "engine": "5.8",
+  "project": "unreal/ActionRPG.uproject",
+  "dist": "Dist",
+  "data": { "source": "data/game-data.json", "target": "unreal/Content/Data/game-data.json", "sync": "tools/sync-data.js" },
+  "prepare": {
+    "scripts": [ "unreal/Tools/fix_material_usage.py", "unreal/Tools/create_materials.py", "unreal/Tools/import_pixel.py" ],
+    "needs": [ "unreal/Content/RPG/Materials/M_RPG_Glow.uasset", "unreal/Content/RPG/Materials/M_RPG_Sprite.uasset" ]
+  },
+  "art": { "build": "tools/pixelart/build_all.py" },
+  "tests": {
+    "combat": "-RPGClass=knight", "block": "-RPGClass=knight", "elder": "-RPGClass=knight", "bridge": "-RPGClass=knight",
+    "mage": "-RPGClass=mage", "thief": "-RPGClass=thief", "walk": "-RPGClass=knight", "picker": "-RPGClass=mage",
+    "smoke": "-RPGClass=thief", "pause": "-RPGClass=knight", "click": "-RPGClass=knight"
+  },
+  "shots": {
+    "out": "docs/screenshots",
+    "list": {
+      "01-title":         { "at": 1.5,  "args": "" },
+      "02-select-mage":   { "at": 10.6, "args": "-RPGAutoSelect=mage" },
+      "03-select-thief":  { "at": 13.4, "args": "-RPGAutoSelect=thief" },
+      "04-select-knight": { "at": 11.5, "args": "-RPGAutoSelect=knight" },
+      "05-village-day":   { "at": 9,    "args": "-RPGClass=knight -RPGHour=13" },
+      "06-golden-hour":   { "at": 9,    "args": "-RPGClass=mage -RPGSex=female -RPGHour=18.6" },
+      "07-deep-night":    { "at": 9,    "args": "-RPGClass=thief -RPGHour=22.5" },
+      "08-bridge-duel":   { "at": 4.5,  "args": "-RPGClass=knight -RPGTest=bridge" },
+      "09-arrow-flight":  { "at": 1.25, "args": "-RPGClass=thief -RPGTest=thief" },
+      "10-conversation":  { "at": 6,    "args": "-RPGClass=knight -RPGTest=elder", "png": "elder" },
+      "11-ability-pick":  { "at": 1.0,  "args": "-RPGClass=mage -RPGTest=picker" }
+    }
+  }
+}
