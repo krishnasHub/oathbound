@@ -128,7 +128,7 @@ def main():
                      ("FX_Petal", ex.fx_petal), ("FX_Ray", ex.fx_ray), ("FX_Coin", ex.fx_coin), ("FX_Bolt", ex.fx_bolt),
                      ("FX_Runes", ex.fx_runes), ("FX_RunesSpin", ex.fx_runes_spin), ("FX_Page", ex.fx_page), ("FX_Spark", ex.fx_spark),
                      ("SPR_Ninja", ex.spr_ninja), ("SPR_Chest", ex.spr_chest), ("SPR_Book", ex.spr_book),
-                     ("SPR_Bird", ex.spr_bird), ("SPR_Goose", ex.spr_goose)):
+                     ("SPR_Bird", ex.spr_bird), ("SPR_Goose", ex.spr_goose), ("SPR_Ghost", ex.spr_ghost)):
         write_png(os.path.join(OUT, f"{name}.png"), fn()); n += 1
     write_png(os.path.join(OUT, "SPR_sneak.png"), ch.sheet(ex.SNEAK)); n += 1
     rows = map_rows()

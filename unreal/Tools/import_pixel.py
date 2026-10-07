@@ -12,6 +12,7 @@ Run headless:
   M_RPG_PixelWorld  opaque, lit: a 32 px texture projected by world position on whichever axis a face
                     points along (no UVs needed), Size = world units per texture repeat
   M_RPG_NightShade  UI overlay for deep night (Tessera's STSNightShade)
+  M_RPG_SpriteSeeThrough  the sprite card, translucent (a fallen foe's ghost)
   M_RPG_Minimap     this game's minimap: a window of the baked map cut to the class-shaped mask
 """
 import os
@@ -31,6 +32,7 @@ ta.import_textures(SRC, DEST, smooth_prefixes=("POR_",))   # portraits: high-res
 ta.sprite(MATS, "M_RPG_Sprite", default_texture=DEST + "/SPR_knight_m")
 ta.pixel_world(MATS, "M_RPG_PixelWorld", default_texture=DEST + "/TX_grass")
 ta.night_shade(MATS, "M_RPG_NightShade")
+ta.sprite(MATS, "M_RPG_SpriteSeeThrough", default_texture=DEST + "/SPR_Ghost", cols=4.0, rows=1.0, see_through=True)   # ghosts
 if eal.does_asset_exist(MATS + "/M_RPG_NightVision"):
     eal.delete_asset(MATS + "/M_RPG_NightVision")   # replaced by the UI overlay above
 

@@ -68,12 +68,14 @@ Developer loop (from `unreal/`):
 ```powershell
 .\Tools\rpg.ps1 build
 .\Tools\rpg.ps1 art               # redraw the pixel art (python3 + numpy), then: prepare
-.\Tools\rpg.ps1 test -Scenario combat|block|elder|bridge|mage|thief|walk|picker|smoke|pause|click|frost|barrier|night|scars
+.\Tools\rpg.ps1 test -Scenario combat|block|elder|bridge|mage|thief|walk|picker|smoke|pause|click|frost|barrier|night|scars|ghost
 .\Tools\rpg.ps1 test -Scenario pose -Class mage|thief   # pose screenshots -> Saved/Screenshots/RPG/pose_*.png
 ```
-- **Last state (2026-10-07):** all 15 tests PASS (combat, block, elder, bridge, mage, thief, walk, picker, smoke, pause, click, frost, barrier, night, scars). (Phase 2 also passed from a fresh clone with a clean build.)
+- **Last state (2026-10-07):** all 16 tests PASS (combat, block, elder, bridge, mage, thief, walk, picker, smoke, pause, click, frost, barrier, night, scars, ghost). (Phase 2 also passed from a fresh clone with a clean build.)
   - `click` sends real mouse events; with 8 windows overlapping it sometimes hit another window. Fixed in phase 4: `ATSTestRunner::ClickAt` brings its window to the front (3 full runs in a row passed).
-  - `prepare` can't overwrite the committed assets while they're read-only (Git LFS "lockable"): clear the flag first, and `git checkout -- unreal/Content` after a check-only run to avoid LFS churn.
+  - `prepare` can't overwrite the committed assets while they're read-only (Git LFS "lockable"): clear the flag first. To keep
+    only new assets, restore the rest with `git checkout -- unreal/Content/RPG` (not all of `unreal/Content`: that also
+    reverts the synced `Data/game-data.json`; if it happens, rerun `node tools/sync-data.js`).
 - **Self-test command-line flags:**
   - `-RPGTest=<scenario>`, `-RPGClass`, `-RPGSex`
   - `-RPGNoInput`: use it in automated runs, otherwise keyboard typing leaks into the game window.
@@ -320,6 +322,11 @@ dynamic story. So the reusable code is moving into two plugins, each its own rep
   (1000 -> 1450 uu). Event-driven: Tessera's `UTSDayNight` publishes `OnPhase` / `OnHour` / `OnNightLevel`; the hero
   (game code) listens and drives the orb light and `ATSSky::SetCarriedLight`; numbers on the orb's `nightLight` in data.
   Test: `night` (-RPGHour=23).
+- **Death ghosts**: Tessera announces deaths (`UTSCharacterEvents::OnDied`); the session spawns `ARPGGhost` for enemies: a
+  see-through pixel ghost (`SPR_Ghost`, `M_RPG_SpriteSeeThrough`) rises from the body, wiggles and fades (`world3d.deathGhost`).
+  If it was the last foe around (none within `scaredVicinity`) it sometimes (`scaredChance` 0.5) gets a fright: a "!", a
+  scared face whose eyes follow the hero (5 directions + mirror), then it flees the other way. Tests: `combat`, `ghost`
+  (`-RPGGhostScared`).
 - **Architecture rule (user, 2026-10-07):** decoupled and event-driven. Tessera / Loom publish events and offer hooks;
   the game listens and acts. Loom and Tessera never know about each other: the game bridges them (e.g. time of day to Loom).
 

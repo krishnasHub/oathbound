@@ -9,6 +9,8 @@ Pixel art for cursors, the character-select backdrops and the ambient wildlife.
   SPR_Book        1 x 4 frames (64 x 40): closed, opening, open, glowing
   SPR_Bird        1 x 4 frames (32 x 32): sit, peck, wings up, wings down
   SPR_Goose       1 x 4 frames (48 x 48): walk, walk, honk, graze
+  SPR_Ghost       1 x 4 frames (64 x 64): a puff of ghostly gas with two big eyes, its wavy tail swaying
+                  (drawn opaque; the game shows it see-through)
   SPR_Sneak       the standard 4 x 13 character sheet: a hooded night prowler
 """
 import math
@@ -501,6 +503,59 @@ def spr_goose():
         a[43:45, 16 + legs[0]:22 + legs[0]] = orange; a[43:45, 22 + legs[1]:28 + legs[1]] = orange
         frames.append(outline(a))
     return np.concatenate(frames, axis=1)
+
+
+GHOST_LOOKS = ((1, 0), (0.7, -0.7), (0, -1), (0.7, 0.7), (0, 1))   # pupils: right, up-right, up, down-right, down
+
+
+def spr_ghost(frames=4):
+    """A fallen foe's ghost: a round puff of gas with a wavy, swaying tail, two big dark eyes and a little 'o' mouth.
+    Frames 0-3 calm; then the scared face (wide white eyes, a big 'O') looking each of GHOST_LOOKS in turn, 4 frames
+    each: right, up-right, up, down-right, down (the game mirrors them to look left)."""
+    out = []
+    n = 64
+    Y, X = np.mgrid[0:n, 0:n].astype(float)
+    body, shade, glint = C("#eef2ff"), C("#b9c6f2"), C("#ffffff")
+    looks = [None] + list(GHOST_LOOKS)
+    for look, f in [(l, f) for l in looks for f in range(frames)]:
+        scared = look is not None
+        a = blank(n, n)
+        sway = math.sin(f / frames * 2 * math.pi) * 3.0
+        # Head: a dome; below it the body tapers to a tail that sways with the frame.
+        head = ((X - 32) / 17) ** 2 + ((Y - 24) / 15) ** 2 <= 1
+        t = np.clip((Y - 24) / 30.0, 0, 1)                       # 0 at the head's middle, 1 at the tail tip
+        cx = 32 + sway * t * t * 2.2                              # the tail bends with the sway
+        half = 17 * (1 - t) ** 0.8 + 2
+        wave = 2.2 * np.sin(Y / 3.0 + f * 1.6)                    # wavy edges, like drifting smoke
+        tail = (Y >= 24) & (Y <= 56) & (np.abs(X - cx - wave * t) <= half)
+        m = head | tail
+        a[m] = body
+        # Soft shading on the lower right, and a few wisps peeling off the tail.
+        a[m & ((X - 32) * 0.4 + (Y - 24) * 0.6 > 9)] = shade
+        for k, (wx, wy, r) in enumerate(((22, 50, 2.2), (44, 46, 1.8), (36, 58, 1.6))):
+            dy = (f + k) % frames
+            disc(a, wx + sway * 0.6, wy - dy * 1.5, r, shade if k % 2 else body)
+        if scared:
+            # Wide white eyes, pupils hard to the right; a big 'O' of fright.
+            for ex in (25, 38):
+                ring = ((X - ex) / 5.0) ** 2 + ((Y - 21) / 6.2) ** 2
+                a[ring <= 1.25] = C("#1d1a2a")
+                a[ring <= 1] = glint
+                a[((X - ex - look[0] * 2.4) / 2.3) ** 2 + ((Y - 21 - look[1] * 2.8) / 2.8) ** 2 <= 1] = C("#1d1a2a")
+            d = ((X - 31.5) / 4.4) ** 2 + ((Y - 35) / 5.0) ** 2
+            a[d <= 1] = C("#3a3456")
+            a[d <= 0.35] = C("#6a6290")
+        else:
+            # Eyes: two tall dark ovals with a glint; a small round mouth.
+            for ex in (25, 38):
+                eye = ((X - ex) / 3.6) ** 2 + ((Y - 22) / 5.2) ** 2 <= 1
+                a[eye] = C("#1d1a2a")
+                a[18:20, ex - 2:ex] = glint                        # a highlight up-left
+            d = ((X - 31.5) / 3.2) ** 2 + ((Y - 33) / 2.8) ** 2
+            a[d <= 1] = C("#3a3456")                               # a little 'o' of surprise
+            a[d <= 0.3] = C("#6a6290")
+        out.append(outline(a, (120, 132, 190, 255)))
+    return np.concatenate(out, axis=1)
 
 
 SNEAK = dict(skin="#d8b090", torso="#2a2630", sleeve="#221e28", legs="#1e1a22", boots="#141016", belt="#4a3a2a",

@@ -50,8 +50,12 @@
       "hitEffect": "/Game/Variant_Combat/VFX/NS_Damage.NS_Damage", "smoke": "/Game/StarterContent/Particles/P_Smoke.P_Smoke",
       "coin": "M_Metal_Gold", "kitPart": "M_Metal_Steel",
       "dialogueFade": "/Game/RPG/Pixel/UI_FadeRadial.UI_FadeRadial", "titleFade": "/Game/RPG/Pixel/UI_Fade.UI_Fade",
-      "nightShade": "/Game/RPG/Materials/M_RPG_NightShade.M_RPG_NightShade"
+      "nightShade": "/Game/RPG/Materials/M_RPG_NightShade.M_RPG_NightShade",
+      "spriteSeeThrough": "/Game/RPG/Materials/M_RPG_SpriteSeeThrough.M_RPG_SpriteSeeThrough"
     },
+    "deathGhost": { "_doc": "A fallen foe's ghost rises, wiggles and fades (ARPGGhost). Sizes in uu, times in s.",
+      "sheet": "SPR_Ghost", "frames": 4, "size": 200, "rise": 300, "life": 2.8, "delay": 0.4, "wiggle": 28, "wiggleSpeed": 1.6, "opacity": 0.75, "emissive": 0.6,
+      "scaredChance": 0.5, "scaredVicinity": 1800, "fleeDistance": 900, "scaredLife": 3.4 },
     "currencyKey": "gold",
     "text": {
       "_doc": "Overrides for words Tessera shows (defaults are generic English).",

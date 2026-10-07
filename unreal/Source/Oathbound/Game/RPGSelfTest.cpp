@@ -11,6 +11,7 @@
 #include "GameFramework/GameModeBase.h"
 #include "RPGEnemy.h"
 #include "RPGNPC.h"
+#include "RPGGhost.h"
 #include "TSFX.h"
 #include "TSSky.h"
 #include "TSDayNight.h"
@@ -83,7 +84,10 @@ void ARPGSelfTest::RunStep()
 			if (!Target.IsValid() || Target->IsDead())
 			{
 				Report(FString::Printf(TEXT("slime dead after %d swings. XP %d, level %d, quest %s, stamina %.0f"), Swings, Pl->Xp, Pl->Level(), *S->Story()->ProgressText(TEXT("slime_cull")), Pl->Stats->Pool(RPGStat::Stamina).Current));
-				Step = 2; Next = T + 2.f;
+				int32 Ghosts = 0;
+				for (TActorIterator<ARPGGhost> It(GetWorld()); It; ++It) ++Ghosts;
+				Report(FString::Printf(TEXT("%s: its ghost rises (%d)"), Ghosts > 0 ? TEXT("PASS") : TEXT("FAIL"), Ghosts));
+				Step = 20; Next = T + 1.1f;
 				return;
 			}
 			AimAt(Target->GetActorLocation());
@@ -94,6 +98,11 @@ void ARPGSelfTest::RunStep()
 			++Swings;
 			Next = T + 0.35f;
 			if (T > 25.f) { Report(TEXT("FAIL: slime never died")); Quit(0.5f); }
+		}
+		else if (Step == 20)
+		{
+			Shot(TEXT("ghost"));   // mid-rise
+			Step = 2; Next = T + 0.9f;
 		}
 		else if (Step == 2)
 		{
@@ -610,6 +619,38 @@ void ARPGSelfTest::RunStep()
 		{
 			Shot(TEXT("scars"));
 			Report(FString::Printf(TEXT("%s: marks left on the ground: %d (each spell: a chance, a new pattern)"), Scars() > 0 ? TEXT("PASS") : TEXT("FAIL"), Scars()));
+			Quit(0.5f);
+		}
+	}
+	else if (Scenario == TEXT("ghost"))
+	{
+		// Run with -RPGGhostScared: the slime's ghost spots the hero and flees the other way.
+		if (Step == 0)
+		{
+			Target = Find(TEXT("slime"));
+			Place(Target->GetActorLocation() - FVector(200, 0, 0), 0.f);
+			Target->Stats->Health() = 1.f;
+			AimAt(Target->GetActorLocation());
+			Pl->TestPress(TEXT("Ability1"), true);   // a shield bash finishes it
+			Step = 1; Next = T + 0.2f;
+		}
+		else if (Step == 1)
+		{
+			if (Target.IsValid() && !Target->IsDead()) { Target->Die(Pl); }
+			Step = 2; Next = T + 1.7f;   // in its fright, looking at the hero
+		}
+		else if (Step == 2)
+		{
+			Shot(TEXT("ghost_scared"));   // frightened, eyes on the hero
+			Step = 3; Next = T + 1.4f;   // near the end of its flight
+		}
+		else if (Step == 3)
+		{
+			const ARPGGhost* Gh = nullptr;
+			for (TActorIterator<ARPGGhost> It(GetWorld()); It; ++It) Gh = *It;
+			const float Away = Gh ? FVector::Dist2D(Gh->GetActorLocation(), Pl->GetActorLocation()) : 0.f;
+			Report(FString::Printf(TEXT("%s: the ghost got scared and fled from the hero (scared %d, drifted %.0fuu, now %.0fuu from the hero)"),
+				Gh && Gh->IsScared() && Gh->Drift() > 300.f ? TEXT("PASS") : TEXT("FAIL"), Gh ? Gh->IsScared() : 0, Gh ? Gh->Drift() : 0.f, Away));
 			Quit(0.5f);
 		}
 	}

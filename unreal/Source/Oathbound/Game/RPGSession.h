@@ -63,6 +63,8 @@ public:
 
 private:
 	void Bind(ULMStory* L);
+	/** Tessera's death event: a fallen enemy's ghost rises (ARPGGhost). */
+	void OnCharacterDied(ATSCharacter* Who, AActor* Killer);
 	void UpdateEncounters();
 	float EncounterCooldown = 0.f;
 	bool bDebug = false;

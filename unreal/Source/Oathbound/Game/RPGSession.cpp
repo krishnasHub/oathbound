@@ -13,6 +13,8 @@
 #include "TSAssets.h"
 #include "TSSprite.h"
 #include "TSPerception.h"
+#include "TSCharacterEvents.h"
+#include "RPGGhost.h"
 #include "Engine/Texture2D.h"
 
 #include "EngineUtils.h"
@@ -49,6 +51,7 @@ void URPGSession::OnWorldBeginPlay(UWorld& InWorld)
 {
 	Super::OnWorldBeginPlay(InWorld);
 	Bind(Story());
+	if (UTSCharacterEvents* Events = UTSCharacterEvents::Get(this)) Events->OnDied.AddUObject(this, &URPGSession::OnCharacterDied);
 }
 
 void URPGSession::SetDebug(bool bOn)
@@ -124,6 +127,11 @@ void URPGSession::OpenDialogue(ATSCharacter* Npc, const FString& NodeId)
 FString URPGSession::MarkerFor(const ATSCharacter* Npc) const
 {
 	return Npc ? Story()->MarkerFor(Npc->DialogueRoot) : FString();
+}
+
+void URPGSession::OnCharacterDied(ATSCharacter* Who, AActor* Killer)
+{
+	if (Cast<ARPGEnemy>(Who)) ARPGGhost::Rise(Who);   // only foes give up the ghost (villagers don't die; the hero respawns)
 }
 
 ARPGCharacterBase* URPGSession::DialogueNpc() const { return Cast<ARPGCharacterBase>(Story()->Speaker()); }
