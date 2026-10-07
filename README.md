@@ -1,4 +1,4 @@
-# Action RPG
+# Oathbound
 
 A top-down action RPG in the HD-2D style (pixel-art characters standing in a lit 3D world) where talking matters as
 much as fighting. There are four classes (Knight, Mage, Thief, Scholar), two sexes, class-specific combat and

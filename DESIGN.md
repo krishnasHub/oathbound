@@ -1,4 +1,4 @@
-# Action RPG — Mechanics Design (v0.1)
+# Oathbound — Mechanics Design (v0.1)
 
 Working title: TBD. Setting: TBD (mechanics-first; the prototype uses neutral placeholder fantasy).
 

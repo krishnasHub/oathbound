@@ -1,4 +1,4 @@
-# SO FAR — Action RPG handoff
+# SO FAR — Oathbound handoff
 
 Read this first at the start of a session. It records where the project stands, how it is built, the conventions that matter, and what to do next.
 Last updated: 2026-10-06 (HD-2D, front end, day/night, ambient life, shields, parallel tests, screenshots, slim git; Tessera + Loom plugins, phases 1-3).

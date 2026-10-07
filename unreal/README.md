@@ -1,4 +1,4 @@
-# Action RPG — Unreal Engine 5.8
+# Oathbound — Unreal Engine 5.8
 
 The game, top-down in the HD-2D style: pixel-art sprite characters standing in a lit 3D world (Lumen, real
 shadows, a day/night cycle, fog), driven by the same rules and data as the HTML test bed

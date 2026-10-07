@@ -1,5 +1,5 @@
 {
-  "title": { "_doc": "Title screen text (placeholder name until the game has one).", "name": "Action RPG", "tagline": "Talking matters as much as fighting.", "footer": "prototype  \u00b7  placeholder art" },
+  "title": { "_doc": "Title screen text.", "name": "Oathbound", "tagline": "Talking matters as much as fighting.", "footer": "prototype  \u00b7  placeholder art" },
   "tuning": {
     "hpPerVitality": 10, "hpPerLevel": 5,
     "staminaBase": 80, "staminaPerAgility": 4, "staminaRegen": 38, "staminaRegenDelay": 0.55,

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  One-click launcher for the Action RPG (Unreal Engine 5.8), on Tessera's tools.
+  One-click launcher for Oathbound (Unreal Engine 5.8), on Tessera's tools.
 
 .DESCRIPTION
   Does whatever is needed, then starts the game (unreal/Plugins/Tessera/Tools/Tessera.ps1, configured by
