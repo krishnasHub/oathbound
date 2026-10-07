@@ -1,0 +1,3 @@
+[submodule "unreal/Plugins/Loom"]
+	path = unreal/Plugins/Loom
+	url = https://github.com/krishnasHub/loom.git

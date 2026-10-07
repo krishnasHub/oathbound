@@ -3,7 +3,8 @@
 #include "RPGData.h"
 #include "RPGAssets.h"
 #include "RPGCombat.h"
-#include "RPGStory.h"
+#include "RPGSession.h"
+#include "LMStory.h"
 #include "RPGEnemy.h"
 #include "RPGFX.h"
 #include "RPGProjectile.h"
@@ -286,9 +287,9 @@ int32 ARPGPlayerCharacter::XpToNext(const UObject* Ctx, int32 InLevel)
 void ARPGPlayerCharacter::GainXp(int32 Amount)
 {
 	if (Amount <= 0) return;
-	URPGStory* Story = URPGStory::Get(this);
+	URPGSession* Session = URPGSession::Get(this);
 	Xp += Amount;
-	Story->Float(Head() + FVector(0, 0, 50), FString::Printf(TEXT("+%d XP"), Amount), FLinearColor(0.7f, 0.55f, 1.f), 0.8f);
+	Session->Float(Head() + FVector(0, 0, 50), FString::Printf(TEXT("+%d XP"), Amount), FLinearColor(0.7f, 0.55f, 1.f), 0.8f);
 	while (Xp >= XpToNext(this, Level()))
 	{
 		Xp -= XpToNext(this, Level());
@@ -297,12 +298,12 @@ void ARPGPlayerCharacter::GainXp(int32 Amount)
 		AttrPoints += Points;
 		Stats->Fill();
 		ARPGFX::Ring(GetWorld(), GetActorLocation() - FVector(0, 0, 86), 220.f, FLinearColor(1.f, 0.83f, 0.3f), 0.8f);
-		Story->Toast(FString::Printf(TEXT("Level %d! +%d attribute points — press C"), Level(), Points), FLinearColor(1.f, 0.83f, 0.3f));
+		Session->Toast(FString::Printf(TEXT("Level %d! +%d attribute points — press C"), Level(), Points), FLinearColor(1.f, 0.83f, 0.3f));
 		for (int32 I = 0; I < Abilities->Ids.Num(); ++I)
 		{
 			const RPGJson::FObj A = Abilities->Def(Abilities->Ids[I]);
 			if (int32(RPGJson::Num(A, TEXT("unlockLevel"), 1)) == Level())
-				Story->Toast(FString::Printf(TEXT("New ability: %s [%d]"), *RPGJson::Str(A, TEXT("name")), I + 1), RPGJson::Color(RPGJson::Str(A, TEXT("color"))));
+				Session->Toast(FString::Printf(TEXT("New ability: %s [%d]"), *RPGJson::Str(A, TEXT("name")), I + 1), RPGJson::Color(RPGJson::Str(A, TEXT("color"))));
 		}
 	}
 }
@@ -451,7 +452,7 @@ void ARPGPlayerCharacter::OpenPicker()
 	}
 	if (Start == INDEX_NONE)
 	{
-		URPGStory::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No abilities yet"), FLinearColor(0.8f, 0.8f, 0.8f), 0.8f);
+		URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No abilities yet"), FLinearColor(0.8f, 0.8f, 0.8f), 0.8f);
 		return;
 	}
 	Picker = Start;
@@ -542,7 +543,7 @@ void ARPGPlayerCharacter::TryTalk(ARPGCharacterBase* C)
 	const FString Why = TalkBlocker(C);
 	if (!Why.IsEmpty())
 	{
-		if (C) URPGStory::Get(this)->Float(C->Head() + FVector(0, 0, 40), Why, FLinearColor(0.85f, 0.85f, 0.8f), 0.9f);
+		if (C) URPGSession::Get(this)->Float(C->Head() + FVector(0, 0, 40), Why, FLinearColor(0.85f, 0.85f, 0.8f), 0.9f);
 		return;
 	}
 	Click(C, false, C->GetActorLocation());
@@ -568,7 +569,7 @@ bool ARPGPlayerCharacter::CursorRay(FVector& Origin, FVector& Dir) const
 void ARPGPlayerCharacter::OnKey(FName Key)
 {
 	if (bInputLocked) return;
-	URPGStory* Story = URPGStory::Get(this);
+	URPGSession* Session = URPGSession::Get(this);
 	if (Key == TEXT("Interact"))
 	{
 		// Top-down: E on someone talks to them; otherwise it toggles talk mode for the next click.
@@ -580,7 +581,7 @@ void ARPGPlayerCharacter::OnKey(FName Key)
 			else SetTalkMode(!bTalkMode);
 			return;
 		}
-		if (ARPGCharacterBase* T = TalkTarget()) Story->OpenDialogue(T);
+		if (ARPGCharacterBase* T = TalkTarget()) Session->OpenDialogue(T);
 		return;
 	}
 	if (Key == TEXT("Potion")) { DrinkPotion(); return; }
@@ -589,9 +590,9 @@ void ARPGPlayerCharacter::OnKey(FName Key)
 	if (Key == TEXT("Ability2")) { Abilities->TryActivate(1); return; }
 	if (Key == TEXT("Ability3")) { Abilities->TryActivate(2); return; }
 	if (Key == TEXT("Ability4")) { Abilities->TryActivate(3); return; }
-	if (Key == TEXT("Debug")) { Story->bDebug = !Story->bDebug; return; }
-	if (Key == TEXT("CheatLevel")) { if (Story->bDebug) GainXp(XpToNext(this, Level()) - Xp); return; }
-	if (Key == TEXT("CheatGold")) { if (Story->bDebug) { Inventory->Gold += 100; Inventory->OnChanged.Broadcast(); } return; }
+	if (Key == TEXT("Debug")) { Session->SetDebug(!Session->IsDebug()); return; }
+	if (Key == TEXT("CheatLevel")) { if (Session->IsDebug()) GainXp(XpToNext(this, Level()) - Xp); return; }
+	if (Key == TEXT("CheatGold")) { if (Session->IsDebug()) { Inventory->Gold += 100; Inventory->OnChanged.Broadcast(); } return; }
 	if (Key == TEXT("Escape") && Picker >= 0) { ClosePicker(false); return; }   // Esc backs out of what you're doing first
 	if (Key == TEXT("Escape") && bTalkMode) { SetTalkMode(false); return; }
 	if (UIHandler) UIHandler(Key);   // Inventory / Character / Quests / Help / Escape (pause menu)
@@ -1062,7 +1063,7 @@ FVector ARPGPlayerCharacter::UpdateClickGoal(float Dt)
 	if (Goal == EClickGoal::Talk && FVector::Dist2D(T->GetActorLocation(), GetActorLocation()) - T->Radius() <= TalkRange())
 	{
 		ClearGoal();
-		if (TalkBlocker(T).IsEmpty()) URPGStory::Get(this)->OpenDialogue(T);   // (they may have turned hostile on the way)
+		if (TalkBlocker(T).IsEmpty()) URPGSession::Get(this)->OpenDialogue(T);   // (they may have turned hostile on the way)
 		return FVector::ZeroVector;
 	}
 
@@ -1087,7 +1088,7 @@ void ARPGPlayerCharacter::StartCombo()
 	if (Combo.IsEmpty() || !ComboMontage) return;
 	if (!Stats->SpendStamina(float(RPGJson::Num(Combo[0]->AsObject(), TEXT("stamina"), 12))))
 	{
-		URPGStory::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No stamina"), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
+		URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No stamina"), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
 		return;
 	}
 	ComboStep = 0;
@@ -1144,7 +1145,7 @@ void ARPGPlayerCharacter::DoAttackTrace(FName SourceBone)
 		if (Backstab > 0 && FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(E->Facing(), (-To).GetSafeNormal2D()))) > 110.f)
 		{
 			Mul = float(Backstab);
-			URPGStory::Get(this)->Float(E->Head() + FVector(0, 0, 45), TEXT("BACKSTAB"), FLinearColor(0.25f, 0.76f, 0.56f), 0.9f);
+			URPGSession::Get(this)->Float(E->Head() + FVector(0, 0, 45), TEXT("BACKSTAB"), FLinearColor(0.25f, 0.76f, 0.56f), 0.9f);
 		}
 		FRPGHit H;
 		H.Base = Base * Mul;
@@ -1249,7 +1250,7 @@ void ARPGPlayerCharacter::FireArrow(float Held)
 	const float Range = D.Px(RPGJson::Num(B, TEXT("range"), 520)) * (0.5f + 0.5f * K);
 	ARPGProjectile::FireArrow(this, From + Dir * 20.f, ArrowTarget(From, Range), D.Px(RPGJson::Num(B, TEXT("speed"), 560)) * (0.6f + 0.4f * K),
 		6.f, bFull ? FLinearColor(1.f, 0.85f, 0.3f) : RPGJson::Color(RPGJson::Str(B, TEXT("color"), TEXT("#e8d9b0"))), H);
-	if (bFull) URPGStory::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("Full draw!"), FLinearColor(1.f, 0.95f, 0.75f), 0.8f);
+	if (bFull) URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("Full draw!"), FLinearColor(1.f, 0.95f, 0.75f), 0.8f);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1266,7 +1267,7 @@ void ARPGPlayerCharacter::OnDodge()
 	auto Get = [&](const TCHAR* K, double Def) { return RPGJson::Num(Over, K, RPGJson::Num(Base, K, Def)); };
 	if (!Stats->SpendStamina(float(Get(TEXT("cost"), 22))))
 	{
-		URPGStory::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No stamina"), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
+		URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No stamina"), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
 		return;
 	}
 	const FRotator Yaw = MoveFrame();
@@ -1307,10 +1308,10 @@ void ARPGPlayerCharacter::DrinkPotion()
 	for (const FRPGItem& It : Inventory->Items)
 	{
 		if (It.Id != TEXT("potion")) continue;
-		if (!Inventory->Use(It.Uid)) URPGStory::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("Already at full health"), FLinearColor(0.67f, 0.67f, 0.73f), 0.8f);
+		if (!Inventory->Use(It.Uid)) URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("Already at full health"), FLinearColor(0.67f, 0.67f, 0.73f), 0.8f);
 		return;
 	}
-	URPGStory::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No potions"), FLinearColor(0.67f, 0.67f, 0.73f), 0.8f);
+	URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No potions"), FLinearColor(0.67f, 0.67f, 0.73f), 0.8f);
 }
 
 void ARPGPlayerCharacter::SwapStyle()
@@ -1321,7 +1322,7 @@ void ARPGPlayerCharacter::SwapStyle()
 	ComboStep = 0;
 	bGuardHeld = bDrawing = false;
 	RefreshWeapons();
-	URPGStory::Get(this)->Toast(TEXT("Switched to ") + RPGJson::Str(Style(), TEXT("name")), NameColor);
+	URPGSession::Get(this)->Toast(TEXT("Switched to ") + RPGJson::Str(Style(), TEXT("name")), NameColor);
 }
 
 USkinnedMeshComponent* ARPGPlayerCharacter::BodyMesh() const { return PoseMesh; }
@@ -1364,7 +1365,7 @@ void ARPGPlayerCharacter::Die(AActor* Killer)
 
 void ARPGPlayerCharacter::Respawn()
 {
-	URPGStory* Story = URPGStory::Get(this);
+	URPGSession* Session = URPGSession::Get(this);
 	const int32 Lost = FMath::FloorToInt(Inventory->Gold * URPGData::Get(this).Tuning(TEXT("deathGoldPenalty"), 0.1));
 	Inventory->Gold -= Lost;
 	bDead = false;
@@ -1377,8 +1378,8 @@ void ARPGPlayerCharacter::Respawn()
 	Stats->Fill();
 	KnockVelocity = FVector::ZeroVector;
 	for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (!It->IsDead() && !It->IsLeaving()) It->ResetToHome();
-	if (Story->Duel.IsValid()) { Story->Duel = nullptr; Story->SetFlag(TEXT("duel_lost")); Story->Toast(TEXT("You lost the duel."), FLinearColor(1.f, 0.5f, 0.5f)); }
-	Story->Toast(Lost ? FString::Printf(TEXT("You lost %d gold."), Lost) : FString(TEXT("You wake in the village.")), FLinearColor(1.f, 0.5f, 0.5f));
+	if (Session->Duel.IsValid()) { Session->Duel = nullptr; Session->Story()->SetFlag(TEXT("duel_lost")); Session->Toast(TEXT("You lost the duel."), FLinearColor(1.f, 0.5f, 0.5f)); }
+	Session->Toast(Lost ? FString::Printf(TEXT("You lost %d gold."), Lost) : FString(TEXT("You wake in the village.")), FLinearColor(1.f, 0.5f, 0.5f));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1432,10 +1433,10 @@ void ARPGPlayerCharacter::UpdateVisuals(float Dt)
 void ARPGPlayerCharacter::Tick(float Dt)
 {
 	Super::Tick(Dt);
-	URPGStory* Story = URPGStory::Get(this);
+	URPGSession* Session = URPGSession::Get(this);
 
 	// Camera shake from hits.
-	ShakeOffset = Story->ShakeAmount > 0.2f ? FVector(0, FMath::FRandRange(-1.f, 1.f), FMath::FRandRange(-1.f, 1.f)) * Story->ShakeAmount : FVector::ZeroVector;
+	ShakeOffset = Session->ShakeAmount > 0.2f ? FVector(0, FMath::FRandRange(-1.f, 1.f), FMath::FRandRange(-1.f, 1.f)) * Session->ShakeAmount : FVector::ZeroVector;
 	Camera->SetRelativeLocation(ShakeOffset);
 	if (bTopDown && RPGLook::Mode() == RPGLook::EMode::Flat2D) Camera->SetOrthoWidth(FMath::FInterpTo(Camera->OrthoWidth, ZoomTarget, Dt, 8.f));
 	else if (bTopDown) CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, ZoomTarget, Dt, 8.f);
@@ -1513,7 +1514,7 @@ void ARPGPlayerCharacter::Tick(float Dt)
 			if (Stats->Stamina <= 0.f)
 			{
 				bGuardHeld = false;
-				URPGStory::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("Too tired to block"), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
+				URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("Too tired to block"), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
 			}
 		}
 	}

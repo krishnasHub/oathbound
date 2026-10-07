@@ -1,7 +1,8 @@
 #include "RPGSelfTest.h"
 #include "ActionRPG.h"
 #include "RPGData.h"
-#include "RPGStory.h"
+#include "RPGSession.h"
+#include "LMStory.h"
 #include "RPGPlayerCharacter.h"
 #include "RPGPlayerController.h"
 #include "SRPGWidgets.h"
@@ -33,7 +34,7 @@ ARPGSelfTest::ARPGSelfTest()
 	PrimaryActorTick.bTickEvenWhenPaused = true;   // keeps driving dialogue while the game is paused
 }
 
-ARPGPlayerCharacter* ARPGSelfTest::P() const { return URPGStory::Get(this)->Player(); }
+ARPGPlayerCharacter* ARPGSelfTest::P() const { return URPGSession::Get(this)->Player(); }
 
 ARPGEnemy* ARPGSelfTest::Find(const FString& Type) const
 {
@@ -65,7 +66,7 @@ void ARPGSelfTest::Tick(float Dt)
 {
 	Super::Tick(Dt);
 	T += Dt;
-	URPGStory* S = URPGStory::Get(this);
+	URPGSession* S = URPGSession::Get(this);
 	ARPGPlayerCharacter* Pl = P();
 	if (!Pl || T < Next) return;
 	const URPGData& D = URPGData::Get(this);
@@ -77,7 +78,7 @@ void ARPGSelfTest::Tick(float Dt)
 	{
 		if (Step == 0)
 		{
-			S->StartQuest(TEXT("slime_cull"));
+			S->Story()->StartQuest(TEXT("slime_cull"));
 			Target = Find(TEXT("slime"));
 			Place(Target->GetActorLocation() - FVector(170, 0, 0), 0);
 			Report(FString::Printf(TEXT("knight vs slime: slime HP %.0f, player HP %.0f"), Target->Stats->HP, Pl->Stats->HP));
@@ -87,7 +88,7 @@ void ARPGSelfTest::Tick(float Dt)
 		{
 			if (!Target.IsValid() || Target->IsDead())
 			{
-				Report(FString::Printf(TEXT("slime dead after %d swings. XP %d, level %d, quest %s, stamina %.0f"), Swings, Pl->Xp, Pl->Level(), *S->ProgressText(TEXT("slime_cull")), Pl->Stats->Stamina));
+				Report(FString::Printf(TEXT("slime dead after %d swings. XP %d, level %d, quest %s, stamina %.0f"), Swings, Pl->Xp, Pl->Level(), *S->Story()->ProgressText(TEXT("slime_cull")), Pl->Stats->Stamina));
 				Step = 2; Next = T + 2.f;
 				return;
 			}
@@ -118,42 +119,42 @@ void ARPGSelfTest::Tick(float Dt)
 		{
 			Place(Brask->Home + FVector(-280, -390, 0), 35.f);
 			AimAt(Brask->GetActorLocation());
-			Report(FString::Printf(TEXT("%s: walked up to the bridge: nobody stops us (dialogue open=%d)"), S->IsDialogueOpen() ? TEXT("FAIL") : TEXT("PASS"), S->IsDialogueOpen()));
+			Report(FString::Printf(TEXT("%s: walked up to the bridge: nobody stops us (dialogue open=%d)"), S->Story()->IsDialogueOpen() ? TEXT("FAIL") : TEXT("PASS"), S->Story()->IsDialogueOpen()));
 			Step = 10; Next = T + 1.5f;
 		}
 		else if (Step == 10)
 		{
-			if (S->IsDialogueOpen()) { Report(TEXT("FAIL: a dialogue opened by itself")); Quit(0.5f); return; }
+			if (S->Story()->IsDialogueOpen()) { Report(TEXT("FAIL: a dialogue opened by itself")); Quit(0.5f); return; }
 			Pl->TryTalk(Brask);   // the player chooses to talk (E + click on Brask)
 			Report(TEXT("chose to talk to Brask"));
 			Step = 1; Next = T + 2.f;
 		}
 		else if (Step == 1)
 		{
-			if (!S->IsDialogueOpen()) { Report(TEXT("FAIL: talking to Brask did not open the parley")); Quit(0.5f); return; }
+			if (!S->Story()->IsDialogueOpen()) { Report(TEXT("FAIL: talking to Brask did not open the parley")); Quit(0.5f); return; }
 			FString Opts;
-			for (const FRPGChoiceView& V : S->ChoiceViews) Opts += TEXT("\n      ") + (V.Verb.IsEmpty() ? FString() : TEXT("[") + V.Verb + TEXT("] ")) + V.Text;
-			Report(TEXT("parley: ") + S->DialogueSpeaker + TEXT(": ") + S->DialogueText + Opts);
+			for (const FLMChoiceView& V : S->Story()->ChoiceViews) Opts += TEXT("\n      ") + (V.Verb.IsEmpty() ? FString() : TEXT("[") + V.Verb + TEXT("] ")) + V.Text;
+			Report(TEXT("parley: ") + S->Story()->SpeakerInfo().Name + TEXT(": ") + S->Story()->DialogueText + Opts);
 			Step = 2; Next = T + 2.5f;   // leave the dialogue on screen for a screenshot
 		}
 		else if (Step == 2)
 		{
-			const int32 I = S->FindChoice(TEXT("I am a knight"));
+			const int32 I = S->Story()->FindChoice(TEXT("I am a knight"));
 			if (I == INDEX_NONE) { Report(TEXT("FAIL: no honor option")); Quit(0.5f); return; }
-			S->ForcedCheck = true;
-			S->Choose(I);
-			Report(TEXT("honor check -> ") + S->DialogueText);
-			const int32 R = S->FindChoice(TEXT("(Raise"));
-			if (R != INDEX_NONE) S->Choose(R);
+			S->Story()->ForcedCheck = true;
+			S->Story()->Choose(I);
+			Report(TEXT("honor check -> ") + S->Story()->DialogueText);
+			const int32 R = S->Story()->FindChoice(TEXT("(Raise"));
+			if (R != INDEX_NONE) S->Story()->Choose(R);
 			Report(FString::Printf(TEXT("duel started: %s. Others passive: %s"), S->Duel.IsValid() ? TEXT("yes") : TEXT("no"), Find(TEXT("bandit")) && Find(TEXT("bandit"))->IsPassive() ? TEXT("yes") : TEXT("no")));
 			Pl->Stats->Base.FindOrAdd(TEXT("might")) += 25.f;   // keep the test short
 			Step = 3; Next = T + 0.5f;
 		}
 		else if (Step == 3)
 		{
-			if (S->IsDialogueOpen())
+			if (S->Story()->IsDialogueOpen())
 			{
-				Report(FString::Printf(TEXT("Brask yields at %.0f/%.0f HP after %d swings: %s"), Brask->Stats->HP, Brask->Stats->MaxHP(), Swings, *S->DialogueText.Left(60)));
+				Report(FString::Printf(TEXT("Brask yields at %.0f/%.0f HP after %d swings: %s"), Brask->Stats->HP, Brask->Stats->MaxHP(), Swings, *S->Story()->DialogueText.Left(60)));
 				Step = 29; Next = T + 0.5f;   // a player mid-fight is still clicking: click the game view, then press 1
 				return;
 			}
@@ -190,8 +191,8 @@ void ARPGSelfTest::Tick(float Dt)
 		}
 		else if (Step == 31)
 		{
-			Report(FString::Printf(TEXT("after pressing 1: dialogue open=%d, paused=%d"), S->IsDialogueOpen(), GetWorld()->IsPaused()));
-			if (S->IsDialogueOpen()) { Report(TEXT("FAIL: pressing 1 did not answer the dialogue")); Quit(0.5f); return; }
+			Report(FString::Printf(TEXT("after pressing 1: dialogue open=%d, paused=%d"), S->Story()->IsDialogueOpen(), GetWorld()->IsPaused()));
+			if (S->Story()->IsDialogueOpen()) { Report(TEXT("FAIL: pressing 1 did not answer the dialogue")); Quit(0.5f); return; }
 			Step = 4; Next = T + 2.3f;
 		}
 		else if (Step == 4)
@@ -199,7 +200,7 @@ void ARPGSelfTest::Tick(float Dt)
 			Report(FString::Printf(TEXT("after the dialogue: still auto-attacking=%d"), Pl->IsAttacking()));
 			int32 Leaving = 0;
 			for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->FactionId() == TEXT("bandits") && (It->IsLeaving() || It->IsDead())) ++Leaving;
-			const FString* Outcome = S->Flags.Find(TEXT("toll_outcome"));
+			const FString* Outcome = S->Story()->Flags.Find(TEXT("toll_outcome"));
 			Report(FString::Printf(TEXT("outcome=%s, sabre=%d, bandits leaving=%d/5"), Outcome ? **Outcome : TEXT("none"), Pl->Inventory->Count(TEXT("brask_sabre")), Leaving));
 			Quit(1.f);
 		}
@@ -310,10 +311,10 @@ void ARPGSelfTest::Tick(float Dt)
 		}
 		else if (Step == 4)
 		{
-			if (S->IsDialogueOpen())
+			if (S->Story()->IsDialogueOpen())
 			{
-				Report(FString::Printf(TEXT("PASS: clicked the elder, walked up, dialogue opened in %.1fs: %s"), T - Started, *S->DialogueSpeaker));
-				S->CloseDialogue();
+				Report(FString::Printf(TEXT("PASS: clicked the elder, walked up, dialogue opened in %.1fs: %s"), T - Started, *S->Story()->SpeakerInfo().Name));
+				S->Story()->CloseDialogue();
 				Step = 5; Next = T + 0.5f;
 			}
 			else if (T - Started > 10.f) { Report(TEXT("FAIL: dialogue never opened")); Step = 5; }
@@ -371,17 +372,17 @@ void ARPGSelfTest::Tick(float Dt)
 		}
 		else if (Step == 1)
 		{
-			if (!S->IsDialogueOpen() || !PC->GetDialogue()) { Report(TEXT("FAIL: dialogue did not open")); Quit(0.5f); return; }
-			ClickNode = S->DialogueText;
+			if (!S->Story()->IsDialogueOpen() || !PC->GetDialogue()) { Report(TEXT("FAIL: dialogue did not open")); Quit(0.5f); return; }
+			ClickNode = S->Story()->DialogueText;
 			int32 Choice = INDEX_NONE;
-			for (int32 I = 0; I < S->ChoiceViews.Num() && Choice == INDEX_NONE; ++I) if (S->ChoiceViews[I].bEnabled) Choice = I;
+			for (int32 I = 0; I < S->Story()->ChoiceViews.Num() && Choice == INDEX_NONE; ++I) if (S->Story()->ChoiceViews[I].bEnabled) Choice = I;
 			const FVector2D At = PC->GetDialogue()->ChoiceScreenCenter(Choice);
 			FSlateApplication& App = FSlateApplication::Get();
 			App.ProcessMouseMoveEvent(FPointerEvent(0, 0, At, At - FVector2D(4, 0), TSet<FKey>(), EKeys::Invalid, 0, FModifierKeysState()));
 			TSet<FKey> Held = { EKeys::LeftMouseButton };
 			App.ProcessMouseButtonDownEvent(nullptr, FPointerEvent(0, 0, At, At, Held, EKeys::LeftMouseButton, 0, FModifierKeysState()));
 			App.ProcessMouseButtonUpEvent(FPointerEvent(0, 0, At, At, TSet<FKey>(), EKeys::LeftMouseButton, 0, FModifierKeysState()));
-			Report(FString::Printf(TEXT("one click on choice %d (\"%s\") at %.0f,%.0f"), Choice + 1, *S->ChoiceViews[Choice].Text.Left(40), At.X, At.Y));
+			Report(FString::Printf(TEXT("one click on choice %d (\"%s\") at %.0f,%.0f"), Choice + 1, *S->Story()->ChoiceViews[Choice].Text.Left(40), At.X, At.Y));
 			Step = 2; Next = T + 0.12f;
 		}
 		else if (Step == 2)
@@ -391,10 +392,10 @@ void ARPGSelfTest::Tick(float Dt)
 		}
 		else if (Step == 3)
 		{
-			const bool bMoved = !S->IsDialogueOpen() || S->DialogueText != ClickNode;
+			const bool bMoved = !S->Story()->IsDialogueOpen() || S->Story()->DialogueText != ClickNode;
 			Report(FString::Printf(TEXT("%s: a single click answered the dialogue (now: %s)"), bMoved ? TEXT("PASS") : TEXT("FAIL"),
-				S->IsDialogueOpen() ? *S->DialogueText.Left(60) : TEXT("closed")));
-			if (S->IsDialogueOpen()) S->CloseDialogue();
+				S->Story()->IsDialogueOpen() ? *S->Story()->DialogueText.Left(60) : TEXT("closed")));
+			if (S->Story()->IsDialogueOpen()) S->Story()->CloseDialogue();
 			Quit(0.5f);
 		}
 	}
@@ -409,14 +410,14 @@ void ARPGSelfTest::Tick(float Dt)
 		{
 			// The second world, after New Game.
 			Report(FString::Printf(TEXT("%s: after New Game: character select=%d, paused=%d, quests started=%d"),
-				PC->IsInCharSelect() && !UGameplayStatics::IsGamePaused(this) && S->Quests.Num() == 0 ? TEXT("PASS") : TEXT("FAIL"),
-				PC->IsInCharSelect(), UGameplayStatics::IsGamePaused(this), S->Quests.Num()));
+				PC->IsInCharSelect() && !UGameplayStatics::IsGamePaused(this) && S->Story()->Quests.Num() == 0 ? TEXT("PASS") : TEXT("FAIL"),
+				PC->IsInCharSelect(), UGameplayStatics::IsGamePaused(this), S->Story()->Quests.Num()));
 			Quit(0.5f);
 			return;
 		}
 		if (Step == 0)
 		{
-			S->StartQuest(TEXT("slime_cull"));   // some progress, so New Game has something to wipe
+			S->Story()->StartQuest(TEXT("slime_cull"));   // some progress, so New Game has something to wipe
 			Pl->TestPicker(0, true);
 			Pl->TestPress(TEXT("Escape"), true);
 			Report(FString::Printf(TEXT("%s: Esc with the ability picker open closes the picker only: picker=%d, menu=%d"),
@@ -444,7 +445,7 @@ void ARPGSelfTest::Tick(float Dt)
 		}
 		else if (Step == 4)
 		{
-			Report(FString::Printf(TEXT("New Game (quests before: %d)..."), S->Quests.Num()));
+			Report(FString::Printf(TEXT("New Game (quests before: %d)..."), S->Story()->Quests.Num()));
 			PC->OpenPauseMenu();
 			PC->NewGame();   // reloads the world; this scenario resumes in the new one (see the top)
 			Step = 5;
@@ -564,8 +565,8 @@ void ARPGSelfTest::Tick(float Dt)
 		{
 			Pl->TestPress(TEXT("Interact"), true);
 			FString Opts;
-			for (const FRPGChoiceView& V : S->ChoiceViews) Opts += TEXT("\n      ") + (V.Verb.IsEmpty() ? FString() : TEXT("[") + V.Verb + TEXT("] ")) + V.Text;
-			Report(FString::Printf(TEXT("dialogue open=%d: %s: %s%s"), S->IsDialogueOpen(), *S->DialogueSpeaker, *S->DialogueText, *Opts));
+			for (const FLMChoiceView& V : S->Story()->ChoiceViews) Opts += TEXT("\n      ") + (V.Verb.IsEmpty() ? FString() : TEXT("[") + V.Verb + TEXT("] ")) + V.Text;
+			Report(FString::Printf(TEXT("dialogue open=%d: %s: %s%s"), S->Story()->IsDialogueOpen(), *S->Story()->SpeakerInfo().Name, *S->Story()->DialogueText, *Opts));
 			Step = 2; Next = T + 1.0f;
 		}
 		else if (Step == 2)
@@ -576,11 +577,11 @@ void ARPGSelfTest::Tick(float Dt)
 		}
 		else if (Step == 3)
 		{
-			S->Choose(S->FindChoice(TEXT("What's troubling")));
-			Report(TEXT("asked about trouble -> ") + S->DialogueText.Left(80));
-			const int32 Accept = S->ChoiceViews.IndexOfByPredicate([](const FRPGChoiceView& V) { return V.Text.StartsWith(TEXT("It shall be done")); });
-			S->Choose(Accept);
-			Report(FString::Printf(TEXT("quest toll_bridge: %s, dialogue open=%d"), *S->QuestStatus(TEXT("toll_bridge")), S->IsDialogueOpen()));
+			S->Story()->Choose(S->Story()->FindChoice(TEXT("What's troubling")));
+			Report(TEXT("asked about trouble -> ") + S->Story()->DialogueText.Left(80));
+			const int32 Accept = S->Story()->ChoiceViews.IndexOfByPredicate([](const FLMChoiceView& V) { return V.Text.StartsWith(TEXT("It shall be done")); });
+			S->Story()->Choose(Accept);
+			Report(FString::Printf(TEXT("quest toll_bridge: %s, dialogue open=%d"), *S->Story()->QuestStatus(TEXT("toll_bridge")), S->Story()->IsDialogueOpen()));
 			Quit(1.f);
 		}
 	}

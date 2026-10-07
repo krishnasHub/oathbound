@@ -3,7 +3,8 @@
 #include "RPGCombat.h"
 #include "RPGFX.h"
 #include "RPGProjectile.h"
-#include "RPGStory.h"
+#include "RPGSession.h"
+#include "LMStory.h"
 #include "RPGPlayerCharacter.h"
 #include "RPGEnemy.h"
 
@@ -44,7 +45,7 @@ void URPGAbilityComponent::TickCooldowns(float Dt)
 
 void URPGAbilityComponent::Fail(const FString& Msg) const
 {
-	if (const ARPGPlayerCharacter* P = Player()) URPGStory::Get(P)->Float(P->Head() + FVector(0, 0, 30), Msg, FLinearColor(0.67f, 0.67f, 0.73f), 0.8f);
+	if (const ARPGPlayerCharacter* P = Player()) URPGSession::Get(P)->Float(P->Head() + FVector(0, 0, 30), Msg, FLinearColor(0.67f, 0.67f, 0.73f), 0.8f);
 }
 
 float URPGAbilityComponent::Scaled(const RPGJson::FObj& D, float V) const
@@ -104,7 +105,7 @@ bool URPGAbilityComponent::Run(const RPGJson::FObj& D)
 	ARPGPlayerCharacter* P = Player();
 	UWorld* W = P->GetWorld();
 	const URPGData& Data = URPGData::Get(this);
-	URPGStory* Story = URPGStory::Get(P);
+	URPGSession* Session = URPGSession::Get(P);
 	const FString Type = RPGJson::Str(D, TEXT("type"));
 	const FLinearColor Color = RPGJson::Color(RPGJson::Str(D, TEXT("color")), FLinearColor::White);
 	auto MakeHit = [&](float Base) {
@@ -261,7 +262,7 @@ bool URPGAbilityComponent::Run(const RPGJson::FObj& D)
 			if (StaggerTime > 0.f && Dist < R + E->Radius() && !E->IsPassive())
 			{
 				E->Stagger(StaggerTime);
-				URPGStory::Get(P)->Float(E->Head() + FVector(0, 0, 30), TEXT("Staggered"), FLinearColor(0.75f, 0.78f, 0.82f), 0.8f);
+				URPGSession::Get(P)->Float(E->Head() + FVector(0, 0, 30), TEXT("Staggered"), FLinearColor(0.75f, 0.78f, 0.82f), 0.8f);
 			}
 			// Further out, anyone hunting you loses track.
 			if (Dist < R * 3.f && (E->State == ERPGEnemyState::Chase || E->State == ERPGEnemyState::Windup || E->State == ERPGEnemyState::Recover))
@@ -297,13 +298,13 @@ bool URPGAbilityComponent::Run(const RPGJson::FObj& D)
 		ARPGCharacterBase* T = TargetNearAim(Data.Px(RPGJson::Num(D, TEXT("range"), 260)));
 		if (!T) { Fail(TEXT("No target")); return false; }
 		const ARPGEnemy* E = Cast<ARPGEnemy>(T);
-		if (!E || !RPGJson::Bool(E->Def, TEXT("intelligent"))) { Story->Float(T->Head(), TEXT("It doesn't understand words"), FLinearColor(0.67f, 0.67f, 0.73f), 0.8f); return false; }
-		if (T->IsPassive()) { Story->Float(T->Head(), TEXT("They're not fighting you"), FLinearColor(0.67f, 0.67f, 0.73f), 0.8f); return false; }
+		if (!E || !RPGJson::Bool(E->Def, TEXT("intelligent"))) { Session->Float(T->Head(), TEXT("It doesn't understand words"), FLinearColor(0.67f, 0.67f, 0.73f), 0.8f); return false; }
+		if (T->IsPassive()) { Session->Float(T->Head(), TEXT("They're not fighting you"), FLinearColor(0.67f, 0.67f, 0.73f), 0.8f); return false; }
 		T->Stagger(float(RPGJson::Num(D, TEXT("daze"), 3)));
-		Story->Float(T->Head() + FVector(0, 0, 40), TEXT("DAZED"), Color, 1.1f);
+		Session->Float(T->Head() + FVector(0, 0, 40), TEXT("DAZED"), Color, 1.1f);
 		ARPGFX::Bolt(W, { P->Chest(), T->Chest() }, Color);
 		const FString Parley = RPGJson::Str(E->Def, TEXT("parleyDialogue"));
-		if (!Parley.IsEmpty()) Story->OpenDialogue(T, Parley);   // talk, mid-fight
+		if (!Parley.IsEmpty()) Session->OpenDialogue(T, Parley);   // talk, mid-fight
 		return true;
 	}
 	if (Type == TEXT("mark"))   // Insight

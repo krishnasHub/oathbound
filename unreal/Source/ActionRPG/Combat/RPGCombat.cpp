@@ -1,7 +1,8 @@
 #include "RPGCombat.h"
 #include "RPGData.h"
 #include "RPGAssets.h"
-#include "RPGStory.h"
+#include "RPGSession.h"
+#include "LMStory.h"
 #include "RPGCharacterBase.h"
 #include "RPGPlayerCharacter.h"
 #include "RPGEnemy.h"
@@ -47,18 +48,18 @@ void RPGCombat::Heal(ARPGCharacterBase* Target, float Amount)
 	const float Before = Target->Stats->HP;
 	Target->Stats->HP = FMath::Min(Target->Stats->MaxHP(), Target->Stats->HP + Amount);
 	const int32 Gained = FMath::RoundToInt(Target->Stats->HP - Before);
-	if (Gained > 0) URPGStory::Get(Target)->Float(Target->Head(), FString::Printf(TEXT("+%d"), Gained), FLinearColor(0.37f, 0.88f, 0.54f), 0.9f);
+	if (Gained > 0) URPGSession::Get(Target)->Float(Target->Head(), FString::Printf(TEXT("+%d"), Gained), FLinearColor(0.37f, 0.88f, 0.54f), 0.9f);
 }
 
 void RPGCombat::Dot(ARPGCharacterBase* Target, float Amount, AActor* Src)
 {
 	if (!Target || Target->IsDead()) return;
-	URPGStory* Story = URPGStory::Get(Target);
+	URPGSession* Session = URPGSession::Get(Target);
 	int32 N = FMath::Max(1, FMath::RoundToInt(Amount));
-	if (Story->Duel.Get() == Target) N = FMath::Min(N, FMath::Max(0, FMath::FloorToInt(Target->Stats->HP - Target->Stats->MaxHP() * 0.2f - 1.f)));
+	if (Session->Duel.Get() == Target) N = FMath::Min(N, FMath::Max(0, FMath::FloorToInt(Target->Stats->HP - Target->Stats->MaxHP() * 0.2f - 1.f)));
 	if (N <= 0) return;
 	Target->Stats->HP -= N;
-	Story->Float(Target->Head(), FString::FromInt(N), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
+	Session->Float(Target->Head(), FString::FromInt(N), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
 	if (Target->Stats->HP <= 0) { Target->Stats->HP = 0; Target->Die(Src); }
 }
 
@@ -66,14 +67,14 @@ bool RPGCombat::Deal(ARPGCharacterBase* Src, ARPGCharacterBase* Target, const FR
 {
 	if (!Src || !Target || Target->IsDead() || Target->Tags.Has(TEXT("Invulnerable"))) return false;
 	const URPGData& D = URPGData::Get(Target);
-	URPGStory* Story = URPGStory::Get(Target);
+	URPGSession* Session = URPGSession::Get(Target);
 	const bool bTargetIsPlayer = Target->Team == ERPGTeam::Player;
 	const FVector TextAt = Target->Head() + FVector(0, 0, 20);
 
 	// Striking a neutral faction member (or a bystander during a duel) turns the whole faction hostile.
 	if (Src->Team == ERPGTeam::Player && !Target->FactionId().IsEmpty() && Target->IsPassive())
 	{
-		Story->SetHostile(Target->FactionId(), Story->Duel.IsValid() ? TEXT("You broke the duel! The Red Hands attack!") : TEXT("You attacked the Red Hands!"));
+		Session->SetHostile(Target->FactionId(), Session->Duel.IsValid() ? TEXT("You broke the duel! The Red Hands attack!") : TEXT("You attacked the Red Hands!"));
 	}
 
 	// --- damage roll ---
@@ -97,13 +98,13 @@ bool RPGCombat::Deal(ARPGCharacterBase* Src, ARPGCharacterBase* Target, const FR
 			const float Perfect = float(RPGJson::Num(Guard, TEXT("perfectWindow"), 0));
 			if (Perfect > 0.f && Target->GuardTime <= Perfect)
 			{
-				Story->Float(TextAt + FVector(0, 0, 20), TEXT("PERFECT BLOCK"), FLinearColor::White, 1.1f);
+				Session->Float(TextAt + FVector(0, 0, 20), TEXT("PERFECT BLOCK"), FLinearColor::White, 1.1f);
 				if (Src != Target && !Src->IsDead() && FVector::Dist2D(Src->GetActorLocation(), Target->GetActorLocation()) < D.Px(140))
 				{
 					Src->Stagger(float(D.Tuning(TEXT("staggerTime"), 0.55)) * 1.8f);
-					Story->Float(Src->Head() + FVector(0, 0, 40), TEXT("STAGGER"), FLinearColor(0.56f, 0.82f, 1.f), 0.9f);
+					Session->Float(Src->Head() + FVector(0, 0, 40), TEXT("STAGGER"), FLinearColor(0.56f, 0.82f, 1.f), 0.9f);
 				}
-				Story->Shake(3.f);
+				Session->Shake(3.f);
 				return true;
 			}
 			const float Cost = Amount * float(RPGJson::Num(Guard, TEXT("staminaPerDamage"), 0.8));
@@ -113,13 +114,13 @@ bool RPGCombat::Deal(ARPGCharacterBase* Src, ARPGCharacterBase* Target, const FR
 				Target->Stats->StaminaDelay = float(D.Tuning(TEXT("staminaRegenDelay"), 0.55));
 				Amount = FMath::RoundToInt(Amount * (1.f - float(RPGJson::Num(Guard, TEXT("reduction"), 0.7))));
 				Poise *= 0.3f; Knock *= 0.3f;
-				Story->Float(TextAt + FVector(0, 0, 25), TEXT("BLOCK"), FLinearColor(0.78f, 0.83f, 0.88f), 0.8f);
+				Session->Float(TextAt + FVector(0, 0, 25), TEXT("BLOCK"), FLinearColor(0.78f, 0.83f, 0.88f), 0.8f);
 			}
 			else
 			{
 				Target->Stats->Stamina = 0;
 				Target->Stagger(float(D.Tuning(TEXT("staggerTime"), 0.55)) * 1.5f);
-				Story->Float(TextAt + FVector(0, 0, 30), TEXT("GUARD BREAK"), FLinearColor(1.f, 0.6f, 0.35f), 1.1f);
+				Session->Float(TextAt + FVector(0, 0, 30), TEXT("GUARD BREAK"), FLinearColor(1.f, 0.6f, 0.35f), 1.1f);
 			}
 		}
 	}
@@ -130,7 +131,7 @@ bool RPGCombat::Deal(ARPGCharacterBase* Src, ARPGCharacterBase* Target, const FR
 		if (E.Absorb <= 0.f || Amount <= 0) continue;
 		const int32 Soaked = FMath::Min(int32(E.Absorb), Amount);
 		E.Absorb -= Soaked; Amount -= Soaked;
-		Story->Float(TextAt, FString::Printf(TEXT("(%d)"), Soaked), FLinearColor(1.f, 0.91f, 0.66f), 0.9f);
+		Session->Float(TextAt, FString::Printf(TEXT("(%d)"), Soaked), FLinearColor(1.f, 0.91f, 0.66f), 0.9f);
 	}
 
 	// --- mana shield ---
@@ -142,14 +143,14 @@ bool RPGCombat::Deal(ARPGCharacterBase* Src, ARPGCharacterBase* Target, const FR
 			const int32 Absorbed = FMath::Min(Amount, FMath::FloorToInt(Target->Stats->Mana * PerMana));
 			Target->Stats->Mana -= Absorbed / PerMana;
 			Amount -= Absorbed;
-			if (Absorbed > 0) Story->Float(TextAt, FString::Printf(TEXT("(%d)"), Absorbed), FLinearColor(0.62f, 0.72f, 1.f), 1.f);
+			if (Absorbed > 0) Session->Float(TextAt, FString::Printf(TEXT("(%d)"), Absorbed), FLinearColor(0.62f, 0.72f, 1.f), 1.f);
 			if (Amount == 0) Poise *= 0.5f;
 			if (Target->Stats->Mana < 1.f)
 			{
 				Target->Stats->Mana = 0;
 				Target->Stats->ManaLock = float(RPGJson::Num(MS, TEXT("breakRegenLock"), 3));
 				Target->Stagger(float(RPGJson::Num(MS, TEXT("breakStagger"), 0.6)));
-				Story->Float(TextAt + FVector(0, 0, 30), TEXT("SHIELD SHATTERED"), FLinearColor(0.62f, 0.72f, 1.f), 1.1f);
+				Session->Float(TextAt + FVector(0, 0, 30), TEXT("SHIELD SHATTERED"), FLinearColor(0.62f, 0.72f, 1.f), 1.1f);
 			}
 		}
 	}
@@ -160,7 +161,7 @@ bool RPGCombat::Deal(ARPGCharacterBase* Src, ARPGCharacterBase* Target, const FR
 	{
 		Target->Stats->HP -= Amount;
 		const FLinearColor C = bTargetIsPlayer ? FLinearColor(1.f, 0.35f, 0.35f) : (bCrit ? FLinearColor(1.f, 0.83f, 0.3f) : FLinearColor::White);
-		Story->Float(TextAt, bCrit ? FString::Printf(TEXT("%d!"), Amount) : FString::FromInt(Amount), C, bCrit ? 1.35f : 1.f);
+		Session->Float(TextAt, bCrit ? FString::Printf(TEXT("%d!"), Amount) : FString::FromInt(Amount), C, bCrit ? 1.35f : 1.f);
 	}
 	if (UNiagaraSystem* FX = RPGAssets::Load<UNiagaraSystem>(RPGAssets::DamageFX))
 	{
@@ -168,12 +169,12 @@ bool RPGCombat::Deal(ARPGCharacterBase* Src, ARPGCharacterBase* Target, const FR
 	}
 
 	// --- duel opponents yield instead of dying ---
-	if (Story->Duel.Get() == Target && !Hit.bIgnoreDuelYield && Target->Stats->HP <= Target->Stats->MaxHP() * 0.2f)
+	if (Session->Duel.Get() == Target && !Hit.bIgnoreDuelYield && Target->Stats->HP <= Target->Stats->MaxHP() * 0.2f)
 	{
 		Target->Stats->HP = FMath::Max(1.f, FMath::RoundToFloat(Target->Stats->HP));
-		Story->Duel = nullptr;
+		Session->Duel = nullptr;
 		Target->Tags.Clear();
-		Story->OpenDialogue(Target, Target->YieldDialogueId());
+		Session->OpenDialogue(Target, Target->YieldDialogueId());
 		return true;
 	}
 
@@ -195,14 +196,14 @@ bool RPGCombat::Deal(ARPGCharacterBase* Src, ARPGCharacterBase* Target, const FR
 	{
 		Target->Poise = Target->MaxPoise;
 		Target->Stagger(float(D.Tuning(TEXT("staggerTime"), 0.55)));
-		Story->Float(TextAt + FVector(0, 0, 35), TEXT("STAGGER"), FLinearColor(0.56f, 0.82f, 1.f), 0.9f);
+		Session->Float(TextAt + FVector(0, 0, 35), TEXT("STAGGER"), FLinearColor(0.56f, 0.82f, 1.f), 0.9f);
 	}
 	if (bTargetIsPlayer)
 	{
 		Target->Tags.Add(TEXT("Invulnerable"), float(D.Tuning(TEXT("playerHitIframes"), 0.45)));
-		Story->Shake(7.f);
+		Session->Shake(7.f);
 	}
-	else Story->Shake(bCrit ? 3.f : 1.5f);
+	else Session->Shake(bCrit ? 3.f : 1.5f);
 
 	if (Target->Stats->HP <= 0.f) { Target->Stats->HP = 0; Target->Die(Src); }
 	return true;

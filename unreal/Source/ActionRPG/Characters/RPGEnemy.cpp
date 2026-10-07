@@ -3,7 +3,8 @@
 #include "RPGData.h"
 #include "RPGAssets.h"
 #include "RPGCombat.h"
-#include "RPGStory.h"
+#include "RPGSession.h"
+#include "LMStory.h"
 #include "RPGPlayerCharacter.h"
 #include "RPGProjectile.h"
 #include "RPGLoot.h"
@@ -86,8 +87,8 @@ bool ARPGEnemy::IsPassive() const
 {
 	const FString F = FactionId();
 	if (F.IsEmpty()) return false;
-	const URPGStory* S = URPGStory::Get(this);
-	return S && S->Faction(F) != TEXT("hostile") && S->Duel.Get() != this;
+	const URPGSession* S = URPGSession::Get(this);
+	return S && S->Story()->Faction(F) != TEXT("hostile") && S->Duel.Get() != this;
 }
 
 FString ARPGEnemy::FactionId() const { return RPGJson::Str(Def, TEXT("faction")); }
@@ -100,7 +101,7 @@ void ARPGEnemy::OnDamaged(ARPGCharacterBase* Src)
 	if ((State == ERPGEnemyState::Idle || State == ERPGEnemyState::Return) && !IsPassive())
 	{
 		State = ERPGEnemyState::Chase;
-		URPGStory::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("!"), FLinearColor(1.f, 0.88f, 0.3f), 1.4f);
+		URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("!"), FLinearColor(1.f, 0.88f, 0.3f), 1.4f);
 	}
 }
 
@@ -137,7 +138,7 @@ void ARPGEnemy::Tick(float Dt)
 		DeathHide -= Dt;
 		if (DeathHide <= 0.f && !IsHidden()) SetActorHiddenInGame(true);
 		RespawnTimer -= Dt;
-		const ARPGPlayerCharacter* P = URPGStory::Get(this)->Player();
+		const ARPGPlayerCharacter* P = URPGSession::Get(this)->Player();
 		if (RespawnTimer <= 0.f && P && FVector::Dist2D(P->GetActorLocation(), Home) > D.Px(D.Tuning(TEXT("respawnMinDistance"), 420))) Respawn();
 		return;
 	}
@@ -173,7 +174,7 @@ void ARPGEnemy::Tick(float Dt)
 bool ARPGEnemy::CanSeePlayer(float Dist) const
 {
 	const URPGData& D = URPGData::Get(this);
-	const ARPGPlayerCharacter* P = URPGStory::Get(this)->Player();
+	const ARPGPlayerCharacter* P = URPGSession::Get(this)->Player();
 	if (!P || P->IsDead() || P->Tags.Has(TEXT("Hidden"))) return false;
 	const bool bSameSide = bProvoked || D.RegionAt(P->GetActorLocation().Y) == Region;
 	if (!bSameSide || Dist >= D.Px(RPGJson::Num(Def, TEXT("aggro"), 170))) return false;
@@ -206,8 +207,8 @@ void ARPGEnemy::FaceToward(const FVector& Target, float Dt, float Rate)
 void ARPGEnemy::RunAI(float Dt)
 {
 	const URPGData& D = URPGData::Get(this);
-	URPGStory* Story = URPGStory::Get(this);
-	ARPGPlayerCharacter* P = Story->Player();
+	URPGSession* Session = URPGSession::Get(this);
+	ARPGPlayerCharacter* P = Session->Player();
 	UCharacterMovementComponent* Move = GetCharacterMovement();
 	Move->MaxWalkSpeed = D.Px(RPGJson::Num(Def, TEXT("speed"), 80)) * (Tags.Has(TEXT("Slowed")) ? 0.4f : 1.f);
 
@@ -232,7 +233,7 @@ void ARPGEnemy::RunAI(float Dt)
 		if (CanSeePlayer(Dist))
 		{
 			State = ERPGEnemyState::Chase;
-			Story->Float(Head() + FVector(0, 0, 30), TEXT("!"), FLinearColor(1.f, 0.88f, 0.3f), 1.4f);
+			Session->Float(Head() + FVector(0, 0, 30), TEXT("!"), FLinearColor(1.f, 0.88f, 0.3f), 1.4f);
 			break;
 		}
 		T -= Dt;
@@ -317,7 +318,7 @@ void ARPGEnemy::BeginWindup(const RPGJson::FObj& Atk)
 	CurAtk = Atk;
 	State = ERPGEnemyState::Windup;
 	T = float(RPGJson::Num(Atk, TEXT("windup"), 0.5));
-	const ARPGPlayerCharacter* P = URPGStory::Get(this)->Player();
+	const ARPGPlayerCharacter* P = URPGSession::Get(this)->Player();
 	if (P) SetActorRotation(FRotator(0, (P->GetActorLocation() - GetActorLocation()).GetSafeNormal2D().Rotation().Yaw, 0));
 	BuildTelegraph();
 
@@ -374,8 +375,8 @@ void ARPGEnemy::BuildTelegraph()
 void ARPGEnemy::PerformAttack()
 {
 	const URPGData& D = URPGData::Get(this);
-	URPGStory* Story = URPGStory::Get(this);
-	ARPGPlayerCharacter* P = Story->Player();
+	URPGSession* Session = URPGSession::Get(this);
+	ARPGPlayerCharacter* P = Session->Player();
 	Telegraph->SetVisibility(false);
 	const RPGJson::FObj A = CurAtk;
 	const FString AType = RPGJson::Str(A, TEXT("type"));
@@ -397,7 +398,7 @@ void ARPGEnemy::PerformAttack()
 	}
 	else if (AType == TEXT("slam"))
 	{
-		Story->Shake(6.f);
+		Session->Shake(6.f);
 		if (P && !P->IsDead() && FVector::Dist2D(P->GetActorLocation(), GetActorLocation()) <= D.Px(RPGJson::Num(A, TEXT("radius"), 95)) + P->Radius())
 			RPGCombat::Deal(this, P, Hit);
 	}
@@ -449,14 +450,14 @@ void ARPGEnemy::Die(AActor* Killer)
 	RespawnTimer = Respawn < 0 ? BIG_NUMBER : float(Respawn);
 	DeathHide = 4.f;
 
-	URPGStory* Story = URPGStory::Get(this);
-	Story->OnKill(Type);
+	URPGSession* Session = URPGSession::Get(this);
+	Session->Story()->OnKill(Type);
 	if (ARPGPlayerCharacter* P = Cast<ARPGPlayerCharacter>(Killer)) P->GainXp(int32(RPGJson::Num(Def, TEXT("xp"), 0)));
 	RPGLoot::Drop(this);
 
 	const FString Resolve = RPGJson::Str(Def, TEXT("resolveOnDeath"));
 	FString Enc, Outcome;
-	if (Resolve.Split(TEXT(":"), &Enc, &Outcome)) Story->Resolve(Enc, Outcome);
+	if (Resolve.Split(TEXT(":"), &Enc, &Outcome)) Session->Story()->Resolve(Enc, Outcome);
 }
 
 void ARPGEnemy::Respawn()

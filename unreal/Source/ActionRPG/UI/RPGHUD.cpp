@@ -1,6 +1,7 @@
 #include "RPGHUD.h"
 #include "RPGWorldBuilder.h"
-#include "RPGStory.h"
+#include "RPGSession.h"
+#include "LMStory.h"
 #include "RPGData.h"
 #include "RPGEnemy.h"
 #include "RPGNPC.h"
@@ -39,9 +40,9 @@ void ARPGHUD::DrawHUD()
 {
 	if (const ARPGPlayerController* PCtl = Cast<ARPGPlayerController>(PlayerOwner); PCtl && (PCtl->IsInTitle() || PCtl->IsInCharSelect())) { Super::DrawHUD(); return; }
 	Super::DrawHUD();
-	URPGStory* Story = URPGStory::Get(this);
-	ARPGPlayerCharacter* P = Story ? Story->Player() : nullptr;
-	if (!Story || !P) return;
+	URPGSession* Session = URPGSession::Get(this);
+	ARPGPlayerCharacter* P = Session ? Session->Player() : nullptr;
+	if (!Session || !P) return;
 	const float UI = Canvas->ClipY / 1080.f;   // scale with resolution
 
 	// Characters: health bars, names, quest markers.
@@ -60,7 +61,7 @@ void ARPGHUD::DrawHUD()
 		if (bTalkable && Dist < 2200.f)
 		{
 			Text(C->DisplayName, S.X, S.Y + 10 * UI, C->NameColor, 1.1f * UI);
-			const FString Marker = Story->MarkerFor(C);
+			const FString Marker = Session->MarkerFor(C);
 			if (!Marker.IsEmpty())
 			{
 				const float Bob = FMath::Sin(GetWorld()->GetRealTimeSeconds() * 4.f) * 5.f * UI - 14.f * UI;
@@ -78,7 +79,7 @@ void ARPGHUD::DrawHUD()
 			Text(FString::Printf(TEXT("%.0f / %.0f HP%s"), E->Stats->HP, E->Stats->MaxHP(), Next ? *(TEXT("  next: ") + RPGJson::Str(Next, TEXT("type"))) : TEXT("")),
 				S.X, S.Y - 16 * UI, FLinearColor(1.f, 0.83f, 0.3f), 0.6f * UI);
 		}
-		if (Story->bDebug && E)
+		if (Session->IsDebug() && E)
 		{
 			static const TCHAR* Names[] = { TEXT("idle"), TEXT("chase"), TEXT("windup"), TEXT("recover"), TEXT("return"), TEXT("leaving") };
 			Text(FString::Printf(TEXT("%s  %s%s  poise %.0f"), Names[uint8(E->State)], *E->Region, E->bProvoked ? TEXT(" PROVOKED") : TEXT(""), E->Poise),
@@ -87,7 +88,7 @@ void ARPGHUD::DrawHUD()
 	}
 
 	// Floating combat text.
-	for (const FRPGFloater& F : Story->Floaters)
+	for (const FRPGFloater& F : Session->Floaters)
 	{
 		const FVector S = Project(F.World, false);
 		if (S.Z <= 0.f) continue;
@@ -124,7 +125,7 @@ void ARPGHUD::DrawHUD()
 		Canvas->DrawItem(Tri);
 	}
 
-	if (Story->IsDialogueOpen() || P->IsDead()) return;
+	if (Session->Story()->IsDialogueOpen() || P->IsDead()) return;
 
 	// Crosshair for ranged styles / aiming (third person; top-down aims with the mouse cursor).
 	const RPGJson::FObj Style = P->Style();

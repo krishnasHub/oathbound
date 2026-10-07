@@ -2,7 +2,8 @@
 #include "RPGData.h"
 #include "RPGAssets.h"
 #include "RPGEnemy.h"
-#include "RPGStory.h"
+#include "RPGSession.h"
+#include "LMStory.h"
 #include "RPGPlayerCharacter.h"
 #include "RPGWorldBuilder.h"
 #include "RPGGameMode.h"
@@ -78,8 +79,8 @@ void ARPGPickup::Tick(float Dt)
 	SetActorLocation(L);
 	AddActorWorldRotation(FRotator(0, 90.f * Dt, 0));
 
-	URPGStory* Story = URPGStory::Get(this);
-	ARPGPlayerCharacter* P = Story ? Story->Player() : nullptr;
+	URPGSession* Session = URPGSession::Get(this);
+	ARPGPlayerCharacter* P = Session ? Session->Player() : nullptr;
 	if (!P || P->IsDead() || Age < 0.4f) return;
 	const float D = FVector::Dist2D(P->GetActorLocation(), L);
 	if (bGold && D < 260.f)
@@ -93,17 +94,17 @@ void ARPGPickup::Tick(float Dt)
 	{
 		P->Inventory->Gold += Amount;
 		P->Inventory->OnChanged.Broadcast();
-		Story->Float(P->Head(), FString::Printf(TEXT("+%dg"), Amount), FLinearColor(1.f, 0.83f, 0.3f), 0.9f);
+		Session->Float(P->Head(), FString::Printf(TEXT("+%dg"), Amount), FLinearColor(1.f, 0.83f, 0.3f), 0.9f);
 		Destroy();
 	}
 	else if (P->Inventory->Add(Item))
 	{
-		Story->Toast(TEXT("Picked up ") + Item.Name, URPGInventoryComponent::RarityColor(this, Item.Rarity));
+		Session->Toast(TEXT("Picked up ") + Item.Name, URPGInventoryComponent::RarityColor(this, Item.Rarity));
 		Destroy();
 	}
 	else if (Warned <= 0.f)
 	{
-		Story->Toast(TEXT("Bag is full — salvage something (I, Shift+Click)"));
+		Session->Toast(TEXT("Bag is full — salvage something (I, Shift+Click)"));
 		Warned = 3.f;
 	}
 }
@@ -155,9 +156,9 @@ void RPGLoot::Drop(ARPGEnemy* E)
 
 	// Quest drop (the relic): only while the quest isn't turned in and you don't already have it.
 	const RPGJson::FObj Q = RPGJson::Obj(E->Def, TEXT("questDrop"));
-	URPGStory* Story = URPGStory::Get(E);
-	const ARPGPlayerCharacter* P = Story->Player();
-	if (Q && P && Story->QuestStatus(RPGJson::Str(Q, TEXT("quest"))) != TEXT("turnedIn") && P->Inventory->Count(RPGJson::Str(Q, TEXT("item"))) == 0)
+	URPGSession* Session = URPGSession::Get(E);
+	const ARPGPlayerCharacter* P = Session->Player();
+	if (Q && P && Session->Story()->QuestStatus(RPGJson::Str(Q, TEXT("quest"))) != TEXT("turnedIn") && P->Inventory->Count(RPGJson::Str(Q, TEXT("item"))) == 0)
 	{
 		const FRPGItem It = URPGInventoryComponent::MakeItem(W, RPGJson::Str(Q, TEXT("item")));
 		Spawn(W, At, &It, 0);

@@ -2,7 +2,7 @@
 	"FileVersion": 3,
 	"EngineAssociation": "5.8",
 	"Category": "",
-	"Description": "Third-person action RPG. Gameplay, world and UI are C++; game rules come from Content/Data/game-data.json (shared with the HTML prototype).",
+	"Description": "Top-down HD-2D action RPG. Gameplay, world and UI are C++; game rules come from Content/Data/game-data.json (shared with the HTML prototype).",
 	"Modules": [
 		{
 			"Name": "ActionRPG",
@@ -12,6 +12,7 @@
 		}
 	],
 	"Plugins": [
+		{ "Name": "Loom", "Enabled": true },
 		{ "Name": "EnhancedInput", "Enabled": true },
 		{ "Name": "ControlRig", "Enabled": true },
 		{ "Name": "Niagara", "Enabled": true },

@@ -21,7 +21,8 @@ public class ActionRPG : ModuleRules
 			"UMG",
 			"RenderCore",               // GWhiteTexture for HUD triangles
 			"AIModule",                 // AAIController possesses enemies so CharacterMovement runs
-			"NavigationSystem"          // runtime navmesh for click-to-move
+			"NavigationSystem",         // runtime navmesh for click-to-move
+			"Loom"                      // story engine (Plugins/Loom)
 		});
 
 		// Sub-folders are include roots so headers can be included by name.

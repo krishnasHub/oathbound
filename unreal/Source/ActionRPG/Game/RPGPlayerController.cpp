@@ -1,6 +1,7 @@
 #include "RPGPlayerController.h"
 #include "ActionRPG.h"
-#include "RPGStory.h"
+#include "RPGSession.h"
+#include "LMStory.h"
 #include "RPGPlayerCharacter.h"
 #include "SRPGWidgets.h"
 #include "RPGLook.h"
@@ -44,7 +45,7 @@ void ARPGPlayerController::BeginPlay()
 	Panel->SetVisibility(EVisibility::Collapsed);
 	PauseMenu->SetVisibility(EVisibility::Collapsed);
 
-	if (URPGStory* S = URPGStory::Get(this)) S->OnDialogueChanged.AddUObject(this, &ARPGPlayerController::OnDialogueChanged);
+	if (URPGSession* S = URPGSession::Get(this)) S->Story()->OnDialogueChanged.AddUObject(this, &ARPGPlayerController::OnDialogueChanged);
 	ARPGPlayerCharacter* P = Cast<ARPGPlayerCharacter>(GetPawn());
 	if (P) P->BindUIHooks([this](FName K) { HandleKey(K); });
 
@@ -235,7 +236,7 @@ void ARPGPlayerController::BeginGame(const FString& ClassId, const FString& Sex)
 	Hud->SetVisibility(EVisibility::SelfHitTestInvisible);
 	EnterGameplay();
 
-	URPGStory* S = URPGStory::Get(this);
+	URPGSession* S = URPGSession::Get(this);
 	S->Toast(FString::Printf(TEXT("%s %s — talk to Elder Maren to begin."), Sex == TEXT("female") ? TEXT("Female") : TEXT("Male"),
 		*Cast<ARPGPlayerCharacter>(GetPawn())->DisplayName), Cast<ARPGPlayerCharacter>(GetPawn())->NameColor);
 	S->Toast(TEXT("Press H for controls"));
@@ -247,9 +248,9 @@ void ARPGPlayerController::BeginGame(const FString& ClassId, const FString& Sex)
 
 void ARPGPlayerController::OnDialogueChanged()
 {
-	URPGStory* S = URPGStory::Get(this);
+	URPGSession* S = URPGSession::Get(this);
 	if (!S || !Dialogue) return;
-	if (S->IsDialogueOpen())
+	if (S->Story()->IsDialogueOpen())
 	{
 		Dialogue->Refresh();
 		Dialogue->SetVisibility(EVisibility::Visible);
@@ -265,7 +266,7 @@ void ARPGPlayerController::HandleKey(FName Key)
 	if (Key == TEXT("Escape"))
 	{
 		if (bPanelOpen) ClosePanel();
-		else if (!bPauseMenu && !URPGStory::Get(this)->IsDialogueOpen()) OpenPauseMenu();
+		else if (!bPauseMenu && !URPGSession::Get(this)->Story()->IsDialogueOpen()) OpenPauseMenu();
 		return;
 	}
 	if (Key == TEXT("Inventory") || Key == TEXT("Character") || Key == TEXT("Quests") || Key == TEXT("Help")) TogglePanel(Key);

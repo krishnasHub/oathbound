@@ -7,7 +7,8 @@
 #include "Math/TransformCalculus2D.h"
 #include "Engine/Texture2D.h"
 #include "RPGAssets.h"
-#include "RPGStory.h"
+#include "RPGSession.h"
+#include "LMStory.h"
 #include "RPGData.h"
 #include "RPGPlayerCharacter.h"
 #include "RPGEnemy.h"
@@ -41,8 +42,8 @@ namespace
 	const FLinearColor Gold(1.f, 0.83f, 0.3f);
 	const FLinearColor Muted(0.62f, 0.64f, 0.68f);
 
-	URPGStory* StoryOf(const TWeakObjectPtr<UWorld>& W) { return W.IsValid() ? W->GetSubsystem<URPGStory>() : nullptr; }
-	ARPGPlayerCharacter* PlayerOf(const TWeakObjectPtr<UWorld>& W) { URPGStory* S = StoryOf(W); return S ? S->Player() : nullptr; }
+	URPGSession* SessionOf(const TWeakObjectPtr<UWorld>& W) { return W.IsValid() ? W->GetSubsystem<URPGSession>() : nullptr; }
+	ARPGPlayerCharacter* PlayerOf(const TWeakObjectPtr<UWorld>& W) { URPGSession* S = SessionOf(W); return S ? S->Player() : nullptr; }
 	FText T(const FString& S) { return FText::FromString(S); }
 
 	/** A horizontal bar: dark track, coloured fill (fraction from a lambda), optional label. */
@@ -144,13 +145,13 @@ void SRPGHud::Construct(const FArguments& Args)
 		+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right).Padding(0, 10)
 		[
 			SNew(STextBlock).Font(Font(12)).Justification(ETextJustify::Right).ShadowOffset(FVector2D(1, 1))
-			.Text_Lambda([W]() { const URPGStory* S = StoryOf(W); if (!S) return FText::GetEmpty();
+			.Text_Lambda([W]() { const URPGSession* S = SessionOf(W); if (!S) return FText::GetEmpty();
 				FString Out;
-				for (const auto& KV : S->Quests)
+				for (const auto& KV : S->Story()->Quests)
 				{
 					if (KV.Value.Status == TEXT("turnedIn")) continue;
 					const RPGJson::FObj Q = URPGData::Get(W.Get()).Entry(TEXT("quests"), KV.Key);
-					Out += RPGJson::Str(Q, TEXT("name")) + TEXT("\n   ") + (KV.Value.Status == TEXT("complete") ? TEXT("Return to ") + RPGJson::Str(Q, TEXT("giver")) : S->ProgressText(KV.Key)) + TEXT("\n\n");
+					Out += RPGJson::Str(Q, TEXT("name")) + TEXT("\n   ") + (KV.Value.Status == TEXT("complete") ? TEXT("Return to ") + RPGJson::Str(Q, TEXT("giver")) : S->Story()->ProgressText(KV.Key)) + TEXT("\n\n");
 				}
 				return T(Out); })
 		];
@@ -161,11 +162,11 @@ void SRPGHud::Construct(const FArguments& Args)
 		Toasts->AddSlot().AutoHeight().HAlign(HAlign_Center).Padding(0, 3)
 		[
 			SNew(SBorder).BorderImage(White()).BorderBackgroundColor(FLinearColor(0, 0, 0, 0.6f)).Padding(FMargin(14, 5))
-			.Visibility_Lambda([W, I]() { const URPGStory* S = StoryOf(W); return S && S->Toasts.IsValidIndex(I) ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+			.Visibility_Lambda([W, I]() { const URPGSession* S = SessionOf(W); return S && S->Toasts.IsValidIndex(I) ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
 			[
 				SNew(STextBlock).Font(Font(13))
-				.Text_Lambda([W, I]() { const URPGStory* S = StoryOf(W); return S && S->Toasts.IsValidIndex(I) ? T(S->Toasts[I].Text) : FText::GetEmpty(); })
-				.ColorAndOpacity_Lambda([W, I]() { const URPGStory* S = StoryOf(W); if (!S || !S->Toasts.IsValidIndex(I)) return FSlateColor(FLinearColor::White);
+				.Text_Lambda([W, I]() { const URPGSession* S = SessionOf(W); return S && S->Toasts.IsValidIndex(I) ? T(S->Toasts[I].Text) : FText::GetEmpty(); })
+				.ColorAndOpacity_Lambda([W, I]() { const URPGSession* S = SessionOf(W); if (!S || !S->Toasts.IsValidIndex(I)) return FSlateColor(FLinearColor::White);
 					FLinearColor C = S->Toasts[I].Color; C.A = FMath::Clamp((3.4f - S->Toasts[I].Age) * 2.f, 0.f, 1.f); return FSlateColor(C); })
 			]
 		];
@@ -540,7 +541,7 @@ int32 SRPGMinimap::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSl
 
 	const URPGData& D = URPGData::Get(World.Get());
 	const ARPGPlayerCharacter* Player = PlayerOf(World);
-	const URPGStory* Story = StoryOf(World);
+	const URPGSession* Session = SessionOf(World);
 	auto Dot = [&](const FVector& WorldAt, float Px, const FLinearColor& Col, int32 L)
 	{
 		const FVector2D N((WorldAt.X - PlayerAt.X) / D.TileSize / ViewTiles * 2.f, (WorldAt.Y - PlayerAt.Y) / D.TileSize / ViewTiles * 2.f);
@@ -556,7 +557,7 @@ int32 SRPGMinimap::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSl
 			const ARPGCharacterBase* C = *It;
 			if (C == Player || C->IsDead() || C->IsHidden()) continue;
 			if (C->Team == ERPGTeam::Enemy && !ARPGWorldBuilder::IsLit(C->GetActorLocation(), PlayerAt)) continue;   // foes hide in the dark
-			const bool bMarker = Story && !Story->MarkerFor(C).IsEmpty();
+			const bool bMarker = Session && !Session->MarkerFor(C).IsEmpty();
 			const FLinearColor Col = bMarker ? Gold : C->Team == ERPGTeam::Villager ? FLinearColor(0.95f, 0.85f, 0.35f)
 				: C->IsPassive() ? FLinearColor(1.f, 0.55f, 0.15f) : FLinearColor(0.95f, 0.18f, 0.15f);
 			Dot(C->GetActorLocation(), bMarker ? 9.f : 6.f, Col, Layer + 1);
@@ -609,13 +610,13 @@ void SRPGDialogue::Construct(const FArguments& Args)
 					+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
 					[
 						SNew(STextBlock).Font(Font(15, TEXT("Bold")))
-						.Text_Lambda([W]() { const URPGStory* S = StoryOf(W); return S ? T(S->DialogueSpeaker) : FText::GetEmpty(); })
-						.ColorAndOpacity_Lambda([W]() { const URPGStory* S = StoryOf(W); return FSlateColor(S ? S->SpeakerColor : FLinearColor::White); })
+						.Text_Lambda([W]() { const URPGSession* S = SessionOf(W); return S ? T(S->Story()->SpeakerInfo().Name) : FText::GetEmpty(); })
+						.ColorAndOpacity_Lambda([W]() { const URPGSession* S = SessionOf(W); return FSlateColor(S ? S->Story()->SpeakerInfo().Color : FLinearColor::White); })
 					]
 					+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 12)
 					[
 						SNew(STextBlock).Font(Font(13)).AutoWrapText(true).ColorAndOpacity(FLinearColor(0.92f, 0.91f, 0.89f))
-						.Text_Lambda([W]() { const URPGStory* S = StoryOf(W); return S ? T(S->DialogueText) : FText::GetEmpty(); })
+						.Text_Lambda([W]() { const URPGSession* S = SessionOf(W); return S ? T(S->Story()->DialogueText) : FText::GetEmpty(); })
 					]
 					+ SVerticalBox::Slot().AutoHeight()[ SAssignNew(Choices, SVerticalBox) ]
 				]
@@ -642,23 +643,27 @@ void SRPGDialogue::SetPortrait(FSlateBrush& Brush, TStrongObjectPtr<UTexture2D>&
 void SRPGDialogue::Refresh()
 {
 	Choices->ClearChildren();
-	URPGStory* S = StoryOf(World);
+	URPGSession* S = SessionOf(World);
 	if (!S) return;
 	if (!Fx.Busy()) Fx.Reset();   // a new line fades in
 	if (!bWasOpen)   // just opened: who's talking, and slide the portraits in
 	{
 		// Portraits are off until there's proper illustrated art (world3d.dialoguePortraits).
 		const bool bPortraits = RPGJson::Bool(URPGData::Get(World.Get()).World3D(), TEXT("dialoguePortraits"), false);
-		SetPortrait(NpcBrush, NpcTex, bPortraits ? S->DialogueNpc.Get() : nullptr);
+		SetPortrait(NpcBrush, NpcTex, bPortraits ? S->DialogueNpc() : nullptr);
 		SetPortrait(HeroBrush, HeroTex, bPortraits ? S->Player() : nullptr);
 		Appear = 0.f;
 	}
 	bWasOpen = true;
 	Highlight = -1;
 	MoveHighlight(1);   // first enabled choice
-	for (int32 I = 0; I < S->ChoiceViews.Num(); ++I)
+	for (int32 I = 0; I < S->Story()->ChoiceViews.Num(); ++I)
 	{
-		const FRPGChoiceView& V = S->ChoiceViews[I];
+		const FLMChoiceView& V = S->Story()->ChoiceViews[I];
+		// Class verbs ([Honor], [Hypnotize]...) in the hero's colour, shared ones ([Persuade]) in gold.
+		const ARPGPlayerCharacter* Hero = S->Player();
+		const bool bClassVerb = RPGJson::Has(URPGData::Get(World.Get()).Entry(TEXT("dialogueVerbs"), V.VerbId), TEXT("class"));
+		const FLinearColor VerbColor = bClassVerb && Hero ? Hero->NameColor : FLinearColor(1.f, 0.83f, 0.3f);
 		TWeakObjectPtr<UWorld> W = World;
 		Choices->AddSlot().AutoHeight().Padding(0, 3)
 		[
@@ -670,7 +675,7 @@ void SRPGDialogue::Refresh()
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth().Padding(4, 2)[ SNew(STextBlock).Font(Font(12)).ColorAndOpacity(Muted).Text(T(FString::Printf(TEXT("%d."), I + 1))) ]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(2, 2)
-				[ SNew(STextBlock).Font(Font(12, TEXT("Bold"))).ColorAndOpacity(V.VerbColor).Text(T(V.Verb.IsEmpty() ? FString() : TEXT("[") + V.Verb + TEXT("]"))) ]
+				[ SNew(STextBlock).Font(Font(12, TEXT("Bold"))).ColorAndOpacity(VerbColor).Text(T(V.Verb.IsEmpty() ? FString() : TEXT("[") + V.Verb + TEXT("]"))) ]
 				+ SHorizontalBox::Slot().FillWidth(1).Padding(4, 2)[ SNew(STextBlock).Font(Font(12)).AutoWrapText(true).Text(T(V.Text)) ]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(6, 2)[ SNew(STextBlock).Font(Font(11)).ColorAndOpacity(Muted).Text(T(V.Odds)) ]
 			]
@@ -706,19 +711,19 @@ FVector2D SRPGDialogue::ChoiceScreenCenter(int32 I) const
 
 void SRPGDialogue::Confirm(int32 Index)
 {
-	URPGStory* S = StoryOf(World);
-	if (!S || Fx.Busy() || !S->ChoiceViews.IsValidIndex(Index) || !S->ChoiceViews[Index].bEnabled) return;
+	URPGSession* S = SessionOf(World);
+	if (!S || Fx.Busy() || !S->Story()->ChoiceViews.IsValidIndex(Index) || !S->Story()->ChoiceViews[Index].bEnabled) return;
 	Highlight = Index;
 	TWeakObjectPtr<UWorld> W = World;
-	Fx.Start(Index, [W, Index]() { if (URPGStory* St = StoryOf(W)) St->Choose(Index); });
+	Fx.Start(Index, [W, Index]() { if (URPGSession* St = SessionOf(W)) St->Story()->Choose(Index); });
 }
 
 void SRPGDialogue::Tick(const FGeometry& G, const double Time, const float Dt)
 {
 	SCompoundWidget::Tick(G, Time, Dt);
 	SetRenderOpacity(Fx.Tick(Dt));
-	const URPGStory* Story = StoryOf(World);
-	if (!Story || !Story->IsDialogueOpen()) bWasOpen = false;
+	const URPGSession* Session = SessionOf(World);
+	if (!Session || !Session->Story()->IsDialogueOpen()) bWasOpen = false;
 	Appear = FMath::Min(1.f, Appear + Dt * 4.f);
 	const float Ease = 1.f - FMath::Square(1.f - Appear);
 	const float Rise = (1.f - Ease) * 220.f;
@@ -730,45 +735,45 @@ void SRPGDialogue::Tick(const FGeometry& G, const double Time, const float Dt)
 		HeroPortrait->SetRenderOpacity(Ease);
 	}
 	// Modal: if a click (or anything else) took keyboard focus away, take it back so 1-9 / Esc keep working.
-	const URPGStory* S = StoryOf(World);
-	if (S && S->IsDialogueOpen() && !HasKeyboardFocus()) FSlateApplication::Get().SetKeyboardFocus(AsShared(), EFocusCause::SetDirectly);
+	const URPGSession* S = SessionOf(World);
+	if (S && S->Story()->IsDialogueOpen() && !HasKeyboardFocus()) FSlateApplication::Get().SetKeyboardFocus(AsShared(), EFocusCause::SetDirectly);
 }
 
 FReply SRPGDialogue::OnKeyDown(const FGeometry& G, const FKeyEvent& E)
 {
-	URPGStory* S = StoryOf(World);
-	if (!S || !S->IsDialogueOpen()) return FReply::Unhandled();
+	URPGSession* S = SessionOf(World);
+	if (!S || !S->Story()->IsDialogueOpen()) return FReply::Unhandled();
 	static const FKey Digits[] = { EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four, EKeys::Five, EKeys::Six, EKeys::Seven, EKeys::Eight, EKeys::Nine };
 	if (Fx.Busy()) return FReply::Handled();
 	for (int32 I = 0; I < 9; ++I) if (E.GetKey() == Digits[I]) { Confirm(I); return FReply::Handled(); }
 	const FKey K = E.GetKey();
 	if (K == EKeys::Up || K == EKeys::W || K == EKeys::Gamepad_DPad_Up) { MoveHighlight(-1); return FReply::Handled(); }
 	if (K == EKeys::Down || K == EKeys::S || K == EKeys::Gamepad_DPad_Down) { MoveHighlight(1); return FReply::Handled(); }
-	if ((K == EKeys::Enter || K == EKeys::SpaceBar || K == EKeys::E || K == EKeys::Gamepad_FaceButton_Bottom) && S->ChoiceViews.IsValidIndex(Highlight))
+	if ((K == EKeys::Enter || K == EKeys::SpaceBar || K == EKeys::E || K == EKeys::Gamepad_FaceButton_Bottom) && S->Story()->ChoiceViews.IsValidIndex(Highlight))
 	{
 		Confirm(Highlight);
 		return FReply::Handled();
 	}
-	if (K == EKeys::Escape || K == EKeys::Gamepad_FaceButton_Right) { S->CloseDialogue(); return FReply::Handled(); }
+	if (K == EKeys::Escape || K == EKeys::Gamepad_FaceButton_Right) { S->Story()->CloseDialogue(); return FReply::Handled(); }
 	return FReply::Unhandled();
 }
 
 FReply SRPGDialogue::OnMouseWheel(const FGeometry& G, const FPointerEvent& E)
 {
-	const URPGStory* S = StoryOf(World);
-	if (!S || !S->IsDialogueOpen()) return FReply::Unhandled();
+	const URPGSession* S = SessionOf(World);
+	if (!S || !S->Story()->IsDialogueOpen()) return FReply::Unhandled();
 	MoveHighlight(E.GetWheelDelta() > 0.f ? -1 : 1);
 	return FReply::Handled();
 }
 
 void SRPGDialogue::MoveHighlight(int32 Step)
 {
-	const URPGStory* S = StoryOf(World);
-	const int32 N = S ? S->ChoiceViews.Num() : 0;
+	const URPGSession* S = SessionOf(World);
+	const int32 N = S ? S->Story()->ChoiceViews.Num() : 0;
 	for (int32 I = 1; I <= N; ++I)
 	{
 		const int32 C = ((Highlight + Step * I) % N + N) % N;   // wraps around
-		if (S->ChoiceViews[C].bEnabled) { Highlight = C; return; }
+		if (S->Story()->ChoiceViews[C].bEnabled) { Highlight = C; return; }
 	}
 }
 
@@ -1569,7 +1574,7 @@ void SRPGPanel::Show(FName InMode)
 void SRPGPanel::Rebuild()
 {
 	ARPGPlayerCharacter* P = PlayerOf(World);
-	URPGStory* S = StoryOf(World);
+	URPGSession* S = SessionOf(World);
 	if (!P || !S) return;
 	const URPGData& D = URPGData::Get(World.Get());
 	auto V = SNew(SVerticalBox);
@@ -1605,14 +1610,14 @@ void SRPGPanel::Rebuild()
 	else if (Mode == TEXT("Quests"))
 	{
 		Head(TEXT("Quest Log"));
-		if (S->Quests.IsEmpty()) Line(TEXT("No quests yet. Look for a ! above someone's head."), Muted);
-		for (const auto& KV : S->Quests)
+		if (S->Story()->Quests.IsEmpty()) Line(TEXT("No quests yet. Look for a ! above someone's head."), Muted);
+		for (const auto& KV : S->Story()->Quests)
 		{
 			const RPGJson::FObj Q = D.Entry(TEXT("quests"), KV.Key);
 			const FString St = KV.Value.Status;
 			Line(RPGJson::Str(Q, TEXT("name")), St == TEXT("turnedIn") ? Muted : Gold, 14);
 			Line(RPGJson::Str(Q, TEXT("desc")), Muted, 11);
-			Line(St == TEXT("turnedIn") ? TEXT("Completed") : St == TEXT("complete") ? TEXT("Return to ") + RPGJson::Str(Q, TEXT("giver")) : TEXT("Progress: ") + S->ProgressText(KV.Key));
+			Line(St == TEXT("turnedIn") ? TEXT("Completed") : St == TEXT("complete") ? TEXT("Return to ") + RPGJson::Str(Q, TEXT("giver")) : TEXT("Progress: ") + S->Story()->ProgressText(KV.Key));
 		}
 	}
 	else if (Mode == TEXT("Character"))

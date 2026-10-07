@@ -3,7 +3,8 @@
 #include "RPGLook.h"
 #include "RPGData.h"
 #include "RPGAssets.h"
-#include "RPGStory.h"
+#include "RPGSession.h"
+#include "LMStory.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -216,7 +217,7 @@ void ARPGAmbient::TickBirds(float Dt, const FVector& Hero, bool bDay)
 
 void ARPGAmbient::TickGeese(float Dt, const FVector& Hero, bool bDay)
 {
-	URPGStory* Story = URPGStory::Get(this);
+	URPGSession* Session = URPGSession::Get(this);
 	for (FGoose& G : Geese)
 	{
 		G.Anim += Dt;
@@ -227,7 +228,7 @@ void ARPGAmbient::TickGeese(float Dt, const FVector& Hero, bool bDay)
 		{
 			G.State = GooseHonk; G.Timer = 0.6f; G.Vel = FVector::ZeroVector;
 			G.bFacingLeft = Hero.X < G.Pos.X;
-			if (Story) Story->Float(FVector(G.Pos.X, G.Pos.Y, Ground(G.Pos) + 170.f), TEXT("HONK!"), FLinearColor(1.f, 0.95f, 0.8f), 0.9f);
+			if (Session) Session->Float(FVector(G.Pos.X, G.Pos.Y, Ground(G.Pos) + 170.f), TEXT("HONK!"), FLinearColor(1.f, 0.95f, 0.8f), 0.9f);
 		}
 		int32 Col = 0;
 		switch (G.State)
@@ -286,7 +287,7 @@ void ARPGAmbient::TickProwler(float Dt, const FVector& Hero, bool bNight)
 		{
 			M.State = ProwlStartled; M.Timer = 0.5f; M.Vel = FVector::ZeroVector;
 			M.bFacingLeft = Hero.X < M.Pos.X;
-			if (URPGStory* S = URPGStory::Get(this)) S->Float(FVector(M.Pos.X, M.Pos.Y, Ground(M.Pos) + 260.f), TEXT("!"), FLinearColor(1.f, 0.85f, 0.3f), 1.3f);
+			if (URPGSession* S = URPGSession::Get(this)) S->Float(FVector(M.Pos.X, M.Pos.Y, Ground(M.Pos) + 260.f), TEXT("!"), FLinearColor(1.f, 0.85f, 0.3f), 1.3f);
 			break;
 		}
 		const FVector To = ProwlRoute[ProwlLeg] - M.Pos;
