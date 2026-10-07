@@ -18,6 +18,7 @@
 #include "TSPerception.h"
 #include "TSCameraRig.h"
 #include "TSHeroControl.h"
+#include "TSDayNight.h"
 #include "Components/PointLightComponent.h"
 #include "RPGWorldBuilder.h"
 
@@ -149,6 +150,9 @@ void ARPGPlayerCharacter::BeginPlay()
 	NightGlow->SetLightColor(FLinearColor(0.62f, 0.74f, 1.f));   // cool, moonlit: the night around you reads blue
 	NightGlow->SetCastShadows(false);
 	NightGlow->RegisterComponent();
+	// Nightfall is an event (Tessera's sky announces it); the lights here are this game's answer to it.
+	if (UTSDayNight* DayNight = UTSDayNight::Get(this)) DayNight->OnNightLevel.AddUObject(this, &ARPGPlayerCharacter::OnNightLevel);
+	BuildOrbLight();
 
 	ComboMontage = TSAssets::Load<UAnimMontage>(RPGAssets::ComboMontage);
 	if (ComboMontage) for (const FCompositeSection& S : ComboMontage->CompositeSections) ComboSections.Add(S.SectionName);
@@ -1078,6 +1082,46 @@ void ARPGPlayerCharacter::RefreshWeapons()
 	TArray<FString> Kits;
 	for (const TSharedPtr<FJsonValue>& V : TSJson::Arr(TSJson::Obj(UTSData::Get(this).World(), TEXT("styleKits")), Styles[FMath::Clamp(StyleIndex, 0, Styles.Num() - 1)]->AsString())) Kits.Add(V->AsString());
 	SetWeaponKits(Kits);
+	BuildOrbLight();
+}
+
+void ARPGPlayerCharacter::BuildOrbLight()
+{
+	if (OrbLight) { OrbLight->DestroyComponent(); OrbLight = nullptr; }
+	OrbCandelas = OrbSight = 0.f;
+	if (!NightGlow) return;   // (not begun play yet: BeginPlay builds it)
+	const TSJson::FObj AllKits = TSJson::Obj(UTSData::Get(this).World(), TEXT("kits"));
+	const TArray<TSharedPtr<FJsonValue>> Styles = TSJson::Arr(ClassDef, TEXT("styles"));
+	if (Styles.IsEmpty()) return;
+	for (const TSharedPtr<FJsonValue>& K : TSJson::Arr(TSJson::Obj(UTSData::Get(this).World(), TEXT("styleKits")), Styles[FMath::Clamp(StyleIndex, 0, Styles.Num() - 1)]->AsString()))
+	{
+		for (const TSharedPtr<FJsonValue>& P : TSJson::Arr(TSJson::Obj(AllKits, K->AsString()), TEXT("parts")))
+		{
+			const TSJson::FObj NL = TSJson::Obj(P->AsObject(), TEXT("nightLight"));
+			UStaticMeshComponent* Orb = NL ? KitGlow(K->AsString()) : nullptr;
+			if (!Orb) continue;
+			OrbLight = NewObject<UPointLightComponent>(this, MakeUniqueObjectName(this, UPointLightComponent::StaticClass(), TEXT("OrbLight")));
+			OrbLight->SetupAttachment(Orb);
+			OrbLight->SetIntensityUnits(ELightUnits::Candelas);
+			OrbLight->SetAttenuationRadius(float(TSJson::Num(NL, TEXT("radius"), 900)));
+			OrbLight->SetLightColor(TSJson::Color(TSJson::Str(NL, TEXT("color"), TEXT("#dcecff"))));
+			OrbLight->SetCastShadows(false);
+			OrbLight->RegisterComponent();
+			OrbCandelas = float(TSJson::Num(NL, TEXT("candelas"), 12));
+			OrbSight = float(TSJson::Num(NL, TEXT("sight"), 0));
+			break;
+		}
+		if (OrbLight) break;
+	}
+	OnNightLevel(ATSSky::Night());   // start at the current level, then follow the events
+}
+
+void ARPGPlayerCharacter::OnNightLevel(float Night)
+{
+	const float K = FMath::SmoothStep(0.f, 1.f, Night);   // nothing by day, rising through dusk, full at night
+	if (NightGlow) NightGlow->SetIntensity(5.f * Night);
+	if (OrbLight) OrbLight->SetIntensity(OrbCandelas * K);
+	ATSSky::SetCarriedLight(OrbSight * K);   // the orb lets the hero see further in the dark
 }
 
 void ARPGPlayerCharacter::Restore()
@@ -1179,7 +1223,6 @@ void ARPGPlayerCharacter::Tick(float Dt)
 	Super::Tick(Dt);
 	URPGSession* Session = URPGSession::Get(this);
 
-	if (NightGlow) NightGlow->SetIntensity(5.f * ATSSky::Night());
 
 
 	if (bDead)

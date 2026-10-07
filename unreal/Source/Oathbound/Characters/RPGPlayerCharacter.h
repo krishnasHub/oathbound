@@ -172,6 +172,12 @@ private:
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> AimLine;         // bow draw (unused: the arc preview replaced it)
 	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> ArcDots; // bow draw: dots along the arrow's arc
 	UPROPERTY() TObjectPtr<class UPointLightComponent> NightGlow; // a soft light around the hero after dark
+	UPROPERTY() TObjectPtr<class UPointLightComponent> OrbLight;  // the staff orb's night glow (a kit part's "nightLight")
+	float OrbCandelas = 0.f, OrbSight = 0.f;
+	/** Tessera's day/night event (UTSDayNight::OnNightLevel): the hero's glow and the staff orb follow the dark. */
+	void OnNightLevel(float Night);
+	/** The current weapons' kit parts with a "nightLight": light the first one's glowing part. */
+	void BuildOrbLight();
 	void UpdateArcPreview();
 	UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> BubbleMat;
 	UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> GuardMat;

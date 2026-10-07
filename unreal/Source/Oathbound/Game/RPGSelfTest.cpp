@@ -11,6 +11,11 @@
 #include "GameFramework/GameModeBase.h"
 #include "RPGEnemy.h"
 #include "RPGNPC.h"
+#include "TSFX.h"
+#include "TSSky.h"
+#include "TSDayNight.h"
+#include "ProceduralMeshComponent.h"
+#include "Components/PointLightComponent.h"
 #include "RPGLoot.h"
 #include "TSLoot.h"
 #include "TSInventory.h"
@@ -570,10 +575,60 @@ void ARPGSelfTest::RunStep()
 		{
 			const bool bThawed = Target.IsValid() && !Target->IsFrozen() && Target->StatusTint().Equals(FLinearColor::White);
 			if (!bThawed && T - Started < 6.f) { Next = T + 0.25f; return; }   // (3s of game time; allow for slow frames)
+			int32 Cracks = 0;
+			for (TActorIterator<ATSFX> It(GetWorld()); It; ++It) if (It->FindComponentByClass<UProceduralMeshComponent>()) ++Cracks;
+			Shot(TEXT("frost_cracks"));
+			Report(FString::Printf(TEXT("cracks left in the ground: %s (each nova: 75%% chance, a new pattern)"), Cracks ? TEXT("yes") : TEXT("none this time")));
 			Report(FString::Printf(TEXT("%s: thawed after 3s (frozen left %.2fs, dead %d, tint %s)"), bThawed ? TEXT("PASS") : TEXT("FAIL"),
 				Target.IsValid() ? Target->Tags.Map.FindRef(TEXT("Frozen")) : -1.f, Target.IsValid() && Target->IsDead(), Target.IsValid() ? *Target->StatusTint().ToString() : TEXT("-")));
 			Quit(0.5f);
 		}
+	}
+	else if (Scenario == TEXT("scars"))
+	{
+		// Spells mark the ground: fireballs scorch it, chain lightning burns forks under its targets (random each time).
+		auto Scars = [this]() { int32 N = 0; for (TActorIterator<ATSFX> It(GetWorld()); It; ++It) if (It->FindComponentByClass<UProceduralMeshComponent>()) ++N; return N; };
+		if (Step == 0)
+		{
+			while (Pl->Level() < 4) Pl->GainXp(ARPGPlayerCharacter::XpToNext(Pl, Pl->Level()) - Pl->Xp);
+			Target = Find(TEXT("slime"));
+			Place(Target->GetActorLocation() - FVector(420, 0, 0), 0.f);
+			Swings = 0;
+			Step = 1; Next = T + 0.5f;
+		}
+		else if (Step == 1 && Swings < 3)
+		{
+			Pl->Stats->Pool(RPGStat::Mana).Current = Pl->Stats->Max(RPGStat::Mana);
+			Pl->Abilities->Cooldowns.Reset();
+			Target = Find(TEXT("slime"));
+			if (Target.IsValid()) AimAt(Target->GetActorLocation());
+			Pl->TestPress(Swings == 1 ? TEXT("Ability4") : TEXT("Ability1"), true);   // fireball, chain lightning, fireball
+			++Swings;
+			Next = T + 0.9f;
+		}
+		else if (Step == 1)
+		{
+			Shot(TEXT("scars"));
+			Report(FString::Printf(TEXT("%s: marks left on the ground: %d (each spell: a chance, a new pattern)"), Scars() > 0 ? TEXT("PASS") : TEXT("FAIL"), Scars()));
+			Quit(0.5f);
+		}
+	}
+	else if (Scenario == TEXT("night"))
+	{
+		// Run with -RPGHour=23: the mage's staff orb glows faintly and widens what the dark lets the hero see.
+		if (Step == 0) { Step = 1; Next = T + 1.5f; return; }   // let the sky settle
+		const float Base = float(TSJson::Num(TSJson::Obj(TSJson::Obj(D.World(), TEXT("dayNight")), TEXT("nightVision")), TEXT("heroSight"), 1000));
+		float Orb = 0.f;
+		TArray<UPointLightComponent*> Lights;
+		Pl->GetComponents(Lights);
+		for (const UPointLightComponent* L : Lights) if (L->GetName().StartsWith(TEXT("OrbLight"))) Orb = FMath::Max(Orb, L->Intensity);
+		Report(FString::Printf(TEXT("%s: at night (%.1fh, night %.2f) the staff orb glows (%.1f cd)"), Orb > 1.f ? TEXT("PASS") : TEXT("FAIL"), ATSSky::Hour(), ATSSky::Night(), Orb));
+		Report(FString::Printf(TEXT("%s: the hero sees further in the dark (%.0fuu, %.0fuu without the orb)"), ATSSky::HeroSight() > Base + 100.f ? TEXT("PASS") : TEXT("FAIL"), ATSSky::HeroSight(), Base));
+		const UTSDayNight* DN = UTSDayNight::Get(this);
+		Report(FString::Printf(TEXT("%s: Tessera announced the night (phase %d, hour %d, level %.2f)"), DN && DN->Phase() == ETSDayPhase::Night ? TEXT("PASS") : TEXT("FAIL"),
+			DN ? int32(DN->Phase()) : -1, DN ? DN->Hour() : -1, DN ? DN->NightLevel() : -1.f));
+		Shot(TEXT("night_orb"));
+		Quit(1.f);
 	}
 	else if (Scenario == TEXT("barrier"))
 	{

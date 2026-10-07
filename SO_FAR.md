@@ -68,10 +68,10 @@ Developer loop (from `unreal/`):
 ```powershell
 .\Tools\rpg.ps1 build
 .\Tools\rpg.ps1 art               # redraw the pixel art (python3 + numpy), then: prepare
-.\Tools\rpg.ps1 test -Scenario combat|block|elder|bridge|mage|thief|walk|picker|smoke|pause|click|frost|barrier
+.\Tools\rpg.ps1 test -Scenario combat|block|elder|bridge|mage|thief|walk|picker|smoke|pause|click|frost|barrier|night|scars
 .\Tools\rpg.ps1 test -Scenario pose -Class mage|thief   # pose screenshots -> Saved/Screenshots/RPG/pose_*.png
 ```
-- **Last state (2026-10-07):** all 13 tests PASS (combat, block, elder, bridge, mage, thief, walk, picker, smoke, pause, click, frost, barrier). (Phase 2 also passed from a fresh clone with a clean build.)
+- **Last state (2026-10-07):** all 15 tests PASS (combat, block, elder, bridge, mage, thief, walk, picker, smoke, pause, click, frost, barrier, night, scars). (Phase 2 also passed from a fresh clone with a clean build.)
   - `click` sends real mouse events; with 8 windows overlapping it sometimes hit another window. Fixed in phase 4: `ATSTestRunner::ClickAt` brings its window to the front (3 full runs in a row passed).
   - `prepare` can't overwrite the committed assets while they're read-only (Git LFS "lockable"): clear the flag first, and `git checkout -- unreal/Content` after a check-only run to avoid LFS churn.
 - **Self-test command-line flags:**
@@ -313,6 +313,15 @@ dynamic story. So the reusable code is moving into two plugins, each its own rep
   and every character in it (foes, villagers) gets `Frozen` for 3 s: no movement, AI, animation or talk, tinted
   `world3d.statusTints.Frozen`. Animals freeze through `UTSAreaEvents::OnStatus`. (Replaced its old 40% slow.)
 - Mechanisms in Tessera; numbers, colours and the column's look in Oathbound. Tests: `frost`, `barrier`.
+- **Ground scars** (`ATSFX::Scar`, an ability's `scar` data): Frost Nova cracks (after the frost fades), Fireball scorch
+  (burnt splat, streaks, dying embers), Chain Lightning forks (burn lines + flash) under each target. Each a new random
+  pattern, a random lifetime, and a chance of none. Test: `scars`.
+- **Night orb**: the mage's staff orb glows faint white-blue as night falls and widens the hero's sight in the dark
+  (1000 -> 1450 uu). Event-driven: Tessera's `UTSDayNight` publishes `OnPhase` / `OnHour` / `OnNightLevel`; the hero
+  (game code) listens and drives the orb light and `ATSSky::SetCarriedLight`; numbers on the orb's `nightLight` in data.
+  Test: `night` (-RPGHour=23).
+- **Architecture rule (user, 2026-10-07):** decoupled and event-driven. Tessera / Loom publish events and offer hooks;
+  the game listens and acts. Loom and Tessera never know about each other: the game bridges them (e.g. time of day to Loom).
 
 ## 8. Next steps / open threads
 

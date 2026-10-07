@@ -108,7 +108,8 @@
       "staff": { "bone": "hand_r", "mountRot": [-90, 0, 0], "parts": [
         { "shape": "Cylinder", "mat": "M_Wood_Oak", "loc": [0, 0, 35], "size": [5, 5, 205] },
         { "shape": "Cylinder", "mat": "M_Metal_Gold", "loc": [0, 0, 128], "size": [8, 8, 6] },
-        { "shape": "Sphere", "glow": "#b9a4ff", "loc": [0, 0, 141], "size": [17, 17, 17] } ] },
+        { "shape": "Sphere", "glow": "#b9a4ff", "loc": [0, 0, 141], "size": [17, 17, 17],
+          "nightLight": { "_doc": "A faint white-blue glow that rises with nightfall", "color": "#dcecff", "candelas": 12, "radius": 1000, "sight": 450 } } ] },
       "shield": { "bone": "lowerarm_l", "parts": [
         { "shape": "Cylinder", "mat": "M_Wood_Oak", "loc": [0, 0, 0], "size": [62, 62, 4] },
         { "shape": "Sphere", "mat": "M_Metal_Steel", "loc": [0, 0, 3], "size": [12, 12, 6] } ] },
@@ -262,17 +263,20 @@
 
     "fireball":        { "name": "Fireball", "type": "projectile", "unlockLevel": 1, "mana": 10, "cooldown": 1.2,
                          "damage": 16, "scaling": "focus", "speed": 420, "radius": 7, "range": 420, "poise": 25, "knockback": 160,
+                         "scar": { "style": "scorch", "radius": 30, "chance": 0.85, "life": [10, 45], "color": "#1c1612", "opacity": 0.75, "glow": "#ff6a1a", "glowTime": 2.5 },
                          "color": "#ff8a3d", "desc": "Hurl a fireball toward the cursor." },
     "frost_nova":      { "name": "Frost Nova", "type": "aoe", "unlockLevel": 2, "mana": 20, "cooldown": 8,
                          "damage": 10, "scaling": "focus", "radius": 110, "poise": 20, "knockback": 80,
                          "applyTag": { "tag": "Frozen", "duration": 3, "everyone": true },
                          "fx": { "shape": "sphere", "time": 0.8, "ground": 3, "groundColor": "#cfeaff" },
+                         "scar": { "style": "cracks", "chance": 0.75, "life": [15, 75], "delay": 1.8, "color": "#202831", "opacity": 0.85 },
                          "color": "#9fd8ff", "desc": "A sphere of frost bursts out around you. Everything caught in it, foe, villager or bird, freezes solid for 3s." },
     "blink":           { "name": "Blink", "type": "blink", "unlockLevel": 3, "mana": 15, "cooldown": 4,
                          "distance": 170, "iframes": 0.15,
                          "color": "#b9a4ff", "desc": "Teleport toward the cursor (can't pass walls or water)." },
     "chain_lightning": { "name": "Chain Lightning", "type": "chain", "unlockLevel": 4, "mana": 25, "cooldown": 5,
                          "damage": 20, "scaling": "focus", "range": 320, "jumps": 3, "jumpRange": 140, "falloff": 0.75, "poise": 30,
+                         "scar": { "style": "forks", "radius": 32, "chance": 0.8, "life": [8, 35], "color": "#16181d", "opacity": 0.7, "glow": "#dfefff", "glowTime": 0.6 },
                          "color": "#cfe8ff", "desc": "Strike the enemy nearest the cursor; arcs to 3 more nearby, weaker each jump." },
 
     "volley":          { "name": "Volley", "type": "projectile", "unlockLevel": 1, "stamina": 18, "cooldown": 3,
