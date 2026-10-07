@@ -30,6 +30,7 @@ one) as the game changes.
 | `lookdev/` | Look tests (3D vs HD-2D vs flat 2D; fog vs tilt-shift). Local only, not in git |
 | `DESIGN.md`, `CHARACTERS.md` | Game design: mechanics, classes, dialogue, quest structure |
 | `SO_FAR.md` | Project log and handoff: where things stand, how it's built, what's next |
+| `TODO.md` | The current plan, phase by phase (talking foes, the Scholar's routes, world mood) |
 
 Clone with `git clone --recurse-submodules` (or run `git submodule update --init` after a plain clone): the
 game builds on the two plugins above, which are their own repos so other games can share them.

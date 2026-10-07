@@ -43,6 +43,7 @@ Last updated: 2026-10-06 (HD-2D, front end, day/night, ambient life, shields, pa
 | `lookdev/` | Look comparisons (`index.html`: 3D / HD-2D / flat 2D; `crisp.html`: fog vs tilt-shift). Local only, not in git |
 | `Dist/Windows/Oathbound.exe` | Packaged standalone game (rebuilt 2026-10-06) |
 | `README.md`, `unreal/README.md` | Controls, how to run, architecture |
+| `TODO.md` | The agreed plan as a phase-by-phase checklist (see §8) |
 
 The project is in git (`main`, **github.com/krishnasHub/oathbound**; the game is Oathbound inside and out: project, module, exe), with LFS for uasset/umap/fbx/png/wav. **Git holds only
 what a new machine needs to build and play** (checked 2026-10-06 after the plugin split: `git clone --recurse-submodules` of oathbound + tessera + loom into an empty folder (~196 MB, 17 s), then `play.ps1 -Test`: clean build 42 s, all 11 tests PASS; `rpg.ps1 art` regenerates all 101 pixel images identical to git).
@@ -331,6 +332,30 @@ dynamic story. So the reusable code is moving into two plugins, each its own rep
   the game listens and acts. Loom and Tessera never know about each other: the game bridges them (e.g. time of day to Loom).
 
 ## 8. Next steps / open threads
+
+**The agreed plan (2026-10-07): talking foes, the Scholar's routes, and world mood.** Checklist by phase: `TODO.md`.
+Built one phase at a time; after each, tests + a package for the user; nothing is committed until all phases are done
+and tested.
+
+- **Languages:** each creature speaks a language, each class knows some; the Scholar talks to everything that has one
+  (slimes have none). Common (bandits, Brask, Wren, villagers: all) · Old Tongue (Ruin Brute: Mage, Scholar) ·
+  Grave-speech (skeletons: Scholar). More as the world grows. A foe that speaks your language waits instead of attacking.
+- **Level-scaled persuasion:** checks get a minimum level and a per-level bonus; below the minimum they can't succeed
+  (a low-level Mage won't change Brask's mind, a Scholar won't convince him, a Knight's challenge is laughed off). Retry
+  after levelling up, or fight.
+- **Peaceful wins pay** at least the kill XP; talked-down foes don't respawn.
+- **Scholar routes:** lone skeletons (random simple wants + hand-written fun ones: find, read the rites over and mark an
+  unmarked grave); a skeleton band's leader wants a lost item; the Ruin Brute (moved to a cave) holds the relic and wants
+  food, which Elder Maren gives for a kill-5-slimes quest; at high level the Scholar teaches it a trade and it then walks
+  between its mine and the village carrying gold for food. Other classes get world-changing routes later.
+- **World mood:** hidden, starts at 0; up with peaceful outcomes, down with killing talkable creatures and betrayal;
+  slimes neutral; redemption possible but slow. Shown only cosmetically and subtly, applied at dawn / dusk: good =
+  children playing, geese, butterflies, puppies; bad = fewer children, grumpy men by day, puddles and building wear,
+  wolves / bats / snakes at night. None of it can be fought; it flees or vanishes near the hero.
+- **Where:** Loom = mood value + level checks; Tessera = ambient life, building wear, interactables, NPC routines;
+  Oathbound = languages, wants, rewards, mood weights, art, and the code bridging Loom's events to Tessera.
+
+Older open threads:
 
 **GitHub reset: done 2026-10-06.** The old action-rpg repo was deleted; the slimmed history went to the new
 github.com/krishnasHub/oathbound (~196 MB instead of ~790 MB). Then renamed
