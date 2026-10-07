@@ -4,7 +4,7 @@
 #include "LMStory.h"
 #include "RPGPlayerCharacter.h"
 #include "SRPGWidgets.h"
-#include "RPGLook.h"
+#include "TSLook.h"
 
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -136,7 +136,7 @@ void ARPGPlayerController::ShowTitle()
 	// A slow drift over the village at the game's own angle (and tilt-shift), behind the title.
 	TitleFrom = GetPawn() ? GetPawn()->GetActorLocation() : FVector::ZeroVector;
 	TitleT = 0.f;
-	PreviewCam = GetWorld()->SpawnActor<ACameraActor>(TitleFrom, RPGLook::CameraRotation());
+	PreviewCam = GetWorld()->SpawnActor<ACameraActor>(TitleFrom, TSLook::CameraRotation());
 	UCameraComponent* Cam = PreviewCam->GetCameraComponent();
 	Cam->bConstrainAspectRatio = false;
 	if (const ARPGPlayerCharacter* PC = Cast<ARPGPlayerCharacter>(GetPawn()))
@@ -176,7 +176,7 @@ void ARPGPlayerController::Tick(float Dt)
 		TitleT += Dt;
 		const float Arm = 4300.f;
 		const FVector Pan(FMath::Sin(TitleT * 0.05f) * 1800.f + 700.f, FMath::Sin(TitleT * 0.031f) * 300.f, 0.f);
-		PreviewCam->SetActorLocation(TitleFrom + Pan - RPGLook::CameraRotation().Vector() * Arm);
+		PreviewCam->SetActorLocation(TitleFrom + Pan - TSLook::CameraRotation().Vector() * Arm);
 	}
 }
 

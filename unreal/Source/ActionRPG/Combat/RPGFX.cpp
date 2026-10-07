@@ -35,10 +35,10 @@ ARPGFX* ARPGFX::Make(UWorld* W, const FVector& At, EKind Kind, float Life)
 UStaticMeshComponent* ARPGFX::AddPart(const TCHAR* Shape, const TCHAR* Material, const FLinearColor& Color, float Intensity)
 {
 	UStaticMeshComponent* C = NewObject<UStaticMeshComponent>(this);
-	C->SetStaticMesh(RPGAssets::Shape(Shape));
+	C->SetStaticMesh(TSAssets::Shape(Shape));
 	C->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	C->SetCastShadow(false);
-	UMaterialInstanceDynamic* M = UMaterialInstanceDynamic::Create(RPGAssets::Load<UMaterialInterface>(Material), this);
+	UMaterialInstanceDynamic* M = UMaterialInstanceDynamic::Create(TSAssets::Load<UMaterialInterface>(Material), this);
 	M->SetVectorParameterValue(TEXT("Color"), Color);
 	M->SetScalarParameterValue(TEXT("Intensity"), Intensity);
 	C->SetMaterial(0, M);
@@ -106,7 +106,7 @@ void ARPGFX::Burst(UWorld* W, const FVector& At, float InRadius, const FLinearCo
 void ARPGFX::Smoke(UWorld* W, const FVector& At, float InRadius, float Duration)
 {
 	ARPGFX* F = Make(W, At, EKind::Smoke, Duration + 2.f);   // + SmokeFade
-	if (UParticleSystem* PS = RPGAssets::Load<UParticleSystem>(TEXT("/Game/StarterContent/Particles/P_Smoke.P_Smoke")))
+	if (UParticleSystem* PS = TSAssets::Load<UParticleSystem>(TEXT("/Game/StarterContent/Particles/P_Smoke.P_Smoke")))
 	{
 		for (int32 I = 0; I < 4; ++I)
 		{

@@ -1,5 +1,5 @@
 #include "RPGLoot.h"
-#include "RPGData.h"
+#include "TSData.h"
 #include "RPGAssets.h"
 #include "RPGEnemy.h"
 #include "RPGSession.h"
@@ -36,7 +36,7 @@ void ARPGPickup::InitGold(int32 InAmount)
 {
 	bGold = true;
 	Amount = InAmount;
-	Gem->SetStaticMesh(RPGAssets::Shape(TEXT("Cylinder")));
+	Gem->SetStaticMesh(TSAssets::Shape(TEXT("Cylinder")));
 	Gem->SetMaterial(0, RPGAssets::StarterMat(TEXT("M_Metal_Gold")));
 	Gem->SetWorldScale3D(FVector(0.22f, 0.22f, 0.06f));
 	Light->SetLightColor(FLinearColor(1.f, 0.8f, 0.3f));
@@ -48,19 +48,19 @@ void ARPGPickup::InitItem(const FRPGItem& InItem)
 {
 	Item = InItem;
 	const FLinearColor C = URPGInventoryComponent::RarityColor(this, Item.Rarity);
-	UMaterialInstanceDynamic* M = UMaterialInstanceDynamic::Create(RPGAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Glow.M_RPG_Glow")), this);
+	UMaterialInstanceDynamic* M = UMaterialInstanceDynamic::Create(TSAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Glow.M_RPG_Glow")), this);
 	M->SetVectorParameterValue(TEXT("Color"), C);
 	M->SetScalarParameterValue(TEXT("Intensity"), 4.f);
-	Gem->SetStaticMesh(RPGAssets::Shape(TEXT("Cone")));
+	Gem->SetStaticMesh(TSAssets::Shape(TEXT("Cone")));
 	Gem->SetMaterial(0, M);
 	Gem->SetWorldScale3D(FVector(0.18f, 0.18f, 0.28f));
 	Light->SetLightColor(C);
 	if (Item.Rarity == TEXT("rare") || Item.Rarity == TEXT("quest"))
 	{
-		UMaterialInstanceDynamic* B = UMaterialInstanceDynamic::Create(RPGAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Telegraph.M_RPG_Telegraph")), this);
+		UMaterialInstanceDynamic* B = UMaterialInstanceDynamic::Create(TSAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Telegraph.M_RPG_Telegraph")), this);
 		B->SetVectorParameterValue(TEXT("Color"), C);
 		B->SetScalarParameterValue(TEXT("Opacity"), 0.25f);
-		Beam->SetStaticMesh(RPGAssets::Shape(TEXT("Cylinder")));
+		Beam->SetStaticMesh(TSAssets::Shape(TEXT("Cylinder")));
 		Beam->SetMaterial(0, B);
 		Beam->SetWorldScale3D(FVector(0.08f, 0.08f, 4.f));
 		Beam->SetRelativeLocation(FVector(0, 0, 900.f));
@@ -124,24 +124,24 @@ void RPGLoot::Spawn(UWorld* World, const FVector& At, const FRPGItem* Item, int3
 
 void RPGLoot::DropTable(UWorld* World, const FVector& At, const FString& TableId)
 {
-	const URPGData& D = URPGData::Get(World);
-	const RPGJson::FObj Table = D.Entry(TEXT("lootTables"), TableId);
+	const UTSData& D = UTSData::Get(World);
+	const TSJson::FObj Table = D.Entry(TEXT("lootTables"), TableId);
 	if (!Table) return;
-	const TArray<TSharedPtr<FJsonValue>> Gold = RPGJson::Arr(Table, TEXT("gold"));
+	const TArray<TSharedPtr<FJsonValue>> Gold = TSJson::Arr(Table, TEXT("gold"));
 	if (Gold.Num() == 2) Spawn(World, At, nullptr, FMath::RandRange(int32(Gold[0]->AsNumber()), int32(Gold[1]->AsNumber())));
 
-	const TArray<TSharedPtr<FJsonValue>> Entries = RPGJson::Arr(Table, TEXT("entries"));
-	const int32 Rolls = int32(RPGJson::Num(Table, TEXT("rolls"), 1));
+	const TArray<TSharedPtr<FJsonValue>> Entries = TSJson::Arr(Table, TEXT("entries"));
+	const int32 Rolls = int32(TSJson::Num(Table, TEXT("rolls"), 1));
 	for (int32 I = 0; I < Rolls && Entries.Num(); ++I)
 	{
-		if (FMath::FRand() >= RPGJson::Num(Table, TEXT("dropChance"), 0.4)) continue;
+		if (FMath::FRand() >= TSJson::Num(Table, TEXT("dropChance"), 0.4)) continue;
 		double Total = 0;
-		for (const auto& E : Entries) Total += RPGJson::Num(E->AsObject(), TEXT("weight"), 1);
+		for (const auto& E : Entries) Total += TSJson::Num(E->AsObject(), TEXT("weight"), 1);
 		double R = FMath::FRand() * Total;
 		FString Pick;
-		for (const auto& E : Entries) { R -= RPGJson::Num(E->AsObject(), TEXT("weight"), 1); if (R <= 0) { Pick = RPGJson::Str(E->AsObject(), TEXT("item")); break; } }
-		if (Pick.IsEmpty()) Pick = RPGJson::Str(Entries.Last()->AsObject(), TEXT("item"));
-		const FRPGItem It = URPGInventoryComponent::MakeItem(World, Pick, RPGJson::Obj(Table, TEXT("rarity")));
+		for (const auto& E : Entries) { R -= TSJson::Num(E->AsObject(), TEXT("weight"), 1); if (R <= 0) { Pick = TSJson::Str(E->AsObject(), TEXT("item")); break; } }
+		if (Pick.IsEmpty()) Pick = TSJson::Str(Entries.Last()->AsObject(), TEXT("item"));
+		const FRPGItem It = URPGInventoryComponent::MakeItem(World, Pick, TSJson::Obj(Table, TEXT("rarity")));
 		Spawn(World, At, &It, 0);
 	}
 }
@@ -150,17 +150,17 @@ void RPGLoot::Drop(ARPGEnemy* E)
 {
 	UWorld* W = E->GetWorld();
 	const FVector At = E->GetActorLocation();
-	const TArray<TSharedPtr<FJsonValue>> Gold = RPGJson::Arr(E->Def, TEXT("gold"));
+	const TArray<TSharedPtr<FJsonValue>> Gold = TSJson::Arr(E->Def, TEXT("gold"));
 	if (Gold.Num() == 2) Spawn(W, At, nullptr, FMath::RandRange(int32(Gold[0]->AsNumber()), int32(Gold[1]->AsNumber())));
-	DropTable(W, At, RPGJson::Str(E->Def, TEXT("loot")));
+	DropTable(W, At, TSJson::Str(E->Def, TEXT("loot")));
 
 	// Quest drop (the relic): only while the quest isn't turned in and you don't already have it.
-	const RPGJson::FObj Q = RPGJson::Obj(E->Def, TEXT("questDrop"));
+	const TSJson::FObj Q = TSJson::Obj(E->Def, TEXT("questDrop"));
 	URPGSession* Session = URPGSession::Get(E);
 	const ARPGPlayerCharacter* P = Session->Player();
-	if (Q && P && Session->Story()->QuestStatus(RPGJson::Str(Q, TEXT("quest"))) != TEXT("turnedIn") && P->Inventory->Count(RPGJson::Str(Q, TEXT("item"))) == 0)
+	if (Q && P && Session->Story()->QuestStatus(TSJson::Str(Q, TEXT("quest"))) != TEXT("turnedIn") && P->Inventory->Count(TSJson::Str(Q, TEXT("item"))) == 0)
 	{
-		const FRPGItem It = URPGInventoryComponent::MakeItem(W, RPGJson::Str(Q, TEXT("item")));
+		const FRPGItem It = URPGInventoryComponent::MakeItem(W, TSJson::Str(Q, TEXT("item")));
 		Spawn(W, At, &It, 0);
 	}
 }

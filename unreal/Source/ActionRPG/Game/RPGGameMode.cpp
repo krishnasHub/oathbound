@@ -1,8 +1,8 @@
 #include "RPGGameMode.h"
-#include "RPGLook.h"
+#include "TSLook.h"
 #include "RPGAmbient.h"
 #include "ActionRPG.h"
-#include "RPGData.h"
+#include "TSData.h"
 #include "RPGAssets.h"
 #include "RPGWorldBuilder.h"
 #include "RPGPlayerCharacter.h"
@@ -31,7 +31,7 @@ ARPGGameMode::ARPGGameMode()
 
 void ARPGGameMode::StartPlay()
 {
-	RPGLook::Init(this);   // before anything builds or spawns: it decides how they look
+	TSLook::Init(this);   // before anything builds or spawns: it decides how they look
 	WorldBuilder = GetWorld()->SpawnActor<ARPGWorldBuilder>();
 	WorldBuilder->Build();
 	if (ARPGAmbient* Life = GetWorld()->SpawnActor<ARPGAmbient>()) Life->Init(WorldBuilder);   // birds, geese, prowler, fireflies
@@ -43,11 +43,11 @@ void ARPGGameMode::StartPlay()
 
 void ARPGGameMode::SpawnCharacters()
 {
-	const URPGData& D = URPGData::Get(this);
+	const UTSData& D = UTSData::Get(this);
 	FActorSpawnParameters SP;
 	SP.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 	int32 Npcs = 0, Enemies = 0;
-	for (const FRPGSpawn& S : D.Spawns)
+	for (const FTSSpawn& S : D.Spawns)
 	{
 		FVector At = D.TileCenter(S.X, S.Y);
 		At.Z = WorldBuilder->GroundZ(At.X, At.Y);
@@ -68,9 +68,9 @@ void ARPGGameMode::SpawnCharacters()
 
 void ARPGGameMode::RestartPlayer(AController* NewPlayer)
 {
-	const URPGData& D = URPGData::Get(this);
+	const UTSData& D = UTSData::Get(this);
 	FVector Start(0, 0, 200);
-	for (const FRPGSpawn& S : D.Spawns)
+	for (const FTSSpawn& S : D.Spawns)
 	{
 		if (S.Kind == TEXT("player")) { Start = D.TileCenter(S.X, S.Y) + FVector(0, 0, 160); break; }
 	}

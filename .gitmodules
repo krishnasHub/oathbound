@@ -1,3 +1,6 @@
 [submodule "unreal/Plugins/Loom"]
 	path = unreal/Plugins/Loom
 	url = https://github.com/krishnasHub/loom.git
+[submodule "unreal/Plugins/Tessera"]
+	path = unreal/Plugins/Tessera
+	url = https://github.com/krishnasHub/tessera.git

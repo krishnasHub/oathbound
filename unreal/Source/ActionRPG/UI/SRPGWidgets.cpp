@@ -1,4 +1,5 @@
 #include "SRPGWidgets.h"
+#include "TSSky.h"
 #include "RPGSprite.h"
 #include "Widgets/Layout/SScaleBox.h"
 #include "RPGPlayerController.h"
@@ -9,7 +10,7 @@
 #include "RPGAssets.h"
 #include "RPGSession.h"
 #include "LMStory.h"
-#include "RPGData.h"
+#include "TSData.h"
 #include "RPGPlayerCharacter.h"
 #include "RPGEnemy.h"
 #include "RPGInventoryComponent.h"
@@ -68,34 +69,34 @@ namespace
 
 	/** Same numbers as the prototype's character-select preview, straight from the data. */
 	struct FClassPreview { float HP, Stamina, Mana, Speed, Armor, Attack, Magic, Crit; };
-	FClassPreview Preview(const URPGData& D, const FString& ClassId)
+	FClassPreview Preview(const UTSData& D, const FString& ClassId)
 	{
-		const RPGJson::FObj C = D.Entry(TEXT("classes"), ClassId);
-		const RPGJson::FObj A = RPGJson::Obj(C, TEXT("attributes"));
+		const TSJson::FObj C = D.Entry(TEXT("classes"), ClassId);
+		const TSJson::FObj A = TSJson::Obj(C, TEXT("attributes"));
 		TMap<FString, double> Gear;
-		for (const auto& V : RPGJson::Arr(C, TEXT("startItems")))
+		for (const auto& V : TSJson::Arr(C, TEXT("startItems")))
 		{
-			if (!RPGJson::Bool(V->AsObject(), TEXT("equip"))) continue;
-			const RPGJson::FObj Mods = RPGJson::Obj(D.Entry(TEXT("items"), RPGJson::Str(V->AsObject(), TEXT("item"))), TEXT("mods"));
+			if (!TSJson::Bool(V->AsObject(), TEXT("equip"))) continue;
+			const TSJson::FObj Mods = TSJson::Obj(D.Entry(TEXT("items"), TSJson::Str(V->AsObject(), TEXT("item"))), TEXT("mods"));
 			if (Mods) for (const auto& KV : Mods->Values) Gear.FindOrAdd(FString(*KV.Key)) += KV.Value->AsNumber();
 		}
-		auto Attr = [&](const TCHAR* K) { return RPGJson::Num(A, K) + Gear.FindRef(K); };
+		auto Attr = [&](const TCHAR* K) { return TSJson::Num(A, K) + Gear.FindRef(K); };
 		FClassPreview P;
-		P.HP = float(RPGJson::Num(C, TEXT("hpBase")) + Attr(TEXT("vitality")) * D.Tuning(TEXT("hpPerVitality"), 10) + D.Tuning(TEXT("hpPerLevel"), 5));
+		P.HP = float(TSJson::Num(C, TEXT("hpBase")) + Attr(TEXT("vitality")) * D.Tuning(TEXT("hpPerVitality"), 10) + D.Tuning(TEXT("hpPerLevel"), 5));
 		P.Stamina = float(D.Tuning(TEXT("staminaBase"), 80) + Attr(TEXT("agility")) * D.Tuning(TEXT("staminaPerAgility"), 4));
-		P.Mana = float(RPGJson::Num(C, TEXT("manaBase")) + Attr(TEXT("focus")) * D.Tuning(TEXT("manaPerFocus"), 5));
-		P.Speed = float(RPGJson::Num(C, TEXT("moveSpeed")));
+		P.Mana = float(TSJson::Num(C, TEXT("manaBase")) + Attr(TEXT("focus")) * D.Tuning(TEXT("manaPerFocus"), 5));
+		P.Speed = float(TSJson::Num(C, TEXT("moveSpeed")));
 		P.Armor = float(Gear.FindRef(TEXT("armor")));
-		P.Crit = float(RPGJson::Num(C, TEXT("critPct")) + Gear.FindRef(TEXT("critPct")) + Attr(TEXT("agility")) * D.Tuning(TEXT("critPctPerAgility"), 1));
+		P.Crit = float(TSJson::Num(C, TEXT("critPct")) + Gear.FindRef(TEXT("critPct")) + Attr(TEXT("agility")) * D.Tuning(TEXT("critPctPerAgility"), 1));
 		P.Magic = float(1.0 + Attr(TEXT("focus")) * D.Tuning(TEXT("focusScaling"), 0.07));
-		const RPGJson::FObj Style = D.Entry(TEXT("weaponStyles"), RPGJson::Arr(C, TEXT("styles"))[0]->AsString());
-		const RPGJson::FObj Pr = RPGJson::Obj(Style, TEXT("primary"));
-		const FString Scale = RPGJson::Str(Pr, TEXT("scaling"), TEXT("might"));
+		const TSJson::FObj Style = D.Entry(TEXT("weaponStyles"), TSJson::Arr(C, TEXT("styles"))[0]->AsString());
+		const TSJson::FObj Pr = TSJson::Obj(Style, TEXT("primary"));
+		const FString Scale = TSJson::Str(Pr, TEXT("scaling"), TEXT("might"));
 		const double ScaleMul = 1.0 + Attr(*Scale) * D.Tuning(*(Scale + TEXT("Scaling")), 0.06);
-		const double Weapon = RPGJson::Num(D.Section(TEXT("player")), TEXT("unarmedDamage"), 4) + Gear.FindRef(TEXT("weaponDamage"));
-		P.Attack = RPGJson::Str(Pr, TEXT("type")) == TEXT("bolt")
-			? float((RPGJson::Num(Pr, TEXT("damage")) + Weapon * RPGJson::Num(Pr, TEXT("weaponRatio"), 0.5)) * ScaleMul)
-			: float(Weapon * RPGJson::Num(RPGJson::Arr(Pr, TEXT("combo"))[0]->AsObject(), TEXT("mult"), 1) * RPGJson::Num(Style, TEXT("damageMul"), 1) * ScaleMul);
+		const double Weapon = TSJson::Num(D.Section(TEXT("player")), TEXT("unarmedDamage"), 4) + Gear.FindRef(TEXT("weaponDamage"));
+		P.Attack = TSJson::Str(Pr, TEXT("type")) == TEXT("bolt")
+			? float((TSJson::Num(Pr, TEXT("damage")) + Weapon * TSJson::Num(Pr, TEXT("weaponRatio"), 0.5)) * ScaleMul)
+			: float(Weapon * TSJson::Num(TSJson::Arr(Pr, TEXT("combo"))[0]->AsObject(), TEXT("mult"), 1) * TSJson::Num(Style, TEXT("damageMul"), 1) * ScaleMul);
 		return P;
 	}
 }
@@ -150,8 +151,8 @@ void SRPGHud::Construct(const FArguments& Args)
 				for (const auto& KV : S->Story()->Quests)
 				{
 					if (KV.Value.Status == TEXT("turnedIn")) continue;
-					const RPGJson::FObj Q = URPGData::Get(W.Get()).Entry(TEXT("quests"), KV.Key);
-					Out += RPGJson::Str(Q, TEXT("name")) + TEXT("\n   ") + (KV.Value.Status == TEXT("complete") ? TEXT("Return to ") + RPGJson::Str(Q, TEXT("giver")) : S->Story()->ProgressText(KV.Key)) + TEXT("\n\n");
+					const TSJson::FObj Q = UTSData::Get(W.Get()).Entry(TEXT("quests"), KV.Key);
+					Out += TSJson::Str(Q, TEXT("name")) + TEXT("\n   ") + (KV.Value.Status == TEXT("complete") ? TEXT("Return to ") + TSJson::Str(Q, TEXT("giver")) : S->Story()->ProgressText(KV.Key)) + TEXT("\n\n");
 				}
 				return T(Out); })
 		];
@@ -195,7 +196,7 @@ void SRPGHud::Construct(const FArguments& Args)
 
 	// Ability picker (Shift + wheel): the four abilities over a translucent backdrop, the highlighted one
 	// in gold with its description. The world runs in slow motion while it's open.
-	auto PickDef = [W](int32 I) -> RPGJson::FObj { const ARPGPlayerCharacter* P = PlayerOf(W); return P && P->Abilities->Ids.IsValidIndex(I) ? P->Abilities->Def(P->Abilities->Ids[I]) : nullptr; };
+	auto PickDef = [W](int32 I) -> TSJson::FObj { const ARPGPlayerCharacter* P = PlayerOf(W); return P && P->Abilities->Ids.IsValidIndex(I) ? P->Abilities->Def(P->Abilities->Ids[I]) : nullptr; };
 	auto PickCards = SNew(SHorizontalBox);
 	for (int32 I = 0; I < 4; ++I)
 	{
@@ -213,15 +214,15 @@ void SRPGHud::Construct(const FArguments& Args)
 					[
 						SNew(STextBlock).Justification(ETextJustify::Center).AutoWrapText(true)
 						.Font_Lambda([W, I]() { const ARPGPlayerCharacter* P = PlayerOf(W); return Font(P && P->PickerSlot() == I ? 14 : 11, TEXT("Bold")); })
-						.Text_Lambda([W, I, PickDef]() { const ARPGPlayerCharacter* P = PlayerOf(W); const RPGJson::FObj D = PickDef(I);
+						.Text_Lambda([W, I, PickDef]() { const ARPGPlayerCharacter* P = PlayerOf(W); const TSJson::FObj D = PickDef(I);
 							if (!P || !D) return FText::GetEmpty();
 							const FString Id = P->Abilities->Ids[I];
-							if (!P->Abilities->Unlocked(Id)) return T(FString::Printf(TEXT("%d  %s\nLv %d"), I + 1, *RPGJson::Str(D, TEXT("name")), int32(RPGJson::Num(D, TEXT("unlockLevel"), 1))));
+							if (!P->Abilities->Unlocked(Id)) return T(FString::Printf(TEXT("%d  %s\nLv %d"), I + 1, *TSJson::Str(D, TEXT("name")), int32(TSJson::Num(D, TEXT("unlockLevel"), 1))));
 							const float Cd = P->Abilities->Cooldowns.FindRef(Id);
-							return T(FString::Printf(TEXT("%d  %s%s"), I + 1, *RPGJson::Str(D, TEXT("name")), Cd > 0.f ? *FString::Printf(TEXT("\n%.1fs"), Cd) : TEXT(""))); })
-						.ColorAndOpacity_Lambda([W, I, PickDef]() { const ARPGPlayerCharacter* P = PlayerOf(W); const RPGJson::FObj D = PickDef(I);
+							return T(FString::Printf(TEXT("%d  %s%s"), I + 1, *TSJson::Str(D, TEXT("name")), Cd > 0.f ? *FString::Printf(TEXT("\n%.1fs"), Cd) : TEXT(""))); })
+						.ColorAndOpacity_Lambda([W, I, PickDef]() { const ARPGPlayerCharacter* P = PlayerOf(W); const TSJson::FObj D = PickDef(I);
 							if (!P || !D || !P->Abilities->Unlocked(P->Abilities->Ids[I])) return FSlateColor(FLinearColor(0.45f, 0.45f, 0.48f));
-							return FSlateColor(RPGJson::Color(RPGJson::Str(D, TEXT("color")))); })
+							return FSlateColor(TSJson::Color(TSJson::Str(D, TEXT("color")))); })
 					]
 				]
 			]
@@ -237,17 +238,17 @@ void SRPGHud::Construct(const FArguments& Args)
 			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0, 14, 0, 2)
 			[
 				SNew(STextBlock).Font(Font(16, TEXT("Bold"))).ColorAndOpacity(Gold)
-				.Text_Lambda([W, PickDef]() { const ARPGPlayerCharacter* P = PlayerOf(W); const RPGJson::FObj D = P ? PickDef(P->PickerSlot()) : nullptr; if (!D) return FText::GetEmpty();
-					const double Mana = RPGJson::Num(D, TEXT("mana"), 0), Sta = RPGJson::Num(D, TEXT("stamina"), 0);
-					return T(RPGJson::Str(D, TEXT("name")) + (Mana > 0 ? FString::Printf(TEXT("   ·   %.0f mana"), Mana) : Sta > 0 ? FString::Printf(TEXT("   ·   %.0f stamina"), Sta) : FString())
-						+ FString::Printf(TEXT("   ·   %.0fs cooldown"), RPGJson::Num(D, TEXT("cooldown"), 0))); })
+				.Text_Lambda([W, PickDef]() { const ARPGPlayerCharacter* P = PlayerOf(W); const TSJson::FObj D = P ? PickDef(P->PickerSlot()) : nullptr; if (!D) return FText::GetEmpty();
+					const double Mana = TSJson::Num(D, TEXT("mana"), 0), Sta = TSJson::Num(D, TEXT("stamina"), 0);
+					return T(TSJson::Str(D, TEXT("name")) + (Mana > 0 ? FString::Printf(TEXT("   ·   %.0f mana"), Mana) : Sta > 0 ? FString::Printf(TEXT("   ·   %.0f stamina"), Sta) : FString())
+						+ FString::Printf(TEXT("   ·   %.0fs cooldown"), TSJson::Num(D, TEXT("cooldown"), 0))); })
 			]
 			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 			[
 				SNew(SBox).WidthOverride(560)
 				[
 					SNew(STextBlock).Font(Font(12)).AutoWrapText(true).Justification(ETextJustify::Center).ColorAndOpacity(FLinearColor(0.9f, 0.9f, 0.88f))
-					.Text_Lambda([W, PickDef]() { const ARPGPlayerCharacter* P = PlayerOf(W); const RPGJson::FObj D = P ? PickDef(P->PickerSlot()) : nullptr; return D ? T(RPGJson::Str(D, TEXT("desc"))) : FText::GetEmpty(); })
+					.Text_Lambda([W, PickDef]() { const ARPGPlayerCharacter* P = PlayerOf(W); const TSJson::FObj D = P ? PickDef(P->PickerSlot()) : nullptr; return D ? T(TSJson::Str(D, TEXT("desc"))) : FText::GetEmpty(); })
 				]
 			]
 			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0, 12, 0, 0)
@@ -255,7 +256,7 @@ void SRPGHud::Construct(const FArguments& Args)
 		];
 
 	// Low health: a red vignette creeps in below 40% health, deeper and pulsing faster the closer to death.
-	if (UTexture2D* Vig = RPGAssets::Load<UTexture2D>(TEXT("/Game/RPG/Pixel/UI_Vignette.UI_Vignette")))
+	if (UTexture2D* Vig = TSAssets::Load<UTexture2D>(TEXT("/Game/RPG/Pixel/UI_Vignette.UI_Vignette")))
 	{
 		VignetteTex.Reset(Vig);
 		VignetteBrush.SetResourceObject(Vig);
@@ -292,11 +293,11 @@ void SRPGHud::Construct(const FArguments& Args)
 			[
 				SNew(STextBlock).Font(Font(11)).ColorAndOpacity(FLinearColor(0.85f, 0.87f, 0.9f)).ShadowOffset(FVector2D(1, 1))
 				.Text_Lambda([W]() { const ARPGPlayerCharacter* P = PlayerOf(W); if (!P) return FText::GetEmpty();
-					const RPGJson::FObj St = P->Style();
-					const int32 N = RPGJson::Arr(P->ClassDef, TEXT("styles")).Num();
+					const TSJson::FObj St = P->Style();
+					const int32 N = TSJson::Arr(P->ClassDef, TEXT("styles")).Num();
 					FString Swap;
-					if (N > 1) Swap = FString::Printf(TEXT("   ·   X: switch to %s"), *RPGJson::Str(URPGData::Get(W.Get()).Entry(TEXT("weaponStyles"), RPGJson::Arr(P->ClassDef, TEXT("styles"))[(P->StyleIndex + 1) % N]->AsString()), TEXT("name")));
-					return T(RPGJson::Str(St, TEXT("name")) + TEXT(" — ") + RPGJson::Str(St, TEXT("hint")) + Swap); })
+					if (N > 1) Swap = FString::Printf(TEXT("   ·   X: switch to %s"), *TSJson::Str(UTSData::Get(W.Get()).Entry(TEXT("weaponStyles"), TSJson::Arr(P->ClassDef, TEXT("styles"))[(P->StyleIndex + 1) % N]->AsString()), TEXT("name")));
+					return T(TSJson::Str(St, TEXT("name")) + TEXT(" — ") + TSJson::Str(St, TEXT("hint")) + Swap); })
 			]
 			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)[ Slots ]
 		]
@@ -332,7 +333,7 @@ TSharedRef<SWidget> SRPGHud::AbilitySlot(int32 Index)
 {
 	TWeakObjectPtr<UWorld> W = World;
 	const bool bPotion = Index == 4;
-	auto Def = [W, Index]() -> RPGJson::FObj { const ARPGPlayerCharacter* P = PlayerOf(W); return P && P->Abilities->Ids.IsValidIndex(Index) ? P->Abilities->Def(P->Abilities->Ids[Index]) : nullptr; };
+	auto Def = [W, Index]() -> TSJson::FObj { const ARPGPlayerCharacter* P = PlayerOf(W); return P && P->Abilities->Ids.IsValidIndex(Index) ? P->Abilities->Def(P->Abilities->Ids[Index]) : nullptr; };
 	const float Size = 64.f;
 
 	return SNew(SBox).WidthOverride(Size).HeightOverride(Size)
@@ -342,9 +343,9 @@ TSharedRef<SWidget> SRPGHud::AbilitySlot(int32 Index)
 			const ARPGPlayerCharacter* P = PlayerOf(W);
 			if (!P) return FSlateColor(FLinearColor::Gray);
 			if (bPotion) return FSlateColor(P->Inventory->Count(TEXT("potion")) ? FLinearColor(0.84f, 0.27f, 0.27f) : FLinearColor(0.25f, 0.25f, 0.25f));
-			const RPGJson::FObj D = Def();
+			const TSJson::FObj D = Def();
 			const bool bReady = D && P->Abilities->Unlocked(P->Abilities->Ids[Index]) && P->Abilities->Cooldowns.FindRef(P->Abilities->Ids[Index]) <= 0.f && P->Abilities->CanAfford(D);
-			return FSlateColor(bReady ? RPGJson::Color(RPGJson::Str(D, TEXT("color"))) : FLinearColor(0.25f, 0.25f, 0.27f)); })
+			return FSlateColor(bReady ? TSJson::Color(TSJson::Str(D, TEXT("color"))) : FLinearColor(0.25f, 0.25f, 0.27f)); })
 		[
 			SNew(SOverlay)
 			+ SOverlay::Slot()[ SNew(SImage).Image(White()).ColorAndOpacity(FLinearColor(0.07f, 0.075f, 0.09f, 0.92f)) ]
@@ -356,7 +357,7 @@ TSharedRef<SWidget> SRPGHud::AbilitySlot(int32 Index)
 					if (bPotion || !P || !P->Abilities->Ids.IsValidIndex(Index)) return FOptionalSize(0.f);
 					const FString Id = P->Abilities->Ids[Index];
 					if (!P->Abilities->Unlocked(Id)) return FOptionalSize(Size);
-					const float Cd = P->Abilities->Cooldowns.FindRef(Id), Max = float(RPGJson::Num(Def(), TEXT("cooldown"), 1));
+					const float Cd = P->Abilities->Cooldowns.FindRef(Id), Max = float(TSJson::Num(Def(), TEXT("cooldown"), 1));
 					return FOptionalSize(Size * FMath::Clamp(Cd / Max, 0.f, 1.f)); })
 				[ SNew(SImage).Image(White()).ColorAndOpacity(FLinearColor(0, 0, 0, 0.7f)) ]
 			]
@@ -369,20 +370,20 @@ TSharedRef<SWidget> SRPGHud::AbilitySlot(int32 Index)
 					const ARPGPlayerCharacter* P = PlayerOf(W);
 					if (!P) return FText::GetEmpty();
 					if (bPotion) return T(FString::Printf(TEXT("Potion\nx%d"), P->Inventory->Count(TEXT("potion"))));
-					const RPGJson::FObj D = Def();
+					const TSJson::FObj D = Def();
 					if (!D) return FText::GetEmpty();
 					const FString Id = P->Abilities->Ids[Index];
-					if (!P->Abilities->Unlocked(Id)) return T(FString::Printf(TEXT("%s\nLv %d"), *RPGJson::Str(D, TEXT("name")), int32(RPGJson::Num(D, TEXT("unlockLevel"), 1))));
+					if (!P->Abilities->Unlocked(Id)) return T(FString::Printf(TEXT("%s\nLv %d"), *TSJson::Str(D, TEXT("name")), int32(TSJson::Num(D, TEXT("unlockLevel"), 1))));
 					const float Cd = P->Abilities->Cooldowns.FindRef(Id);
-					return T(Cd > 0.f ? FString::Printf(TEXT("%.1f"), Cd) : RPGJson::Str(D, TEXT("name"))); })
+					return T(Cd > 0.f ? FString::Printf(TEXT("%.1f"), Cd) : TSJson::Str(D, TEXT("name"))); })
 			]
 			+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(4, 1)
 			[
 				SNew(STextBlock).Font(Font(9, TEXT("Bold")))
-				.Text_Lambda([Def, bPotion]() { const RPGJson::FObj D = bPotion ? nullptr : Def(); if (!D) return FText::GetEmpty();
-					return T(FString::FromInt(int32(RPGJson::Num(D, TEXT("mana"), RPGJson::Num(D, TEXT("stamina"), 0))))); })
-				.ColorAndOpacity_Lambda([Def, bPotion]() { const RPGJson::FObj D = bPotion ? nullptr : Def();
-					return FSlateColor(D && RPGJson::Has(D, TEXT("mana")) ? FLinearColor(0.56f, 0.69f, 1.f) : FLinearColor(0.5f, 0.82f, 0.5f)); })
+				.Text_Lambda([Def, bPotion]() { const TSJson::FObj D = bPotion ? nullptr : Def(); if (!D) return FText::GetEmpty();
+					return T(FString::FromInt(int32(TSJson::Num(D, TEXT("mana"), TSJson::Num(D, TEXT("stamina"), 0))))); })
+				.ColorAndOpacity_Lambda([Def, bPotion]() { const TSJson::FObj D = bPotion ? nullptr : Def();
+					return FSlateColor(D && TSJson::Has(D, TEXT("mana")) ? FLinearColor(0.56f, 0.69f, 1.f) : FLinearColor(0.5f, 0.82f, 0.5f)); })
 			]
 		]
 	];
@@ -398,7 +399,7 @@ void SRPGCursor::Construct(const FArguments& Args)
 	SetVisibility(EVisibility::HitTestInvisible);
 	for (const TCHAR* N : { TEXT("pointer"), TEXT("sword"), TEXT("dagger"), TEXT("wand"), TEXT("arrow"), TEXT("talk"), TEXT("talk_off") })
 	{
-		UTexture2D* Tex = RPGAssets::Load<UTexture2D>(RPGAssets::ObjPath(TEXT("/Game/RPG/Pixel"), FString(TEXT("CUR_")) + N));
+		UTexture2D* Tex = TSAssets::Load<UTexture2D>(TSAssets::ObjPath(TEXT("/Game/RPG/Pixel"), FString(TEXT("CUR_")) + N));
 		if (!Tex) continue;
 		Keep.Add(TStrongObjectPtr<UTexture2D>(Tex));
 		FSlateBrush& B = Brushes.Add(N);
@@ -432,7 +433,7 @@ int32 SRPGCursor::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSla
 void SRPGNightShade::Construct(const FArguments& Args)
 {
 	World = Args._World;
-	if (UMaterialInterface* Base = RPGAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_NightShade.M_RPG_NightShade")))
+	if (UMaterialInterface* Base = TSAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_NightShade.M_RPG_NightShade")))
 		Mat.Reset(UMaterialInstanceDynamic::Create(Base, GetTransientPackage()));
 	Brush.SetResourceObject(Mat.Get());
 	Brush.DrawAs = ESlateBrushDrawType::Image;
@@ -441,7 +442,7 @@ void SRPGNightShade::Construct(const FArguments& Args)
 void SRPGNightShade::Tick(const FGeometry& G, const double Time, const float Dt)
 {
 	SLeafWidget::Tick(G, Time, Dt);
-	Strength = ARPGWorldBuilder::Darkness();
+	Strength = ATSSky::Darkness();
 	const ARPGPlayerCharacter* P = PlayerOf(World);
 	APlayerController* PC = World.IsValid() ? World->GetFirstPlayerController() : nullptr;
 	if (!Mat || !P || !PC || Strength < 0.001f || !GEngine || !GEngine->GameViewport) return;
@@ -460,9 +461,9 @@ void SRPGNightShade::Tick(const FGeometry& G, const double Time, const float Dt)
 		return FLinearColor(S0.X / Vp.X, S0.Y / Vp.Y, FMath::Max(FVector2D::Distance(S0, SX) / Vp.X, 0.001f), FMath::Max(FVector2D::Distance(S0, SY) / Vp.Y, 0.001f));
 	};
 	Mat->SetScalarParameterValue(TEXT("Night"), Strength);
-	Mat->SetVectorParameterValue(TEXT("Hero"), Ellipse(P->GetActorLocation(), ARPGWorldBuilder::HeroSight()));
+	Mat->SetVectorParameterValue(TEXT("Hero"), Ellipse(P->GetActorLocation(), ATSSky::HeroSight()));
 	const FVector At = P->GetActorLocation();
-	TArray<FVector> Lights = ARPGWorldBuilder::NightLights();
+	TArray<FVector> Lights = ATSSky::NightLights();
 	Lights.Sort([&At](const FVector& A, const FVector& B) { return FVector::DistSquared2D(A, At) < FVector::DistSquared2D(B, At); });
 	for (int32 I = 0; I < 8; ++I)
 		Mat->SetVectorParameterValue(*FString::Printf(TEXT("Light%d"), I), Lights.IsValidIndex(I) ? Ellipse(FVector(Lights[I].X, Lights[I].Y, 0), Lights[I].Z) : FLinearColor(0, 0, 0, 0));
@@ -487,7 +488,7 @@ namespace
 void SRPGMinimap::Construct(const FArguments& Args)
 {
 	World = Args._World;
-	if (UMaterialInterface* Base = RPGAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Minimap.M_RPG_Minimap")))
+	if (UMaterialInterface* Base = TSAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Minimap.M_RPG_Minimap")))
 		Mat.Reset(UMaterialInstanceDynamic::Create(Base, GetTransientPackage()));
 	MapBrush.SetResourceObject(Mat.Get());
 	MapBrush.ImageSize = FVector2D(Size);
@@ -499,8 +500,8 @@ void SRPGMinimap::SetShape(const FString& InShape)
 {
 	if (InShape == Shape) return;
 	Shape = InShape;
-	FrameTex.Reset(RPGAssets::Load<UTexture2D>(RPGAssets::ObjPath(TEXT("/Game/RPG/Pixel"), TEXT("MM_Frame_") + Shape)));
-	MaskTex.Reset(RPGAssets::Load<UTexture2D>(RPGAssets::ObjPath(TEXT("/Game/RPG/Pixel"), TEXT("MM_Mask_") + Shape)));
+	FrameTex.Reset(TSAssets::Load<UTexture2D>(TSAssets::ObjPath(TEXT("/Game/RPG/Pixel"), TEXT("MM_Frame_") + Shape)));
+	MaskTex.Reset(TSAssets::Load<UTexture2D>(TSAssets::ObjPath(TEXT("/Game/RPG/Pixel"), TEXT("MM_Mask_") + Shape)));
 	FrameBrush = FSlateBrush();
 	FrameBrush.SetResourceObject(FrameTex.Get());
 	FrameBrush.ImageSize = FVector2D(Size);
@@ -526,7 +527,7 @@ void SRPGMinimap::Tick(const FGeometry& G, const double Time, const float Dt)
 	if (!P || !Mat) return;
 	static const TMap<FString, FString> Shapes = { { TEXT("mage"), TEXT("orb") }, { TEXT("knight"), TEXT("shield") }, { TEXT("thief"), TEXT("coin") }, { TEXT("scholar"), TEXT("book") } };
 	if (const FString* Sh = Shapes.Find(P->ClassId)) SetShape(*Sh);
-	const URPGData& D = URPGData::Get(World.Get());
+	const UTSData& D = UTSData::Get(World.Get());
 	PlayerAt = P->GetActorLocation();
 	const float TilesW = float(D.MapW + 2 * MiniPad), TilesH = float(D.MapH + 2 * MiniPad);
 	Mat->SetVectorParameterValue(TEXT("Center"), FLinearColor((PlayerAt.X / D.TileSize + MiniPad) / TilesW, (PlayerAt.Y / D.TileSize + MiniPad) / TilesH, 0, 0));
@@ -539,7 +540,7 @@ int32 SRPGMinimap::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSl
 	const FVector2D Sz = G.GetLocalSize();
 	FSlateDrawElement::MakeBox(Out, Layer, G.ToPaintGeometry(), &MapBrush, ESlateDrawEffect::None, FLinearColor::White);
 
-	const URPGData& D = URPGData::Get(World.Get());
+	const UTSData& D = UTSData::Get(World.Get());
 	const ARPGPlayerCharacter* Player = PlayerOf(World);
 	const URPGSession* Session = SessionOf(World);
 	auto Dot = [&](const FVector& WorldAt, float Px, const FLinearColor& Col, int32 L)
@@ -556,7 +557,7 @@ int32 SRPGMinimap::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSl
 		{
 			const ARPGCharacterBase* C = *It;
 			if (C == Player || C->IsDead() || C->IsHidden()) continue;
-			if (C->Team == ERPGTeam::Enemy && !ARPGWorldBuilder::IsLit(C->GetActorLocation(), PlayerAt)) continue;   // foes hide in the dark
+			if (C->Team == ERPGTeam::Enemy && !ATSSky::IsLit(C->GetActorLocation(), PlayerAt)) continue;   // foes hide in the dark
 			const bool bMarker = Session && !Session->MarkerFor(C).IsEmpty();
 			const FLinearColor Col = bMarker ? Gold : C->Team == ERPGTeam::Villager ? FLinearColor(0.95f, 0.85f, 0.35f)
 				: C->IsPassive() ? FLinearColor(1.f, 0.55f, 0.15f) : FLinearColor(0.95f, 0.18f, 0.15f);
@@ -579,7 +580,7 @@ int32 SRPGMinimap::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSl
 void SRPGDialogue::Construct(const FArguments& Args)
 {
 	World = Args._World;
-	if (UTexture2D* Fade = RPGAssets::Load<UTexture2D>(TEXT("/Game/RPG/Pixel/UI_FadeRadial.UI_FadeRadial")))
+	if (UTexture2D* Fade = TSAssets::Load<UTexture2D>(TEXT("/Game/RPG/Pixel/UI_FadeRadial.UI_FadeRadial")))
 	{
 		FadeTex.Reset(Fade);
 		FadeBrush.SetResourceObject(Fade);
@@ -629,7 +630,7 @@ void SRPGDialogue::SetPortrait(FSlateBrush& Brush, TStrongObjectPtr<UTexture2D>&
 {
 	UTexture2D* Tex = nullptr;
 	if (Who && Who->Sprite)
-		Tex = LoadObject<UTexture2D>(nullptr, *RPGAssets::ObjPath(TEXT("/Game/RPG/Pixel"), TEXT("POR_") + Who->Sprite->SheetName));
+		Tex = LoadObject<UTexture2D>(nullptr, *TSAssets::ObjPath(TEXT("/Game/RPG/Pixel"), TEXT("POR_") + Who->Sprite->SheetName));
 	Keep.Reset(Tex);
 	Brush = FSlateBrush();
 	Brush.DrawAs = Tex ? ESlateBrushDrawType::Image : ESlateBrushDrawType::NoDrawType;
@@ -649,7 +650,7 @@ void SRPGDialogue::Refresh()
 	if (!bWasOpen)   // just opened: who's talking, and slide the portraits in
 	{
 		// Portraits are off until there's proper illustrated art (world3d.dialoguePortraits).
-		const bool bPortraits = RPGJson::Bool(URPGData::Get(World.Get()).World3D(), TEXT("dialoguePortraits"), false);
+		const bool bPortraits = TSJson::Bool(UTSData::Get(World.Get()).World(), TEXT("dialoguePortraits"), false);
 		SetPortrait(NpcBrush, NpcTex, bPortraits ? S->DialogueNpc() : nullptr);
 		SetPortrait(HeroBrush, HeroTex, bPortraits ? S->Player() : nullptr);
 		Appear = 0.f;
@@ -662,7 +663,7 @@ void SRPGDialogue::Refresh()
 		const FLMChoiceView& V = S->Story()->ChoiceViews[I];
 		// Class verbs ([Honor], [Hypnotize]...) in the hero's colour, shared ones ([Persuade]) in gold.
 		const ARPGPlayerCharacter* Hero = S->Player();
-		const bool bClassVerb = RPGJson::Has(URPGData::Get(World.Get()).Entry(TEXT("dialogueVerbs"), V.VerbId), TEXT("class"));
+		const bool bClassVerb = TSJson::Has(UTSData::Get(World.Get()).Entry(TEXT("dialogueVerbs"), V.VerbId), TEXT("class"));
 		const FLinearColor VerbColor = bClassVerb && Hero ? Hero->NameColor : FLinearColor(1.f, 0.83f, 0.3f);
 		TWeakObjectPtr<UWorld> W = World;
 		Choices->AddSlot().AutoHeight().Padding(0, 3)
@@ -817,7 +818,7 @@ const FSlateBrush* SRPGBackdrop::Brush(const FString& Texture, int32 Frames, int
 	if (!Set)
 	{
 		Set = &Brushes.Add(Texture);
-		if (UTexture2D* Tex = RPGAssets::Load<UTexture2D>(RPGAssets::ObjPath(TEXT("/Game/RPG/Pixel"), Texture)))
+		if (UTexture2D* Tex = TSAssets::Load<UTexture2D>(TSAssets::ObjPath(TEXT("/Game/RPG/Pixel"), Texture)))
 		{
 			Keep.Add(TStrongObjectPtr<UTexture2D>(Tex));
 			for (int32 F = 0; F < Frames; ++F)
@@ -1012,7 +1013,7 @@ FString SRPGCharSelect::Sheet(const FString& Class) const
 
 void SRPGCharSelect::SetBrush(FSlateBrush& B, const FString& Texture, const FVector2D& Size)
 {
-	UTexture2D* Tex = RPGAssets::Load<UTexture2D>(RPGAssets::ObjPath(TEXT("/Game/RPG/Pixel"), Texture));
+	UTexture2D* Tex = TSAssets::Load<UTexture2D>(TSAssets::ObjPath(TEXT("/Game/RPG/Pixel"), Texture));
 	if (Tex) Keep.Add(TStrongObjectPtr<UTexture2D>(Tex));
 	B = FSlateBrush();
 	B.SetResourceObject(Tex);
@@ -1031,7 +1032,7 @@ void SRPGCharSelect::Construct(const FArguments& Args)
 	OnBegin = Args._OnBegin;
 	OnPreview = Args._OnPreview;
 	OnBack = Args._OnBack;
-	const RPGJson::FObj Classes = URPGData::Get(World.Get()).Section(TEXT("classes"));
+	const TSJson::FObj Classes = UTSData::Get(World.Get()).Section(TEXT("classes"));
 	for (const auto& KV : Classes->Values) ClassIds.Add(FString(*KV.Key));
 
 	SetBrush(StageBrush, TEXT("UI_Stage"), FVector2D(96, 24) * 5.f);
@@ -1059,13 +1060,13 @@ void SRPGCharSelect::Construct(const FArguments& Args)
 				+ SVerticalBox::Slot().AutoHeight()
 				[
 					SNew(STextBlock).Font(Font(34, TEXT("Bold")))
-					.Text_Lambda([this]() { return T(RPGJson::Str(URPGData::Get(World.Get()).Entry(TEXT("classes"), ClassId), TEXT("name"))); })
-					.ColorAndOpacity_Lambda([this]() { return FSlateColor(RPGJson::Color(RPGJson::Str(URPGData::Get(World.Get()).Entry(TEXT("classes"), ClassId), TEXT("color")))); })
+					.Text_Lambda([this]() { return T(TSJson::Str(UTSData::Get(World.Get()).Entry(TEXT("classes"), ClassId), TEXT("name"))); })
+					.ColorAndOpacity_Lambda([this]() { return FSlateColor(TSJson::Color(TSJson::Str(UTSData::Get(World.Get()).Entry(TEXT("classes"), ClassId), TEXT("color")))); })
 				]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0, 2, 0, 0)
 				[
 					SNew(STextBlock).Font(Font(13)).ColorAndOpacity(Muted).AutoWrapText(true)
-					.Text_Lambda([this]() { return T(RPGJson::Str(URPGData::Get(World.Get()).Entry(TEXT("classes"), ClassId), TEXT("tagline"))); })
+					.Text_Lambda([this]() { return T(TSJson::Str(UTSData::Get(World.Get()).Entry(TEXT("classes"), ClassId), TEXT("tagline"))); })
 				]
 				+ SVerticalBox::Slot().FillHeight(1).VAlign(VAlign_Center).HAlign(HAlign_Center)
 				[
@@ -1138,11 +1139,11 @@ void SRPGCharSelect::SetSex(const FString& InSex)
 
 void SRPGCharSelect::BuildShowcase()
 {
-	const URPGData& D = URPGData::Get(World.Get());
-	const RPGJson::FObj C = D.Entry(TEXT("classes"), ClassId);
-	const TArray<TSharedPtr<FJsonValue>> Styles = RPGJson::Arr(C, TEXT("styles"));
-	const RPGJson::FObj St = Styles.Num() ? D.Entry(TEXT("weaponStyles"), Styles[0]->AsString()) : nullptr;
-	const RPGJson::FObj Primary = RPGJson::Obj(St, TEXT("primary")), Secondary = RPGJson::Obj(St, TEXT("secondary")), Passive = RPGJson::Obj(St, TEXT("passive"));
+	const UTSData& D = UTSData::Get(World.Get());
+	const TSJson::FObj C = D.Entry(TEXT("classes"), ClassId);
+	const TArray<TSharedPtr<FJsonValue>> Styles = TSJson::Arr(C, TEXT("styles"));
+	const TSJson::FObj St = Styles.Num() ? D.Entry(TEXT("weaponStyles"), Styles[0]->AsString()) : nullptr;
+	const TSJson::FObj Primary = TSJson::Obj(St, TEXT("primary")), Secondary = TSJson::Obj(St, TEXT("secondary")), Passive = TSJson::Obj(St, TEXT("passive"));
 	auto Step = [this](const FString& Cap, const FString& Det, int32 Dir, int32 Act, float Time, FName Fx = NAME_None, FLinearColor Col = FLinearColor::White, bool bFlip = false, int32 Ab = -1)
 	{
 		FStep S; S.Caption = Cap; S.Detail = Det; S.Dir = Dir; S.Act = Act; S.Time = Time; S.Fx = Fx; S.FxColor = Col; S.bFlip = bFlip; S.Ability = Ab;
@@ -1160,26 +1161,26 @@ void SRPGCharSelect::BuildShowcase()
 	Step(TEXT("Walk"), Walk, 2, 1, 0.9f, NAME_None, FLinearColor::White, true);
 
 	// Primary attack (left click).
-	const FString StyleName = RPGJson::Str(St, TEXT("name"));
-	if (RPGJson::Str(Primary, TEXT("type")) == TEXT("bolt"))
-		Step(StyleName + TEXT(": Arcane Bolt (left click)"), TEXT("A free magic bolt from the staff, fired as fast as it recharges."), 2, 2, 2.7f, TEXT("orb"), RPGJson::Color(RPGJson::Str(Primary, TEXT("color"), TEXT("#b9a4ff"))));
+	const FString StyleName = TSJson::Str(St, TEXT("name"));
+	if (TSJson::Str(Primary, TEXT("type")) == TEXT("bolt"))
+		Step(StyleName + TEXT(": Arcane Bolt (left click)"), TEXT("A free magic bolt from the staff, fired as fast as it recharges."), 2, 2, 2.7f, TEXT("orb"), TSJson::Color(TSJson::Str(Primary, TEXT("color"), TEXT("#b9a4ff"))));
 	else
 	{
 		const FString Det = ClassId == TEXT("thief") ? TEXT("A fast 4-hit dagger combo. Hit a foe from behind for double damage.")
-			: FString::Printf(TEXT("A %d-hit combo. Click and hold to keep swinging."), RPGJson::Arr(Primary, TEXT("combo")).Num());
+			: FString::Printf(TEXT("A %d-hit combo. Click and hold to keep swinging."), TSJson::Arr(Primary, TEXT("combo")).Num());
 		Step(StyleName + TEXT(": combo (left click)"), Det, 0, 2, 1.8f);
 		Step(StyleName + TEXT(": combo (left click)"), Det, 2, 2, 1.8f);
 	}
 
 	// Defence: shield block, bow, or mana shield.
-	const FString SecType = RPGJson::Str(Secondary, TEXT("type"));
-	if (SecType == TEXT("block") && RPGJson::Bool(Secondary, TEXT("barrier")))
+	const FString SecType = TSJson::Str(Secondary, TEXT("type"));
+	if (SecType == TEXT("block") && TSJson::Bool(Secondary, TEXT("barrier")))
 		Step(TEXT("Arcane barrier (hold right click)"), TEXT("A shield of light all around you: 80% less damage from every side, but it drains stamina while you hold it."),
 			0, 0, 2.6f, TEXT("bubble"), FLinearColor(0.55f, 0.48f, 1.f));
 	else if (SecType == TEXT("block"))
 	{
-		const bool bPerfect = RPGJson::Num(Secondary, TEXT("perfectWindow"), 0) > 0;
-		const FString Det = FString::Printf(TEXT("Hold right click to block %d%% of a frontal hit; it drains stamina while held.%s"), FMath::RoundToInt(RPGJson::Num(Secondary, TEXT("reduction"), 0.5) * 100.0),
+		const bool bPerfect = TSJson::Num(Secondary, TEXT("perfectWindow"), 0) > 0;
+		const FString Det = FString::Printf(TEXT("Hold right click to block %d%% of a frontal hit; it drains stamina while held.%s"), FMath::RoundToInt(TSJson::Num(Secondary, TEXT("reduction"), 0.5) * 100.0),
 			bPerfect ? TEXT(" Raise it just before the blow for a perfect block.") : TEXT(""));
 		Step(TEXT("Shield block (right click)"), Det, 0, 4, 1.3f, TEXT("block"));
 		Step(TEXT("Shield block (right click)"), Det, 2, 4, 1.3f, TEXT("block"));
@@ -1189,15 +1190,15 @@ void SRPGCharSelect::BuildShowcase()
 
 
 	// Abilities.
-	const TArray<TSharedPtr<FJsonValue>> Abilities = RPGJson::Arr(C, TEXT("abilities"));
+	const TArray<TSharedPtr<FJsonValue>> Abilities = TSJson::Arr(C, TEXT("abilities"));
 	for (int32 I = 0; I < Abilities.Num(); ++I)
 	{
-		const RPGJson::FObj A = D.Entry(TEXT("abilities"), Abilities[I]->AsString());
-		const FString Type = RPGJson::Str(A, TEXT("type"));
-		const FLinearColor Col = RPGJson::Color(RPGJson::Str(A, TEXT("color"), TEXT("#ffffff")));
-		const FString Cap = FString::Printf(TEXT("%s  (key %d, level %d)"), *RPGJson::Str(A, TEXT("name")), I + 1, int32(RPGJson::Num(A, TEXT("unlockLevel"), 1)));
-		const FString Det = RPGJson::Str(A, TEXT("desc"));
-		if (Type == TEXT("projectile")) Step(Cap, Det, 2, 2, 2.4f, RPGJson::Bool(A, TEXT("arrow")) ? FName(TEXT("arrow")) : FName(TEXT("orb")), Col, false, I);
+		const TSJson::FObj A = D.Entry(TEXT("abilities"), Abilities[I]->AsString());
+		const FString Type = TSJson::Str(A, TEXT("type"));
+		const FLinearColor Col = TSJson::Color(TSJson::Str(A, TEXT("color"), TEXT("#ffffff")));
+		const FString Cap = FString::Printf(TEXT("%s  (key %d, level %d)"), *TSJson::Str(A, TEXT("name")), I + 1, int32(TSJson::Num(A, TEXT("unlockLevel"), 1)));
+		const FString Det = TSJson::Str(A, TEXT("desc"));
+		if (Type == TEXT("projectile")) Step(Cap, Det, 2, 2, 2.4f, TSJson::Bool(A, TEXT("arrow")) ? FName(TEXT("arrow")) : FName(TEXT("orb")), Col, false, I);
 		else if (Type == TEXT("heal")) Step(Cap, Det, 0, 0, 2.4f, TEXT("heal"), Col, false, I);
 		else if (Type == TEXT("buff")) Step(Cap, Det, 0, 0, 2.4f, TEXT("ring"), Col, false, I);
 		else if (Type == TEXT("dashStrike") || Type == TEXT("blink")) Step(Cap, Det, 2, 1, 2.4f, TEXT("ring"), Col, false, I);
@@ -1207,16 +1208,16 @@ void SRPGCharSelect::BuildShowcase()
 
 void SRPGCharSelect::Rebuild()
 {
-	const URPGData& D = URPGData::Get(World.Get());
-	const RPGJson::FObj C = D.Entry(TEXT("classes"), ClassId);
-	const FLinearColor Accent = RPGJson::Color(RPGJson::Str(C, TEXT("color")));
+	const UTSData& D = UTSData::Get(World.Get());
+	const TSJson::FObj C = D.Entry(TEXT("classes"), ClassId);
+	const FLinearColor Accent = TSJson::Color(TSJson::Str(C, TEXT("color")));
 
 	// Class cards with a live portrait.
 	auto Cards = SNew(SHorizontalBox);
 	for (int32 I = 0; I < ClassIds.Num(); ++I)
 	{
 		const FString Id = ClassIds[I];
-		const RPGJson::FObj K = D.Entry(TEXT("classes"), Id);
+		const TSJson::FObj K = D.Entry(TEXT("classes"), Id);
 		const bool bSel = Id == ClassId;
 		Cards->AddSlot().FillWidth(1).Padding(4)
 		[
@@ -1228,7 +1229,7 @@ void SRPGCharSelect::Rebuild()
 				+ SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center).Padding(4, 0)
 				[
 					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight()[ SNew(STextBlock).Font(Font(15, TEXT("Bold"))).ColorAndOpacity(RPGJson::Color(RPGJson::Str(K, TEXT("color")))).Text(T(RPGJson::Str(K, TEXT("name")))) ]
+					+ SVerticalBox::Slot().AutoHeight()[ SNew(STextBlock).Font(Font(15, TEXT("Bold"))).ColorAndOpacity(TSJson::Color(TSJson::Str(K, TEXT("color")))).Text(T(TSJson::Str(K, TEXT("name")))) ]
 					+ SVerticalBox::Slot().AutoHeight()[ SNew(STextBlock).Font(Font(10)).ColorAndOpacity(Muted).Text(T(FString::Printf(TEXT("key %d"), I + 1))) ]
 				]
 			]
@@ -1255,11 +1256,11 @@ void SRPGCharSelect::Rebuild()
 			+ SHorizontalBox::Slot().AutoWidth().Padding(8, 0)[ SNew(STextBlock).Font(Font(11, TEXT("Bold"))).Text(T(Shown)) ]
 		];
 	};
-	const RPGJson::FObj Attr = RPGJson::Obj(C, TEXT("attributes"));
+	const TSJson::FObj Attr = TSJson::Obj(C, TEXT("attributes"));
 	for (const TCHAR* K : { TEXT("might"), TEXT("agility"), TEXT("focus"), TEXT("vitality"), TEXT("presence") })
 	{
 		FString Label = K; Label[0] = FChar::ToUpper(Label[0]);
-		Row(Stats, Label, float(RPGJson::Num(Attr, K)), 10.f, Accent, FString::FromInt(int32(RPGJson::Num(Attr, K))));
+		Row(Stats, Label, float(TSJson::Num(Attr, K)), 10.f, Accent, FString::FromInt(int32(TSJson::Num(Attr, K))));
 	}
 	TArray<FClassPreview> All;
 	for (const FString& Id : ClassIds) All.Add(Preview(D, Id));
@@ -1272,8 +1273,8 @@ void SRPGCharSelect::Rebuild()
 	Row(Derived, TEXT("Armor"), P.Armor, FMath::Max(1.f, Max(&FClassPreview::Armor)), Muted, FString::Printf(TEXT("%.0f"), P.Armor));
 
 	// Kit: weapons and defence with icons, dialogue style.
-	const TArray<TSharedPtr<FJsonValue>> StyleIds = RPGJson::Arr(C, TEXT("styles"));
-	const RPGJson::FObj St = StyleIds.Num() ? D.Entry(TEXT("weaponStyles"), StyleIds[0]->AsString()) : nullptr;
+	const TArray<TSharedPtr<FJsonValue>> StyleIds = TSJson::Arr(C, TEXT("styles"));
+	const TSJson::FObj St = StyleIds.Num() ? D.Entry(TEXT("weaponStyles"), StyleIds[0]->AsString()) : nullptr;
 	TArray<FString> KitIcons;
 	const FString Kit = StyleIds.Num() ? StyleIds[0]->AsString() : FString();
 	if (Kit.Contains(TEXT("sword")) || Kit == TEXT("longsword")) KitIcons.Add(TEXT("sword"));
@@ -1291,18 +1292,18 @@ void SRPGCharSelect::Rebuild()
 		Info->AddSlot().AutoHeight()[ SNew(STextBlock).Font(Font(11)).AutoWrapText(true).Text(T(Text)) ];
 	};
 	Info->AddSlot().AutoHeight().Padding(0, 0, 0, 4)[ IconRow ];
-	Section(TEXT("WEAPONS"), RPGJson::Str(C, TEXT("weapons")), Muted);
-	Section(TEXT("DEFENSE"), RPGJson::Str(C, TEXT("defense")), Muted);
-	const RPGJson::FObj Dlg = RPGJson::Obj(C, TEXT("dialogue"));
-	Section(TEXT("TALKS WITH: ") + RPGJson::Str(Dlg, TEXT("style")).ToUpper(), RPGJson::Str(Dlg, TEXT("desc")), Accent);
+	Section(TEXT("WEAPONS"), TSJson::Str(C, TEXT("weapons")), Muted);
+	Section(TEXT("DEFENSE"), TSJson::Str(C, TEXT("defense")), Muted);
+	const TSJson::FObj Dlg = TSJson::Obj(C, TEXT("dialogue"));
+	Section(TEXT("TALKS WITH: ") + TSJson::Str(Dlg, TEXT("style")).ToUpper(), TSJson::Str(Dlg, TEXT("desc")), Accent);
 
 	// Abilities: the one being demonstrated on the left lights up.
 	auto Abil = SNew(SVerticalBox);
-	const TArray<TSharedPtr<FJsonValue>> Ids = RPGJson::Arr(C, TEXT("abilities"));
+	const TArray<TSharedPtr<FJsonValue>> Ids = TSJson::Arr(C, TEXT("abilities"));
 	for (int32 I = 0; I < Ids.Num(); ++I)
 	{
-		const RPGJson::FObj A = D.Entry(TEXT("abilities"), Ids[I]->AsString());
-		const FLinearColor Col = RPGJson::Color(RPGJson::Str(A, TEXT("color"), TEXT("#ffffff")));
+		const TSJson::FObj A = D.Entry(TEXT("abilities"), Ids[I]->AsString());
+		const FLinearColor Col = TSJson::Color(TSJson::Str(A, TEXT("color"), TEXT("#ffffff")));
 		Abil->AddSlot().AutoHeight().Padding(0, 2)
 		[
 			SNew(SBorder).BorderImage(White()).Padding(FMargin(8, 5))
@@ -1316,12 +1317,12 @@ void SRPGCharSelect::Rebuild()
 				[
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight()
-					[ SNew(STextBlock).Font(Font(12, TEXT("Bold"))).Text(T(FString::Printf(TEXT("%d  %s"), I + 1, *RPGJson::Str(A, TEXT("name"))))) ]
+					[ SNew(STextBlock).Font(Font(12, TEXT("Bold"))).Text(T(FString::Printf(TEXT("%d  %s"), I + 1, *TSJson::Str(A, TEXT("name"))))) ]
 					+ SVerticalBox::Slot().AutoHeight()
-					[ SNew(STextBlock).Font(Font(10)).ColorAndOpacity(FLinearColor(0.8f, 0.8f, 0.78f)).AutoWrapText(true).Text(T(RPGJson::Str(A, TEXT("desc")))) ]
+					[ SNew(STextBlock).Font(Font(10)).ColorAndOpacity(FLinearColor(0.8f, 0.8f, 0.78f)).AutoWrapText(true).Text(T(TSJson::Str(A, TEXT("desc")))) ]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
-				[ SNew(STextBlock).Font(Font(10)).ColorAndOpacity(Muted).Text(T(FString::Printf(TEXT("Lv %d"), int32(RPGJson::Num(A, TEXT("unlockLevel"), 1))))) ]
+				[ SNew(STextBlock).Font(Font(10)).ColorAndOpacity(Muted).Text(T(FString::Printf(TEXT("Lv %d"), int32(TSJson::Num(A, TEXT("unlockLevel"), 1))))) ]
 			]
 		];
 	}
@@ -1376,7 +1377,7 @@ void SRPGCharSelect::Rebuild()
 					.OnHovered_Lambda([this]() { HoverButton = 1; }).OnUnhovered_Lambda([this]() { if (HoverButton == 1) HoverButton = -1; })
 					.OnClicked_Lambda([this]() { Fx.Start(1, [this]() { OnBegin.ExecuteIfBound(ClassId, Sex); }); return FReply::Handled(); })
 					[ SNew(STextBlock).Font(Font(15, TEXT("Bold"))).ColorAndOpacity(Gold)
-						.Text(T(FString::Printf(TEXT("Begin as %s %s"), Sex == TEXT("female") ? TEXT("Female") : TEXT("Male"), *RPGJson::Str(C, TEXT("name"))))) ]
+						.Text(T(FString::Printf(TEXT("Begin as %s %s"), Sex == TEXT("female") ? TEXT("Female") : TEXT("Male"), *TSJson::Str(C, TEXT("name"))))) ]
 				]
 			]
 		]);
@@ -1474,15 +1475,15 @@ void SRPGTitle::Construct(const FArguments& Args)
 {
 	OnStart = Args._OnStart;
 	OnQuit = Args._OnQuit;
-	if (UTexture2D* Fade = RPGAssets::Load<UTexture2D>(TEXT("/Game/RPG/Pixel/UI_Fade.UI_Fade")))
+	if (UTexture2D* Fade = TSAssets::Load<UTexture2D>(TEXT("/Game/RPG/Pixel/UI_Fade.UI_Fade")))
 	{
 		FadeTex.Reset(Fade);
 		FadeBrush.SetResourceObject(Fade);
 		FadeBrush.DrawAs = ESlateBrushDrawType::Image;
 	}
-	const RPGJson::FObj TitleData = URPGData::Get(Args._World.Get()).Section(TEXT("title"));
-	const FString Name = RPGJson::Str(TitleData, TEXT("name"), TEXT("Action RPG"));
-	const FString Tagline = RPGJson::Str(TitleData, TEXT("tagline"));
+	const TSJson::FObj TitleData = UTSData::Get(Args._World.Get()).Section(TEXT("title"));
+	const FString Name = TSJson::Str(TitleData, TEXT("name"), TEXT("Action RPG"));
+	const FString Tagline = TSJson::Str(TitleData, TEXT("tagline"));
 
 	auto Item = [this](int32 I, const FString& Label)
 	{
@@ -1576,7 +1577,7 @@ void SRPGPanel::Rebuild()
 	ARPGPlayerCharacter* P = PlayerOf(World);
 	URPGSession* S = SessionOf(World);
 	if (!P || !S) return;
-	const URPGData& D = URPGData::Get(World.Get());
+	const UTSData& D = UTSData::Get(World.Get());
 	auto V = SNew(SVerticalBox);
 	auto Head = [&](const FString& Title, const FString& Right = FString())
 	{
@@ -1613,11 +1614,11 @@ void SRPGPanel::Rebuild()
 		if (S->Story()->Quests.IsEmpty()) Line(TEXT("No quests yet. Look for a ! above someone's head."), Muted);
 		for (const auto& KV : S->Story()->Quests)
 		{
-			const RPGJson::FObj Q = D.Entry(TEXT("quests"), KV.Key);
+			const TSJson::FObj Q = D.Entry(TEXT("quests"), KV.Key);
 			const FString St = KV.Value.Status;
-			Line(RPGJson::Str(Q, TEXT("name")), St == TEXT("turnedIn") ? Muted : Gold, 14);
-			Line(RPGJson::Str(Q, TEXT("desc")), Muted, 11);
-			Line(St == TEXT("turnedIn") ? TEXT("Completed") : St == TEXT("complete") ? TEXT("Return to ") + RPGJson::Str(Q, TEXT("giver")) : TEXT("Progress: ") + S->Story()->ProgressText(KV.Key));
+			Line(TSJson::Str(Q, TEXT("name")), St == TEXT("turnedIn") ? Muted : Gold, 14);
+			Line(TSJson::Str(Q, TEXT("desc")), Muted, 11);
+			Line(St == TEXT("turnedIn") ? TEXT("Completed") : St == TEXT("complete") ? TEXT("Return to ") + TSJson::Str(Q, TEXT("giver")) : TEXT("Progress: ") + S->Story()->ProgressText(KV.Key));
 		}
 	}
 	else if (Mode == TEXT("Character"))
@@ -1642,7 +1643,7 @@ void SRPGPanel::Rebuild()
 						{
 							PP->Stats->Base.FindOrAdd(Stat) += 1.f;
 							--PP->AttrPoints;
-							if (Stat == TEXT("vitality")) PP->Stats->HP += float(URPGData::Get(W.Get()).Tuning(TEXT("hpPerVitality"), 10));
+							if (Stat == TEXT("vitality")) PP->Stats->HP += float(UTSData::Get(W.Get()).Tuning(TEXT("hpPerVitality"), 10));
 						}
 						Rebuild();
 						return FReply::Handled(); })
@@ -1657,7 +1658,7 @@ void SRPGPanel::Rebuild()
 		Line(FString::Printf(TEXT("Level %d   ·   XP %d / %d"), P->Level(), P->Xp, ARPGPlayerCharacter::XpToNext(P, P->Level())));
 		Line(FString::Printf(TEXT("Max HP %.0f   ·   Stamina %.0f   ·   Mana %.0f"), St->MaxHP(), St->MaxStamina(), St->MaxMana()));
 		Line(FString::Printf(TEXT("Crit %.0f%%   ·   Armor %.0f (-%.0f%% damage)   ·   Weapon damage %.0f"), St->CritChance() * 100, St->Armor(), (1 - K / (K + St->Armor())) * 100, St->Get(TEXT("weaponDamage"))));
-		Line(FString::Printf(TEXT("Weapon style: %s"), *RPGJson::Str(P->Style(), TEXT("name"))), Muted, 11);
+		Line(FString::Printf(TEXT("Weapon style: %s"), *TSJson::Str(P->Style(), TEXT("name"))), Muted, 11);
 	}
 	else if (Mode == TEXT("Inventory"))
 	{

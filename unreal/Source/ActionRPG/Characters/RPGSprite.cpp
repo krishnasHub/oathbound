@@ -1,7 +1,7 @@
 #include "RPGSprite.h"
 #include "RPGCharacterBase.h"
 #include "RPGEnemy.h"
-#include "RPGLook.h"
+#include "TSLook.h"
 #include "RPGAssets.h"
 
 #include "Components/CapsuleComponent.h"
@@ -28,16 +28,16 @@ void URPGSpriteComponent::Setup(const FString& Sheet)
 {
 	if (Sheet == SheetName && Mat) return;
 	SheetName = Sheet;
-	SetStaticMesh(RPGAssets::Shape(TEXT("Plane")));
-	Mat = RPGLook::SpriteMaterial(this, TEXT("SPR_") + Sheet, RPGSpriteSheet::Cols, RPGSpriteSheet::Rows);
+	SetStaticMesh(TSAssets::Shape(TEXT("Plane")));
+	Mat = TSLook::SpriteMaterial(this, TEXT("SPR_") + Sheet, RPGSpriteSheet::Cols, RPGSpriteSheet::Rows);
 	if (Mat) SetMaterial(0, Mat);
 	HideCheck = 0.f;
-	if (RPGLook::Mode() == RPGLook::EMode::Flat2D && !Shadow)
+	if (TSLook::Mode() == TSLook::EMode::Flat2D && !Shadow)
 	{
 		SetCastShadow(false);
 		Shadow = NewObject<UStaticMeshComponent>(GetOwner(), TEXT("SpriteShadow"));
-		Shadow->SetStaticMesh(RPGAssets::Shape(TEXT("Plane")));
-		Shadow->SetMaterial(0, RPGLook::PropMaterial(TEXT("PR_Shadow")));
+		Shadow->SetStaticMesh(TSAssets::Shape(TEXT("Plane")));
+		Shadow->SetMaterial(0, TSLook::PropMaterial(TEXT("PR_Shadow")));
 		Shadow->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		Shadow->SetCastShadow(false);
 		Shadow->SetUsingAbsoluteLocation(true);
@@ -66,7 +66,7 @@ void URPGSpriteComponent::TickComponent(float Dt, ELevelTick TickType, FActorCom
 	HurtT -= Dt;
 
 	// Direction relative to the fixed camera: 0 = facing the camera, 1 = away, 2 = side (mirrored for left).
-	const float CamYaw = RPGLook::CameraRotation().Yaw;
+	const float CamYaw = TSLook::CameraRotation().Yaw;
 	const FVector Fwd = FRotator(0, CamYaw, 0).Vector(), Right = FRotator(0, CamYaw + 90.f, 0).Vector();
 	const FVector F = C->Facing();
 	const float DF = FVector::DotProduct(F, Fwd), DR = FVector::DotProduct(F, Right);
@@ -96,13 +96,13 @@ void URPGSpriteComponent::TickComponent(float Dt, ELevelTick TickType, FActorCom
 	Mat->SetScalarParameterValue(TEXT("Flash"), HurtT > 0.f ? 0.75f : 0.f);
 
 	// Placement: the card's bottom edge at the feet (the art leaves ~2 px under the boots).
-	const float Units = RPGLook::SpriteUnits() * C->GetActorScale3D().Z;
+	const float Units = TSLook::SpriteUnits() * C->GetActorScale3D().Z;
 	const float Size = RPGSpriteSheet::Frame * Units;
-	const FRotator R = RPGLook::CardRotation();
+	const FRotator R = TSLook::CardRotation();
 	const FVector CardUp = -FRotationMatrix(R).GetUnitAxis(EAxis::Y);
 	FVector Feet = C->GetActorLocation() - FVector(0, 0, C->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
 	FVector Center = Feet + CardUp * (Size * 0.5f - 2.5f * Units);
-	if (RPGLook::Mode() == RPGLook::EMode::Flat2D) Center.Z = RPGLook::FlatSortZ(Feet.Y);
+	if (TSLook::Mode() == TSLook::EMode::Flat2D) Center.Z = TSLook::FlatSortZ(Feet.Y);
 	SetWorldLocationAndRotation(Center, R);
 	SetWorldScale3D(FVector(Size / 100.f, Size / 100.f, 1.f));
 	if (Shadow)

@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "RPGJson.h"
+#include "TSJson.h"
 #include "RPGInventoryComponent.generated.h"
 
 /** One item instance (prototype: makeItem()). */
@@ -35,7 +35,7 @@ public:
 	FRPGInventoryChanged OnChanged;
 
 	/** Rolls an item: rarity from weights (or common), random affixes per rarity. */
-	static FRPGItem MakeItem(const UObject* WorldContext, const FString& Id, const RPGJson::FObj& RarityWeights = nullptr);
+	static FRPGItem MakeItem(const UObject* WorldContext, const FString& Id, const TSJson::FObj& RarityWeights = nullptr);
 	static FLinearColor RarityColor(const UObject* WorldContext, const FString& Rarity);
 
 	bool Add(const FRPGItem& Item);

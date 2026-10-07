@@ -1,5 +1,5 @@
 #include "RPGStatsComponent.h"
-#include "RPGData.h"
+#include "TSData.h"
 
 URPGStatsComponent::URPGStatsComponent()
 {
@@ -8,7 +8,7 @@ URPGStatsComponent::URPGStatsComponent()
 
 double URPGStatsComponent::Tune(const TCHAR* Key, double Default) const
 {
-	return URPGData::Get(this).Tuning(Key, Default);
+	return UTSData::Get(this).Tuning(Key, Default);
 }
 
 float URPGStatsComponent::Get(FName Stat) const

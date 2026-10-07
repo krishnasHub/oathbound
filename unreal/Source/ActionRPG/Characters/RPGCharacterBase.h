@@ -4,7 +4,7 @@
 #include "GameFramework/Character.h"
 #include "RPGAnimNotifies.h"
 #include "RPGStatsComponent.h"
-#include "RPGJson.h"
+#include "TSJson.h"
 #include "RPGCharacterBase.generated.h"
 
 class UStaticMeshComponent;
@@ -47,10 +47,10 @@ public:
 	virtual bool IsLeaving() const { return false; }
 	virtual FString FactionId() const { return FString(); }
 	/** Weapon style "secondary" block entry while the guard is raised (null otherwise). */
-	virtual RPGJson::FObj GuardStyle() const { return nullptr; }
+	virtual TSJson::FObj GuardStyle() const { return nullptr; }
 	float GuardTime = 0.f;                 // seconds since the guard went up (perfect-block window)
 	/** Weapon style "passive" (mana shield) or null. */
-	virtual RPGJson::FObj PassiveStyle() const { return nullptr; }
+	virtual TSJson::FObj PassiveStyle() const { return nullptr; }
 	virtual void OnDamaged(ARPGCharacterBase* Src) {}
 	/** Dialogue node opened when this character yields a duel. */
 	virtual FString YieldDialogueId() const { return FString(); }
@@ -108,7 +108,7 @@ public:
 	/** The mesh that is actually rendered (weapons attach here). The player renders a posed copy. */
 	virtual USkinnedMeshComponent* BodyMesh() const { return GetMesh(); }
 
-	// ---- 2D looks (RPGLook): a pixel-art sprite instead of the 3D body ----
+	// ---- 2D looks (TSLook): a pixel-art sprite instead of the 3D body ----
 	/** Show sprite sheet SPR_<Sheet> instead of the 3D body (no-op in the 3D look). */
 	void UseSprite(const FString& Sheet);
 	/** Hide the 3D body, weapons and blob (they keep animating, so hit timing is unchanged). */

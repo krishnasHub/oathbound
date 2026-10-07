@@ -1,14 +1,8 @@
 #include "RPGWorldBuilder.h"
-
-namespace
-{
-	// Day/night state (one world at a time).
-	float GHour = 14.f, GNight = 0.f;
-	float GHeroSight = 1000.f, GDarkStrength = 0.97f, GLightReach = 1.f;
-	TArray<FVector> GNightLights;   // (x, y, radius)
-}
 #include "ActionRPG.h"
-#include "RPGData.h"
+#include "TSData.h"
+#include "TSLook.h"
+#include "TSSky.h"
 #include "RPGAssets.h"
 
 #include "ProceduralMeshComponent.h"
@@ -24,24 +18,6 @@ namespace
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
-#include "Engine/DirectionalLight.h"
-#include "Components/DirectionalLightComponent.h"
-#include "Components/SkyAtmosphereComponent.h"
-#include "Engine/SkyLight.h"
-#include "Components/SkyLightComponent.h"
-#include "Components/VolumetricCloudComponent.h"
-#include "Engine/ExponentialHeightFog.h"
-#include "Components/ExponentialHeightFogComponent.h"
-#include "Engine/PostProcessVolume.h"
-#include "GameFramework/PlayerController.h"
-#include "Camera/PlayerCameraManager.h"
-#include "NavigationSystem.h"
-#include "NavAreas/NavArea_Null.h"
-#include "NavMesh/NavMeshBoundsVolume.h"
-#include "RPGLook.h"
-#include "Misc/CommandLine.h"
-#include "GameFramework/WorldSettings.h"
-
 namespace
 {
 	// Deterministic per-tile randomness so the world looks the same every run.
@@ -55,29 +31,18 @@ namespace
 	constexpr float DeckZ = 18.f;
 }
 
-ARPGWorldBuilder::ARPGWorldBuilder()
-{
-	PrimaryActorTick.bCanEverTick = true;
-	Terrain = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("Terrain"));
-	RootComponent = Terrain;
-}
-
 void ARPGWorldBuilder::Build()
 {
-	const URPGData& D = URPGData::Get(this);
+	const UTSData& D = UTSData::Get(this);
 	if (!D.IsLoaded()) return;
 
 	Tile = D.TileSize;
 	Rows = D.Rows;
-	const RPGJson::FObj NV = RPGJson::Obj(RPGJson::Obj(D.World3D(), TEXT("dayNight")), TEXT("nightVision"));
-	GHeroSight = float(RPGJson::Num(NV, TEXT("heroSight"), 1000));
-	GDarkStrength = float(RPGJson::Num(NV, TEXT("strength"), 0.97));
-	GLightReach = float(RPGJson::Num(NV, TEXT("lightReach"), 1.0));
-	GNightLights.Reset();
 	MapW = D.MapW;
 	MapH = D.MapH;
 
 	const double T0 = FPlatformTime::Seconds();
+	BeginBuild();
 	BuildTerrain(D);
 	BuildWater(D);
 	BuildBlockers(D);
@@ -86,9 +51,9 @@ void ARPGWorldBuilder::Build()
 	BuildBridge(D);
 	BuildTreesAndScatter(D);
 	BuildProps(D);
-	BuildSky();
-	if (RPGLook::Mode() == RPGLook::EMode::Flat2D) BuildFlat2D();
-	BuildNavigation();
+	if (TSLook::Mode() == TSLook::EMode::Flat2D) BuildFlat2D();
+	// Sky, day/night and the navmesh over the map (plus room above and below for the terrain).
+	FinishBuild(FBox(FVector(0.f, 0.f, -1500.f), FVector(MapW * Tile, MapH * Tile, 3000.f)));
 	UE_LOG(LogRPG, Display, TEXT("World built from map (%dx%d tiles, %.0fuu per tile) in %.2fs."), MapW, MapH, Tile, FPlatformTime::Seconds() - T0);
 }
 
@@ -109,18 +74,18 @@ void ARPGWorldBuilder::BuildFlat2D()
 		P->bAffectDistanceFieldLighting = false;
 		P->SetAffectDynamicIndirectLighting(false);
 	}
-	Houses.Reset();
-	TreeCrowns.Reset();
+	Cutaways.Reset();
+	InstanceCutaways.Reset();
 
 	const int32 PadTiles = 6;   // build_all.py PAD
-	const float U = RPGLook::SpriteUnits();
-	const FRotator R = RPGLook::CardRotation();
+	const float U = TSLook::SpriteUnits();
+	const FRotator R = TSLook::CardRotation();
 	const FVector North = -FRotationMatrix(R).GetUnitAxis(EAxis::Y);
-	UStaticMesh* Plane = RPGAssets::Shape(TEXT("Plane"));
+	UStaticMesh* Plane = TSAssets::Shape(TEXT("Plane"));
 
 	// Ground.
 	const FVector Mid(MapW * Tile * 0.5f, MapH * Tile * 0.5f, 0.f);
-	UStaticMeshComponent* Ground = AddMesh(Plane, RPGLook::PropMaterial(TEXT("MAP_Ground")),
+	UStaticMeshComponent* Ground = AddMesh(Plane, TSLook::PropMaterial(TEXT("MAP_Ground")),
 		FTransform(R, Mid, FVector((MapW + 2 * PadTiles) * Tile / 100.f, (MapH + 2 * PadTiles) * Tile / 100.f, 1.f)), false);
 	Ground->SetCastShadow(false);
 
@@ -131,12 +96,12 @@ void ARPGWorldBuilder::BuildFlat2D()
 		auto Set = [&](const FString& T) -> UHierarchicalInstancedStaticMeshComponent*
 		{
 			UHierarchicalInstancedStaticMeshComponent*& H = Sets.FindOrAdd(T);
-			if (!H) { H = MakeInstances(Plane, RPGLook::PropMaterial(T), false); H->SetCastShadow(false); }   // flat cards: drawn shadows only
+			if (!H) { H = MakeInstances(Plane, TSLook::PropMaterial(T), false); H->SetCastShadow(false); }   // flat cards: drawn shadows only
 			return H;
 		};
 		const float W = Wpx * U * Scale, Ht = Hpx * U * Scale;
 		// (+ a hair of x so neighbours in one row never share a depth and z-fight)
-		const FVector At = FVector(Anchor, RPGLook::FlatSortZ(Anchor.Y) + Anchor.X * 0.00003f) + North * (Ht * 0.5f);
+		const FVector At = FVector(Anchor, TSLook::FlatSortZ(Anchor.Y) + Anchor.X * 0.00003f) + North * (Ht * 0.5f);
 		Set(Tex)->AddInstance(FTransform(R, At, FVector(W / 100.f, Ht / 100.f, 1.f)), true);
 		// A dithered blob shadow at the base of anything that stands up (under every other card).
 		if (!Tex.StartsWith(TEXT("PR_Wall")) && !Tex.StartsWith(TEXT("PR_House")))
@@ -177,40 +142,6 @@ void ARPGWorldBuilder::BuildFlat2D()
 }
 
 // ---------------------------------------------------------------------------------------------
-// Navigation: a navmesh over the playable map, generated at runtime. There is no level file to hold a
-// NavMeshBoundsVolume, so one is spawned here; a volume's bounds are its components' bounding box, so a
-// map-sized box component on it sets the area.
-// ---------------------------------------------------------------------------------------------
-
-void ARPGWorldBuilder::BuildNavigation()
-{
-	UWorld* W = GetWorld();
-	if (!FNavigationSystem::GetCurrent<UNavigationSystemV1>(W))
-	{
-		if (AWorldSettings* WS = W->GetWorldSettings(); WS && !WS->GetNavigationSystemConfig())
-			WS->SetNavigationSystemConfigOverride(NewObject<UNavigationSystemModuleConfig>(WS));
-		FNavigationSystem::AddNavigationSystemToWorld(*W, FNavigationSystemRunMode::GameMode);
-	}
-	UNavigationSystemV1* Nav = FNavigationSystem::GetCurrent<UNavigationSystemV1>(W);
-	if (!Nav) { UE_LOG(LogRPG, Warning, TEXT("No navigation system: click-to-move walks in straight lines.")); return; }
-
-	const FVector Center(MapW * Tile * 0.5f, MapH * Tile * 0.5f, 750.f);
-	ANavMeshBoundsVolume* Vol = W->SpawnActor<ANavMeshBoundsVolume>(Center, FRotator::ZeroRotator);
-	if (!Vol) return;
-	UBoxComponent* Area = NewObject<UBoxComponent>(Vol);
-	Area->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	Area->SetCanEverAffectNavigation(false);
-	Area->SetBoxExtent(FVector(MapW * Tile * 0.5f, MapH * Tile * 0.5f, 2250.f));
-	Area->SetupAttachment(Vol->GetRootComponent());
-	Area->RegisterComponent();
-	Nav->OnNavigationBoundsUpdated(Vol);
-	// The terrain joined the navigation octree when it was created, before it had any geometry (and was
-	// skipped for empty bounds); now that it's built, register it again so the navmesh has ground to stand on.
-	if (Terrain) Nav->UpdateComponentInNavOctree(*Terrain);
-	UE_LOG(LogRPG, Display, TEXT("Navmesh bounds: %s"), *Vol->GetComponentsBoundingBox(true).ToString());
-}
-
-// ---------------------------------------------------------------------------------------------
 // Terrain
 // ---------------------------------------------------------------------------------------------
 
@@ -235,7 +166,7 @@ float ARPGWorldBuilder::NoiseAt(float X, float Y) const
 	     + FMath::PerlinNoise2D(FVector2D(X + 911.f, Y - 377.f) * 0.0028f) * 9.f;
 }
 
-void ARPGWorldBuilder::BuildTerrain(const URPGData& D)
+void ARPGWorldBuilder::BuildTerrain(const UTSData& D)
 {
 	Step = Tile / Sub;
 	OriginX = -Pad * Tile;
@@ -333,81 +264,20 @@ void ARPGWorldBuilder::BuildTerrain(const URPGData& D)
 	}
 }
 
-float ARPGWorldBuilder::GroundZ(float X, float Y) const
-{
-	if (Heights.IsEmpty()) return 0.f;
-	const float FI = (X - OriginX) / Step, FJ = (Y - OriginY) / Step;
-	const int32 I = FMath::Clamp(FMath::FloorToInt(FI), 0, GridW - 2), J = FMath::Clamp(FMath::FloorToInt(FJ), 0, GridH - 2);
-	const float U = FMath::Clamp(FI - I, 0.f, 1.f), V = FMath::Clamp(FJ - J, 0.f, 1.f);
-	const float H00 = Heights[J * GridW + I], H10 = Heights[J * GridW + I + 1];
-	const float H01 = Heights[(J + 1) * GridW + I], H11 = Heights[(J + 1) * GridW + I + 1];
-	return FMath::Lerp(FMath::Lerp(H00, H10, U), FMath::Lerp(H01, H11, U), V);
-}
-
-// ---------------------------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------------------------
-
-UHierarchicalInstancedStaticMeshComponent* ARPGWorldBuilder::MakeInstances(UStaticMesh* Mesh, UMaterialInterface* Material, bool bCollide, int32 CullDistance)
-{
-	UHierarchicalInstancedStaticMeshComponent* H = NewObject<UHierarchicalInstancedStaticMeshComponent>(this);
-	H->SetStaticMesh(Mesh);
-	if (Material) H->SetMaterial(0, Material);
-	H->SetCollisionProfileName(bCollide ? TEXT("BlockAll") : TEXT("NoCollision"));
-	if (CullDistance > 0) H->SetCullDistances(CullDistance * 3 / 4, CullDistance);
-	H->SetupAttachment(RootComponent);
-	H->RegisterComponent();
-	return H;
-}
-
-UStaticMeshComponent* ARPGWorldBuilder::AddMesh(UStaticMesh* Mesh, UMaterialInterface* Material, const FTransform& T, bool bCollide)
-{
-	UStaticMeshComponent* C = NewObject<UStaticMeshComponent>(this);
-	C->SetStaticMesh(Mesh);
-	if (Material) C->SetMaterial(0, Material);
-	C->SetCollisionProfileName(bCollide ? TEXT("BlockAll") : TEXT("NoCollision"));
-	C->SetupAttachment(RootComponent);
-	C->SetWorldTransform(T);
-	C->RegisterComponent();
-	if (Collect) Collect->Add(C);
-	return C;
-}
-
-UStaticMeshComponent* ARPGWorldBuilder::AddBox(const FVector& Center, const FVector& Size, UMaterialInterface* Material, bool bCollide, const FRotator& Rot)
-{
-	// The engine cube is 100uu and centred on its pivot. (Looked up each time, not cached in a static: a New Game
-	// tears the world down and the engine may unload the mesh in between.)
-	return AddMesh(RPGAssets::Shape(TEXT("Cube")), Material, FTransform(Rot, Center, Size / 100.f), bCollide);
-}
-
-void ARPGWorldBuilder::AddBlocker(const FVector& Center, const FVector& HalfExtent)
-{
-	UBoxComponent* B = NewObject<UBoxComponent>(this);
-	B->SetBoxExtent(HalfExtent);
-	B->SetCollisionProfileName(TEXT("InvisibleWall"));   // blocks pawns, not sight
-	// ...and carves a hole in the navmesh, so click-to-move paths go around (over the bridge).
-	B->SetCanEverAffectNavigation(true);
-	B->bDynamicObstacle = true;
-	B->SetAreaClassOverride(UNavArea_Null::StaticClass());
-	B->SetupAttachment(RootComponent);
-	B->SetWorldLocation(Center);
-	B->RegisterComponent();
-}
-
 // ---------------------------------------------------------------------------------------------
 // Water, blockers
 // ---------------------------------------------------------------------------------------------
 
-void ARPGWorldBuilder::BuildWater(const URPGData& D)
+void ARPGWorldBuilder::BuildWater(const UTSData& D)
 {
 	// One big lake surface. The terrain sits above it everywhere except the carved river and lake.
 	const float W = (MapW + 2 * Pad) * Tile, H = (MapH + 2 * Pad) * Tile;
-	UStaticMeshComponent* Water = AddMesh(RPGAssets::Shape(TEXT("Plane")), RPGAssets::StarterMat(TEXT("M_Water_Lake")),
+	UStaticMeshComponent* Water = AddMesh(TSAssets::Shape(TEXT("Plane")), RPGAssets::StarterMat(TEXT("M_Water_Lake")),
 		FTransform(FRotator::ZeroRotator, FVector(OriginX + W * 0.5f, OriginY + H * 0.5f, WaterZ), FVector(W / 100.f, H / 100.f, 1.f)), false);
 	Water->SetCastShadow(false);
 }
 
-void ARPGWorldBuilder::BuildBlockers(const URPGData& D)
+void ARPGWorldBuilder::BuildBlockers(const UTSData& D)
 {
 	// You can't wade into the river: merge each row's run of water tiles into one invisible wall.
 	for (int32 Y = 0; Y < MapH; ++Y)
@@ -435,11 +305,11 @@ void ARPGWorldBuilder::BuildBlockers(const URPGData& D)
 // Ruins
 // ---------------------------------------------------------------------------------------------
 
-void ARPGWorldBuilder::BuildRuins(const URPGData& D)
+void ARPGWorldBuilder::BuildRuins(const UTSData& D)
 {
 	UMaterialInterface* Stone = RPGAssets::StarterMat(TEXT("M_Brick_Hewn_Stone"));
 	UMaterialInterface* Cap = RPGAssets::StarterMat(TEXT("M_Rock_Slate"));
-	const float WallH = float(RPGJson::Num(D.World3D(), TEXT("wallHeight"), 380.0));
+	const float WallH = float(TSJson::Num(D.World(), TEXT("wallHeight"), 380.0));
 
 	for (int32 Y = 1; Y < MapH - 1; ++Y)
 	{
@@ -466,14 +336,14 @@ void ARPGWorldBuilder::BuildRuins(const URPGData& D)
 // Houses: each 4-connected block of 'H' tiles is one cottage.
 // ---------------------------------------------------------------------------------------------
 
-void ARPGWorldBuilder::BuildHouses(const URPGData& D)
+void ARPGWorldBuilder::BuildHouses(const UTSData& D)
 {
 	UMaterialInterface* Footing = RPGAssets::StarterMat(TEXT("M_Brick_Cut_Stone"));
 	UMaterialInterface* Plaster = RPGAssets::StarterMat(TEXT("M_Concrete_Poured"));
 	UMaterialInterface* Timber = RPGAssets::StarterMat(TEXT("M_Wood_Walnut"));
 	UMaterialInterface* Roof = RPGAssets::StarterMat(TEXT("M_Brick_Clay_Old"));
 	UMaterialInterface* DoorMat = RPGAssets::StarterMat(TEXT("M_Wood_Oak"));
-	UMaterialInterface* Glass = RPGAssets::Color(this, FLinearColor(0.02f, 0.03f, 0.05f));
+	UMaterialInterface* Glass = TSAssets::Color(this, FLinearColor(0.02f, 0.03f, 0.05f));
 
 	TArray<bool> Seen;
 	Seen.SetNumZeroed(MapW * MapH);
@@ -509,7 +379,7 @@ void ARPGWorldBuilder::BuildHouses(const URPGData& D)
 			AddBox(FVector(Ctr, Ground - 40.f + 32.5f), FVector(Size.X + 24.f, Size.Y + 24.f, 65.f + 40.f), Footing);
 
 			// Everything above the footing can be cut away (see UpdateCutaways).
-			FHouse& House = Houses.AddDefaulted_GetRef();
+			FTSCutaway& House = Cutaways.AddDefaulted_GetRef();
 			Collect = &House.Full;
 			AddBox(FVector(Ctr, FootTop + WallH * 0.5f), FVector(Size.X, Size.Y, WallH), Plaster);
 
@@ -574,7 +444,7 @@ void ARPGWorldBuilder::BuildHouses(const URPGData& D)
 // Bridge
 // ---------------------------------------------------------------------------------------------
 
-void ARPGWorldBuilder::BuildBridge(const URPGData& D)
+void ARPGWorldBuilder::BuildBridge(const UTSData& D)
 {
 	FIntPoint Min(INT_MAX, INT_MAX), Max(INT_MIN, INT_MIN);
 	for (int32 Y = 0; Y < MapH; ++Y)
@@ -590,7 +460,7 @@ void ARPGWorldBuilder::BuildBridge(const URPGData& D)
 	const float Y0 = Min.Y * Tile - Tile * 0.5f, Y1 = (Max.Y + 1) * Tile + Tile * 0.5f;
 	const float CX = (X0 + X1) * 0.5f, Width = X1 - X0, Length = Y1 - Y0;
 
-	UHierarchicalInstancedStaticMeshComponent* PlankSet = MakeInstances(RPGAssets::Shape(TEXT("Cube")), Planks, false);
+	UHierarchicalInstancedStaticMeshComponent* PlankSet = MakeInstances(TSAssets::Shape(TEXT("Cube")), Planks, false);
 	FRandomStream R(1234);
 	for (float Y = Y0 + 16.f; Y < Y1; Y += 31.f)
 	{
@@ -630,11 +500,11 @@ void ARPGWorldBuilder::BuildBridge(const URPGData& D)
 // Trees, bushes, rocks
 // ---------------------------------------------------------------------------------------------
 
-void ARPGWorldBuilder::BuildTreesAndScatter(const URPGData& D)
+void ARPGWorldBuilder::BuildTreesAndScatter(const UTSData& D)
 {
 	UStaticMesh* Bush = RPGAssets::StarterProp(TEXT("SM_Bush"));
 	UStaticMesh* Rock = RPGAssets::StarterProp(TEXT("SM_Rock"));
-	UHierarchicalInstancedStaticMeshComponent* Trunks = MakeInstances(RPGAssets::Shape(TEXT("Cylinder")), RPGAssets::StarterMat(TEXT("M_Wood_Walnut")), true);
+	UHierarchicalInstancedStaticMeshComponent* Trunks = MakeInstances(TSAssets::Shape(TEXT("Cylinder")), RPGAssets::StarterMat(TEXT("M_Wood_Walnut")), true);
 	Crowns = MakeInstances(Bush, nullptr, false);
 	UHierarchicalInstancedStaticMeshComponent* Shrubs = MakeInstances(Bush, nullptr, false, 9000);
 	UHierarchicalInstancedStaticMeshComponent* Rocks = MakeInstances(Rock, nullptr, true);
@@ -642,22 +512,22 @@ void ARPGWorldBuilder::BuildTreesAndScatter(const URPGData& D)
 
 	// HD-2D look: trees and bushes are pixel-art cards facing the camera (trunks stay, invisible, for
 	// collision); rocks get the pixel stone texture.
-	const bool bCards = RPGLook::Mode() == RPGLook::EMode::HD2D;
+	const bool bCards = TSLook::Mode() == TSLook::EMode::HD2D;
 	auto Card = [](const FVector& At, float W, float H)
 	{
-		const FRotator R = RPGLook::CardRotation();
+		const FRotator R = TSLook::CardRotation();
 		return FTransform(R, At - FRotationMatrix(R).GetUnitAxis(EAxis::Y) * (H * 0.5f), FVector(W / 100.f, H / 100.f, 1.f));
 	};
 	if (bCards)
 	{
-		UStaticMesh* Plane = RPGAssets::Shape(TEXT("Plane"));
+		UStaticMesh* Plane = TSAssets::Shape(TEXT("Plane"));
 		Trunks->SetVisibility(false);
 		Crowns->DestroyComponent();
-		Crowns = MakeInstances(Plane, RPGLook::PropMaterial(TEXT("PR_Tree1")), false);
+		Crowns = MakeInstances(Plane, TSLook::PropMaterial(TEXT("PR_Tree1")), false);
 		Shrubs->DestroyComponent();
-		Shrubs = MakeInstances(Plane, RPGLook::PropMaterial(TEXT("PR_Bush")), false, 9000);
-		Rocks->SetMaterial(0, RPGLook::PixelTexture(TEXT("rock")));
-		Pebbles->SetMaterial(0, RPGLook::PixelTexture(TEXT("rock")));
+		Shrubs = MakeInstances(Plane, TSLook::PropMaterial(TEXT("PR_Bush")), false, 9000);
+		Rocks->SetMaterial(0, TSLook::PixelTexture(TEXT("rock")));
+		Pebbles->SetMaterial(0, TSLook::PixelTexture(TEXT("rock")));
 	}
 
 	auto AddTree = [&](const FVector& At, FRandomStream& R, float SizeMul)
@@ -667,9 +537,10 @@ void ARPGWorldBuilder::BuildTreesAndScatter(const URPGData& D)
 			FVector(At.X, At.Y, At.Z + Height * 0.5f - 20.f), FVector(Radius / 50.f, Radius / 50.f, Height / 100.f)), true);
 		if (bCards)
 		{
-			const float U = RPGLook::SpriteUnits() * SizeMul * R.FRandRange(0.9f, 1.15f);
+			const float U = TSLook::SpriteUnits() * SizeMul * R.FRandRange(0.9f, 1.15f);
 			const float W = 56.f * U, H = 72.f * U;
-			FTreeCrown& Tree = TreeCrowns.AddDefaulted_GetRef();
+			FTSInstanceCutaway& Tree = InstanceCutaways.AddDefaulted_GetRef();
+			Tree.Set = Crowns;
 			const FTransform T = Card(At - FVector(0, 0, 12), W, H);
 			Tree.Instances.Add(Crowns->AddInstance(T, true));
 			Tree.Transforms.Add(T);
@@ -677,7 +548,8 @@ void ARPGWorldBuilder::BuildTreesAndScatter(const URPGData& D)
 			return;
 		}
 		const int32 Clumps = R.RandRange(3, 4);
-		FTreeCrown& Tree = TreeCrowns.AddDefaulted_GetRef();
+		FTSInstanceCutaway& Tree = InstanceCutaways.AddDefaulted_GetRef();
+		Tree.Set = Crowns;
 		for (int32 I = 0; I < Clumps; ++I)
 		{
 			const float S = R.FRandRange(2.4f, 3.3f) * SizeMul;
@@ -726,7 +598,7 @@ void ARPGWorldBuilder::BuildTreesAndScatter(const URPGData& D)
 				for (int32 I = 0; I < N; ++I)
 				{
 					const float S = R.FRandRange(0.35f, 0.75f);
-					if (bCards) { const float U = RPGLook::SpriteUnits() * S * 1.2f; Shrubs->AddInstance(Card(Jitter(130.f) - FVector(0, 0, 6), 24.f * U, 18.f * U), true); }
+					if (bCards) { const float U = TSLook::SpriteUnits() * S * 1.2f; Shrubs->AddInstance(Card(Jitter(130.f) - FVector(0, 0, 6), 24.f * U, 18.f * U), true); }
 					else Shrubs->AddInstance(FTransform(FRotator(0, R.FRandRange(0, 360), 0), Jitter(130.f) - FVector(0, 0, 8), FVector(S, S, S * 0.8f)), true);
 				}
 				if (R.FRand() < 0.07f)
@@ -753,7 +625,7 @@ void ARPGWorldBuilder::BuildTreesAndScatter(const URPGData& D)
 
 void ARPGWorldBuilder::AddFire(const FVector& Location, float Scale, float LightIntensity)
 {
-	if (UParticleSystem* Fire = RPGAssets::Load<UParticleSystem>(TEXT("/Game/StarterContent/Particles/P_Fire.P_Fire")))
+	if (UParticleSystem* Fire = TSAssets::Load<UParticleSystem>(TEXT("/Game/StarterContent/Particles/P_Fire.P_Fire")))
 	{
 		UParticleSystemComponent* PS = NewObject<UParticleSystemComponent>(this);
 		PS->SetTemplate(Fire);
@@ -773,14 +645,14 @@ void ARPGWorldBuilder::AddFire(const FVector& Location, float Scale, float Light
 	L->SetAttenuationRadius(900.f);
 	L->SetCastShadows(false);
 	L->RegisterComponent();
-	Flickers.Add({ L, LightIntensity, FMath::FRand() * 10.f });
-	GNightLights.Add(FVector(Location.X, Location.Y, L->AttenuationRadius * GLightReach));   // a fire keeps the dark back
+	AddFlicker(L, LightIntensity);
+	ATSSky::AddNightLight(Location.X, Location.Y, L->AttenuationRadius);   // a fire keeps the dark back
 }
 
-void ARPGWorldBuilder::BuildProps(const URPGData& D)
+void ARPGWorldBuilder::BuildProps(const UTSData& D)
 {
 	// Campfire beside the elder.
-	for (const FRPGSpawn& S : D.Spawns)
+	for (const FTSSpawn& S : D.Spawns)
 	{
 		if (S.Kind != TEXT("npc") || S.Id != TEXT("elder")) continue;
 		FVector At = D.TileCenter(S.X, S.Y) + FVector(Tile * 1.1f, Tile * 0.9f, 0);
@@ -792,11 +664,11 @@ void ARPGWorldBuilder::BuildProps(const URPGData& D)
 			AddMesh(Rock, nullptr, FTransform(FRotator(0, I * 47.f, 0), At + FVector(FMath::Cos(A) * 55.f, FMath::Sin(A) * 55.f, -6.f), FVector(0.16f)), false);
 		}
 		UMaterialInterface* Log = RPGAssets::StarterMat(TEXT("M_Wood_Walnut"));
-		AddMesh(RPGAssets::Shape(TEXT("Cylinder")), Log, FTransform(FRotator(90, 30, 0), At + FVector(0, 0, 10), FVector(0.16f, 0.16f, 0.8f)), false);
-		AddMesh(RPGAssets::Shape(TEXT("Cylinder")), Log, FTransform(FRotator(90, -40, 0), At + FVector(0, 0, 14), FVector(0.16f, 0.16f, 0.8f)), false);
+		AddMesh(TSAssets::Shape(TEXT("Cylinder")), Log, FTransform(FRotator(90, 30, 0), At + FVector(0, 0, 10), FVector(0.16f, 0.16f, 0.8f)), false);
+		AddMesh(TSAssets::Shape(TEXT("Cylinder")), Log, FTransform(FRotator(90, -40, 0), At + FVector(0, 0, 14), FVector(0.16f, 0.16f, 0.8f)), false);
 		AddFire(At + FVector(0, 0, 8), 0.6f, 90.f);
 
-		if (USoundBase* Crackle = RPGAssets::Load<USoundBase>(TEXT("/Game/StarterContent/Audio/Fire01_Cue.Fire01_Cue")))
+		if (USoundBase* Crackle = TSAssets::Load<USoundBase>(TEXT("/Game/StarterContent/Audio/Fire01_Cue.Fire01_Cue")))
 		{
 			UAudioComponent* A = NewObject<UAudioComponent>(this);
 			A->SetSound(Crackle);
@@ -812,7 +684,7 @@ void ARPGWorldBuilder::BuildProps(const URPGData& D)
 	}
 
 	// Gentle outdoor ambience.
-	if (USoundBase* Birds = RPGAssets::Load<USoundBase>(TEXT("/Game/StarterContent/Audio/Starter_Birds01.Starter_Birds01")))
+	if (USoundBase* Birds = TSAssets::Load<USoundBase>(TEXT("/Game/StarterContent/Audio/Starter_Birds01.Starter_Birds01")))
 	{
 		UAudioComponent* A = NewObject<UAudioComponent>(this);
 		A->SetSound(Birds);
@@ -824,299 +696,12 @@ void ARPGWorldBuilder::BuildProps(const URPGData& D)
 	}
 }
 
-void ARPGWorldBuilder::Tick(float DeltaSeconds)
-{
-	Super::Tick(DeltaSeconds);
-	const float T = GetWorld()->GetTimeSeconds();
-	for (FFlicker& F : Flickers)
-	{
-		const float N = FMath::Sin(T * 13.f + F.Phase) * 0.08f + FMath::Sin(T * 7.3f + F.Phase * 2.f) * 0.1f + FMath::PerlinNoise1D(T * 4.f + F.Phase) * 0.15f;
-		F.Light->SetIntensity(F.Base * (1.f + N));
-	}
-	UpdateCutaways(DeltaSeconds);
-	if (bDayCycle)
-	{
-		GHour = FMath::Fmod(GHour + DeltaSeconds / FMath::Max(SecondsPerHour, 0.1f), 24.f);
-		UpdateSky();
-	}
-}
-
-float ARPGWorldBuilder::Hour() { return GHour; }
-float ARPGWorldBuilder::Night() { return GNight; }
-float ARPGWorldBuilder::Darkness() { return GDarkStrength * FMath::SmoothStep(0.45f, 1.f, GNight); }
-float ARPGWorldBuilder::HeroSight() { return GHeroSight; }
-const TArray<FVector>& ARPGWorldBuilder::NightLights() { return GNightLights; }
-
-bool ARPGWorldBuilder::IsLit(const FVector& At, const FVector& Hero)
-{
-	if (Darkness() < 0.5f) return true;
-	if (FVector::Dist2D(At, Hero) <= GHeroSight * 0.8f) return true;
-	for (const FVector& L : GNightLights) if (FVector::Dist2D(At, FVector(L.X, L.Y, 0.f)) <= L.Z * 0.75f) return true;
-	return false;
-}
 
 FString ARPGWorldBuilder::ClockText()
 {
+	const float GHour = ATSSky::Hour();
 	const int32 H = FMath::FloorToInt(GHour), M = FMath::FloorToInt(FMath::Fmod(GHour, 1.f) * 60.f) / 10 * 10;
 	const TCHAR* Part = GHour < 5.f ? TEXT("Night") : GHour < 7.f ? TEXT("Dawn") : GHour < 12.f ? TEXT("Morning") : GHour < 17.5f ? TEXT("Afternoon")
 		: GHour < 20.5f ? TEXT("Dusk") : TEXT("Night");
 	return FString::Printf(TEXT("%02d:%02d  %s"), H, M, Part);
-}
-
-void ARPGWorldBuilder::UpdateSky()
-{
-	// Sun: rises in the east (+X) at 6, highest in the south at 13, sets in the west at 20 (long summer
-	// evenings: golden light from about 17). A light's rotation is the way its light travels, so it points away
-	// from where the sun is in the sky.
-	auto Place = [](UDirectionalLightComponent* L, float Elevation, float Yaw)
-	{
-		L->SetWorldRotation(FRotator(-Elevation, Yaw, 0.f));
-	};
-	constexpr float Rise = 6.f, Set = 20.f;
-	const float DayLen = Set - Rise;
-	const float SunElev = GHour >= Rise && GHour <= Set ? 58.f * FMath::Sin(PI * (GHour - Rise) / DayLen) : -20.f;
-	const float SunK = FMath::SmoothStep(-3.f, 9.f, SunElev);
-	GNight = 1.f - SunK;
-	Place(SunLight, FMath::Max(SunElev, -6.f), 180.f + (GHour - Rise) * 180.f / DayLen);
-	const float Warm = FMath::Clamp(SunElev / 32.f, 0.f, 1.f);
-	SunLight->SetLightColor(FMath::Lerp(FLinearColor(1.f, 0.48f, 0.22f), FLinearColor(1.f, 0.96f, 0.9f), Warm));
-	SunLight->SetIntensity(SunLux * SunK * (0.3f + 0.7f * Warm));   // weaker as it nears the horizon
-	SunLight->SetCastShadows(SunK > 0.02f);
-
-	// Moon: the same arc, twelve hours later.
-	const float MoonHour = GHour < Rise ? GHour + 24.f : GHour;
-	const float NightLen = 24.f - DayLen;
-	const float MoonElev = MoonHour >= Set ? 48.f * FMath::Sin(PI * (MoonHour - Set) / NightLen) : -20.f;
-	const float MoonK = FMath::SmoothStep(-3.f, 9.f, MoonElev) * (1.f - SunK);
-	Place(MoonLight, FMath::Max(MoonElev, -6.f), 180.f + (MoonHour - Set) * 180.f / NightLen);
-	MoonLight->SetIntensity(MoonLux * MoonK);
-	MoonLight->SetCastShadows(MoonK > 0.02f);
-	// One directional light drives fog / translucency / water: whichever of sun and moon is up (never the fill).
-	const bool bSunMain = SunK >= 0.5f;
-	if (SunLight->ForwardShadingPriority != (bSunMain ? 2 : 1)) SunLight->SetForwardShadingPriority(bSunMain ? 2 : 1);
-	if (MoonLight->ForwardShadingPriority != (bSunMain ? 1 : 2)) MoonLight->SetForwardShadingPriority(bSunMain ? 1 : 2);
-
-	// Low sun: the sky fills the long shadows (otherwise they go black and exposure blows the sunlit patches out).
-	if (SkyFill) SkyFill->SetIntensity(1.f + 3.f * SunK * (1.f - Warm));
-	if (FillLight)
-	{
-		const float Golden = SunK * (1.f - Warm);
-		FillLight->SetIntensity(SunLux * (0.35f * Golden + 0.06f * (1.f - SunK)));
-		FillLight->SetLightColor(FMath::Lerp(FLinearColor(1.f, 0.7f, 0.5f), FLinearColor(0.5f, 0.6f, 1.f), 1.f - SunK));
-	}
-
-	// Fog: a light haze by day, thicker and warm at dusk, dense and blue at night (volumetric, so lights glow in it).
-	if (Fog)
-	{
-		const float Dusk = SunK * (1.f - Warm);
-		const float Night = 1.f - SunK;
-		Fog->SetFogDensity(FogDay + (FogDusk - FogDay) * Dusk + (FogNight - FogDay) * Night);
-		Fog->SetFogInscatteringColor(FMath::Lerp(FMath::Lerp(FLinearColor(0.45f, 0.55f, 0.7f), FLinearColor(0.75f, 0.5f, 0.35f), Dusk), FLinearColor(0.08f, 0.11f, 0.2f), Night));
-		Fog->SetVolumetricFogExtinctionScale(0.6f + 1.4f * Night);
-	}
-
-	// Grade: auto exposure would brighten the night back to day, so the night runs a couple of stops darker,
-	// cooler and less saturated; low sun warms everything a little.
-	if (Grade)
-	{
-		FPostProcessSettings& S = Grade->Settings;
-		const float Night = 1.f - SunK;
-		const float Golden = SunK * (1.f - Warm);
-		// Exposure may only adapt within a narrow window, so long dusk shadows can't push it into blowing the
-		// sunlit patches out, and night stays night.
-		S.bOverride_AutoExposureMinBrightness = true; S.AutoExposureMinBrightness = ExposureMinEV;
-		S.bOverride_AutoExposureMaxBrightness = true; S.AutoExposureMaxBrightness = ExposureMaxEV;
-		S.bOverride_AutoExposureBias = true;
-		S.AutoExposureBias = -0.5f + NightExposure * Night;
-		S.bOverride_SceneColorTint = true;
-		S.SceneColorTint = FMath::Lerp(FMath::Lerp(FLinearColor(1.02f, 1.f, 0.97f), FLinearColor(1.08f, 0.95f, 0.85f), Golden), FLinearColor(0.62f, 0.8f, 1.3f), Night);
-		S.bOverride_ColorSaturation = true;
-		const float Sat = FMath::Lerp(1.f, 0.85f, Night);
-		S.ColorSaturation = FVector4(Sat, Sat, Sat, 1.f);
-	}
-}
-
-void ARPGWorldBuilder::UpdateCutaways(float Dt)
-{
-	const APlayerController* PC = GetWorld()->GetFirstPlayerController();
-	const APawn* P = PC ? PC->GetPawn() : nullptr;
-	if (!P || !PC->PlayerCameraManager) return;
-	const FVector Cam = PC->PlayerCameraManager->GetCameraLocation(), At = P->GetActorLocation();
-	for (FHouse& H : Houses)
-	{
-		// Sight lines from the camera to the hero's feet, middle and head.
-		bool bBlocks = false;
-		for (const float Z : { -80.f, 0.f, 90.f })
-		{
-			const FVector End = At + FVector(0, 0, Z);
-			if (FMath::LineBoxIntersection(H.Bounds, Cam, End, End - Cam)) { bBlocks = true; break; }
-		}
-		H.Hold = bBlocks ? 0.35f : H.Hold - Dt;   // linger a moment so it doesn't flicker at the edge
-		const bool bCut = H.Hold > 0.f;
-		if (bCut == H.bCut) continue;
-		H.bCut = bCut;
-		for (UStaticMeshComponent* C : H.Full) C->SetVisibility(!bCut);
-		for (UStaticMeshComponent* C : H.Cut) C->SetVisibility(bCut);
-	}
-
-	// Tree crowns between the camera and the hero shrink away (trunks stay).
-	bool bDirty = false;
-	for (FTreeCrown& Tr : TreeCrowns)
-	{
-		if (!Tr.bCut && FVector::DistSquared2D(Tr.Bounds.GetCenter(), At) > FMath::Square(2500.f)) continue;
-		bool bBlocks = false;
-		for (const float Z : { -80.f, 0.f, 90.f })
-		{
-			const FVector End = At + FVector(0, 0, Z);
-			if (FMath::LineBoxIntersection(Tr.Bounds, Cam, End, End - Cam)) { bBlocks = true; break; }
-		}
-		Tr.Hold = bBlocks ? 0.35f : Tr.Hold - Dt;
-		const bool bCut = Tr.Hold > 0.f;
-		if (bCut == Tr.bCut) continue;
-		Tr.bCut = bCut;
-		for (int32 I = 0; I < Tr.Instances.Num(); ++I)
-		{
-			FTransform T = Tr.Transforms[I];
-			if (bCut) T.SetScale3D(FVector(0.001f));
-			Crowns->UpdateInstanceTransform(Tr.Instances[I], T, true, false, true);
-		}
-		bDirty = true;
-	}
-	if (bDirty) Crowns->MarkRenderStateDirty();
-}
-
-// ---------------------------------------------------------------------------------------------
-// Sky and lighting — all dynamic (Lumen GI + reflections, virtual shadow maps).
-// ---------------------------------------------------------------------------------------------
-
-void ARPGWorldBuilder::BuildSky()
-{
-	UWorld* W = GetWorld();
-	const URPGData& D = URPGData::Get(this);
-	const RPGJson::FObj Sun = RPGJson::Obj(D.World3D(), TEXT("sun"));
-	FRotator SunRot(float(RPGJson::Num(Sun, TEXT("pitch"), -36)), float(RPGJson::Num(Sun, TEXT("yaw"), 125)), 0.f);
-	float InitialLux = float(RPGJson::Num(Sun, TEXT("intensityLux"), 9.0));
-	FLinearColor SunColor(1.f, 0.96f, 0.9f);
-	// Time-of-day override for look tests: -RPGSun=pitch,yaw,lux[,r,g,b]   (dusk: -RPGSun=-7,250,4,1,0.55,0.32)
-	FString SunSpec;
-	if (FParse::Value(FCommandLine::Get(), TEXT("RPGSun="), SunSpec, false))
-	{
-		TArray<FString> P;
-		SunSpec.ParseIntoArray(P, TEXT(","));
-		if (P.Num() >= 3) { SunRot = FRotator(FCString::Atof(*P[0]), FCString::Atof(*P[1]), 0.f); InitialLux = FCString::Atof(*P[2]); }
-		if (P.Num() >= 6) SunColor = FLinearColor(FCString::Atof(*P[3]), FCString::Atof(*P[4]), FCString::Atof(*P[5]));
-	}
-
-	// Sun. Spawned deferred so mobility is set before the components register.
-	ADirectionalLight* SunActor = W->SpawnActorDeferred<ADirectionalLight>(ADirectionalLight::StaticClass(), FTransform(SunRot));
-	UDirectionalLightComponent* SunC = CastChecked<UDirectionalLightComponent>(SunActor->GetLightComponent());
-	SunC->SetMobility(EComponentMobility::Movable);
-	SunC->SetAtmosphereSunLight(true);
-	SunC->Intensity = InitialLux;
-	SunC->LightSourceAngle = 1.2f;
-	SunC->SetLightColor(SunColor);
-	SunActor->FinishSpawning(FTransform(SunRot));
-	SunLight = CastChecked<UDirectionalLightComponent>(SunActor->GetLightComponent());
-
-	// Day/night: a moon (second atmosphere light, so it lights the night sky too) and the clock.
-	const RPGJson::FObj DN = RPGJson::Obj(D.World3D(), TEXT("dayNight"));
-	bDayCycle = RPGJson::Bool(DN, TEXT("enabled"), true) && SunSpec.IsEmpty();
-	SecondsPerHour = float(RPGJson::Num(DN, TEXT("secondsPerHour"), 30));
-	SunLux = SunLight->Intensity;
-	MoonLux = float(RPGJson::Num(DN, TEXT("moonLux"), 0.6));
-	NightExposure = float(RPGJson::Num(DN, TEXT("nightExposure"), -2.2));
-	ExposureMinEV = float(RPGJson::Num(DN, TEXT("exposureMinEV"), 2.0));
-	ExposureMaxEV = float(RPGJson::Num(DN, TEXT("exposureMaxEV"), 5.0));
-	const RPGJson::FObj FogCfg = RPGJson::Obj(DN, TEXT("fog"));
-	FogDay = float(RPGJson::Num(FogCfg, TEXT("day"), 0.012));
-	FogDusk = float(RPGJson::Num(FogCfg, TEXT("dusk"), 0.03));
-	FogNight = float(RPGJson::Num(FogCfg, TEXT("night"), 0.05));
-	bFog = RPGJson::Bool(FogCfg, TEXT("enabled"), true);
-	int32 FogOverride = -1;
-	if (FParse::Value(FCommandLine::Get(), TEXT("RPGFog="), FogOverride)) bFog = FogOverride != 0;   // look comparisons
-	GHour = float(RPGJson::Num(DN, TEXT("startHour"), 14));
-	FParse::Value(FCommandLine::Get(), TEXT("RPGHour="), GHour);
-	if (bDayCycle)
-	{
-		ADirectionalLight* MoonActor = W->SpawnActorDeferred<ADirectionalLight>(ADirectionalLight::StaticClass(), FTransform(FRotator(-40, 0, 0)));
-		MoonLight = CastChecked<UDirectionalLightComponent>(MoonActor->GetLightComponent());
-		MoonLight->SetMobility(EComponentMobility::Movable);
-		MoonLight->SetAtmosphereSunLight(true);
-		MoonLight->SetAtmosphereSunLightIndex(1);
-		MoonLight->Intensity = 0.f;
-		MoonLight->LightSourceAngle = 0.6f;
-		MoonLight->SetLightColor(FLinearColor(0.55f, 0.66f, 1.f));
-		MoonActor->FinishSpawning(FTransform(FRotator(-40, 0, 0)));
-
-		ADirectionalLight* FillActor = W->SpawnActorDeferred<ADirectionalLight>(ADirectionalLight::StaticClass(), FTransform(FRotator(-75, 110, 0)));
-		FillLight = CastChecked<UDirectionalLightComponent>(FillActor->GetLightComponent());
-		FillLight->SetMobility(EComponentMobility::Movable);
-		FillLight->SetCastShadows(false);
-		FillLight->ForwardShadingPriority = 0;
-		FillLight->Intensity = 0.f;
-		FillActor->FinishSpawning(FTransform(FRotator(-75, 110, 0)));
-		UpdateSky();
-	}
-
-	W->SpawnActor<ASkyAtmosphere>();
-
-	ASkyLight* Sky = W->SpawnActorDeferred<ASkyLight>(ASkyLight::StaticClass(), FTransform::Identity);
-	USkyLightComponent* SkyC = Sky->GetLightComponent();
-	SkyC->SetMobility(EComponentMobility::Movable);
-	SkyC->bRealTimeCapture = true;
-	SkyC->SourceType = SLS_CapturedScene;
-	SkyC->Intensity = 1.f;
-	Sky->FinishSpawning(FTransform::Identity);
-	SkyFill = SkyC;
-
-	if (AVolumetricCloud* Clouds = W->SpawnActor<AVolumetricCloud>())
-	{
-		if (UMaterialInterface* CloudMat = RPGAssets::Load<UMaterialInterface>(TEXT("/Engine/EngineSky/VolumetricClouds/m_SimpleVolumetricCloud_Inst.m_SimpleVolumetricCloud_Inst")))
-		{
-			Clouds->GetComponentByClass<UVolumetricCloudComponent>()->SetMaterial(CloudMat);
-		}
-	}
-
-	if (AExponentialHeightFog* FogActor = bFog ? W->SpawnActor<AExponentialHeightFog>(FVector(0, 0, -200), FRotator::ZeroRotator) : nullptr)
-	{
-		UExponentialHeightFogComponent* F = FogActor->GetComponent();
-		Fog = F;
-		F->SetFogDensity(0.012f);
-		F->SetFogHeightFalloff(0.15f);
-		F->SetVolumetricFog(true);
-		F->SetVolumetricFogScatteringDistribution(0.5f);
-		F->SetVolumetricFogExtinctionScale(0.6f);
-	}
-
-	APostProcessVolume* PP = W->SpawnActor<APostProcessVolume>();
-	PP->bUnbound = true;
-	Grade = PP;
-	FPostProcessSettings& S = PP->Settings;
-	S.bOverride_BloomIntensity = true;            S.BloomIntensity = 0.45f;
-	S.bOverride_VignetteIntensity = true;         S.VignetteIntensity = 0.3f;
-	S.bOverride_AmbientOcclusionIntensity = true; S.AmbientOcclusionIntensity = 0.55f;
-	S.bOverride_AutoExposureBias = true;          S.AutoExposureBias = -0.5f;
-	S.bOverride_ColorSaturation = true;           S.ColorSaturation = FVector4(1.06f, 1.06f, 1.06f, 1.f);
-	S.bOverride_SceneColorTint = true;            S.SceneColorTint = FLinearColor(1.02f, 1.0f, 0.97f);
-
-	if (bDayCycle) UpdateSky();
-	if (RPGLook::Mode() == RPGLook::EMode::Flat2D)
-	{
-		// Flat cards under an orthographic camera: screen-space AO and Lumen just smear dark bands between
-		// stacked sprites. Plain direct light + sky light reads cleaner.
-		S.bOverride_AmbientOcclusionIntensity = true;      S.AmbientOcclusionIntensity = 0.f;
-		S.bOverride_DynamicGlobalIlluminationMethod = true; S.DynamicGlobalIlluminationMethod = EDynamicGlobalIlluminationMethod::None;
-		S.bOverride_ReflectionMethod = true;               S.ReflectionMethod = EReflectionMethod::None;
-		S.bOverride_VignetteIntensity = true;              S.VignetteIntensity = 0.2f;
-	}
-	if (RPGLook::Mode() == RPGLook::EMode::HD2D)
-	{
-		// The HD-2D signature: richer bloom and colour, a heavier vignette.
-		// (The tilt-shift depth of field lives on the gameplay camera, ARPGPlayerCharacter::BeginPlay, so other
-		// cameras - character select, test shots - aren't blurred by a focus distance meant for the game view.)
-		S.bOverride_BloomIntensity = true;            S.BloomIntensity = 0.75f;
-		S.bOverride_VignetteIntensity = true;         S.VignetteIntensity = 0.55f;
-		S.bOverride_ColorSaturation = true;           S.ColorSaturation = FVector4(1.0f, 1.0f, 1.0f, 1.f);
-		S.bOverride_ColorContrast = true;             S.ColorContrast = FVector4(1.04f, 1.04f, 1.04f, 1.f);
-	}
 }

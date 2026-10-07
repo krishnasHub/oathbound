@@ -76,8 +76,11 @@ if (-not (Test-Path $dataDst) -or (Get-Item $dataSrc).LastWriteTime -gt (Get-Ite
 $dll = Join-Path $ProjDir "Binaries\Win64\UnrealEditor-ActionRPG.dll"
 $needBuild = $Rebuild -or -not (Test-Path $dll)
 if (-not $needBuild) {
-    $built = (Get-Item $dll).LastWriteTime
-    $changed = Get-ChildItem (Join-Path $ProjDir "Source") -Recurse -File | Where-Object { $_.LastWriteTime -gt $built } | Select-Object -First 1
+    # Newest of the game's and the plugins' editor DLLs (a plugin-only change relinks only that plugin).
+    $built = (@(Get-Item $dll) + @(Get-ChildItem (Join-Path $ProjDir "Plugins\*\Binaries\Win64\UnrealEditor-*.dll") -ErrorAction SilentlyContinue) | Measure-Object LastWriteTime -Maximum).Maximum
+    # The game's code and the plugins' (Tessera, Loom) all compile into this build.
+    $sources = @(Join-Path $ProjDir "Source") + @(Get-ChildItem (Join-Path $ProjDir "Plugins") -Directory -ErrorAction SilentlyContinue | ForEach-Object { Join-Path $_.FullName "Source" } | Where-Object { Test-Path $_ })
+    $changed = Get-ChildItem $sources -Recurse -File | Where-Object { $_.LastWriteTime -gt $built } | Select-Object -First 1
     if ($changed -or (Get-Item $Proj).LastWriteTime -gt $built) { $needBuild = $true }
 }
 if ($needBuild) {

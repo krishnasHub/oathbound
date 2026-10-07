@@ -10,7 +10,7 @@ class UMaterialInstanceDynamic;
 namespace RPGSpriteSheet { constexpr int32 Cols = 4, Rows = 13, Frame = 32; }
 
 /**
- * A pixel-art character for the 2D looks (RPGLook HD2D / Flat2D): a card showing one frame of a sprite sheet
+ * A pixel-art character for the 2D looks (TSLook HD2D / Flat2D): a card showing one frame of a sprite sheet
  * (tools/pixelart/characters.py layout: 3 directions x idle / walk / attack / hurt, plus dead).
  *
  * Every frame it reads the owner's state (facing, speed, attack timing, damage taken, death), picks the

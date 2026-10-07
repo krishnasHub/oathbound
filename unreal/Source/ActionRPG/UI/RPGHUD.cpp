@@ -1,8 +1,9 @@
 #include "RPGHUD.h"
+#include "TSSky.h"
 #include "RPGWorldBuilder.h"
 #include "RPGSession.h"
 #include "LMStory.h"
-#include "RPGData.h"
+#include "TSData.h"
 #include "RPGEnemy.h"
 #include "RPGNPC.h"
 #include "RPGPlayerCharacter.h"
@@ -52,7 +53,7 @@ void ARPGHUD::DrawHUD()
 		if (C == P || C->IsDead() || C->IsHidden()) continue;
 		const float Dist = FVector::Dist(C->GetActorLocation(), P->GetActorLocation());
 		if (Dist > 3500.f) continue;
-		if (!ARPGWorldBuilder::IsLit(C->GetActorLocation(), P->GetActorLocation())) continue;   // lost in the dark
+		if (!ATSSky::IsLit(C->GetActorLocation(), P->GetActorLocation())) continue;   // lost in the dark
 		const FVector S = Project(C->Head() + FVector(0, 0, 45.f), false);
 		if (S.Z <= 0.f) continue;   // behind the camera
 
@@ -75,8 +76,8 @@ void ARPGHUD::DrawHUD()
 		}
 		if (E && E->Tags.Has(TEXT("Marked")))
 		{
-			const RPGJson::FObj Next = E->CurrentAttack() ? E->CurrentAttack() : nullptr;
-			Text(FString::Printf(TEXT("%.0f / %.0f HP%s"), E->Stats->HP, E->Stats->MaxHP(), Next ? *(TEXT("  next: ") + RPGJson::Str(Next, TEXT("type"))) : TEXT("")),
+			const TSJson::FObj Next = E->CurrentAttack() ? E->CurrentAttack() : nullptr;
+			Text(FString::Printf(TEXT("%.0f / %.0f HP%s"), E->Stats->HP, E->Stats->MaxHP(), Next ? *(TEXT("  next: ") + TSJson::Str(Next, TEXT("type"))) : TEXT("")),
 				S.X, S.Y - 16 * UI, FLinearColor(1.f, 0.83f, 0.3f), 0.6f * UI);
 		}
 		if (Session->IsDebug() && E)
@@ -98,8 +99,8 @@ void ARPGHUD::DrawHUD()
 	}
 
 	// Threat sense: arrows at the screen edge pointing at unseen enemies hunting you; red while they wind up.
-	const URPGData& D = URPGData::Get(this);
-	const float ThreatRange = D.Px(RPGJson::Num(RPGJson::Obj(D.Section(TEXT("tuning")), TEXT("threatSense")), TEXT("range"), 450));
+	const UTSData& D = UTSData::Get(this);
+	const float ThreatRange = D.Px(TSJson::Num(TSJson::Obj(D.Section(TEXT("tuning")), TEXT("threatSense")), TEXT("range"), 450));
 	const FVector2D Center(Canvas->ClipX * 0.5f, Canvas->ClipY * 0.5f);
 	for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It)
 	{
@@ -128,9 +129,9 @@ void ARPGHUD::DrawHUD()
 	if (Session->Story()->IsDialogueOpen() || P->IsDead()) return;
 
 	// Crosshair for ranged styles / aiming (third person; top-down aims with the mouse cursor).
-	const RPGJson::FObj Style = P->Style();
+	const TSJson::FObj Style = P->Style();
 	const bool bRanged = !ARPGPlayerCharacter::IsTopDown(this)
-		&& (RPGJson::Str(RPGJson::Obj(Style, TEXT("primary")), TEXT("type")) == TEXT("bolt") || P->IsDrawing());
+		&& (TSJson::Str(TSJson::Obj(Style, TEXT("primary")), TEXT("type")) == TEXT("bolt") || P->IsDrawing());
 	if (bRanged)
 	{
 		const float R = 4.f * UI;

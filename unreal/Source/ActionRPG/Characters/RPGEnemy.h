@@ -34,7 +34,7 @@ public:
 	void Init(const FString& InType, const FVector& InHome);
 
 	FString Type;
-	RPGJson::FObj Def;
+	TSJson::FObj Def;
 	FVector Home;
 	FString Region;
 	bool bProvoked = false;
@@ -51,8 +51,8 @@ public:
 
 	void Leave();
 	void ResetToHome();
-	bool IsBoss() const { return RPGJson::Bool(Def, TEXT("boss")); }
-	RPGJson::FObj CurrentAttack() const { return CurAtk; }
+	bool IsBoss() const { return TSJson::Bool(Def, TEXT("boss")); }
+	TSJson::FObj CurrentAttack() const { return CurAtk; }
 	float WindupProgress() const;
 
 protected:
@@ -60,7 +60,7 @@ protected:
 
 private:
 	void RunAI(float Dt);
-	void BeginWindup(const RPGJson::FObj& Atk);
+	void BeginWindup(const TSJson::FObj& Atk);
 	void PerformAttack();
 	void MoveToward(const FVector& Target, float SpeedMul);
 	bool CanSeePlayer(float Dist) const;
@@ -68,11 +68,11 @@ private:
 	void BuildTelegraph();
 	void Respawn();
 
-	RPGJson::FObj NextAttack() const;
+	TSJson::FObj NextAttack() const;
 
 	float T = 0.f, Cool = 0.f, RespawnTimer = 0.f, DeathHide = 0.f;
 	int32 AtkIndex = 0;
-	RPGJson::FObj CurAtk;
+	TSJson::FObj CurAtk;
 	FVector WanderTarget;
 	bool bHasWander = false;
 	float Strafe = 1.f;

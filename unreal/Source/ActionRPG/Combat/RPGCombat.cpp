@@ -1,5 +1,5 @@
 #include "RPGCombat.h"
-#include "RPGData.h"
+#include "TSData.h"
 #include "RPGAssets.h"
 #include "RPGSession.h"
 #include "LMStory.h"
@@ -22,7 +22,7 @@ namespace
 float RPGCombat::ScaleBy(const URPGStatsComponent* Stats, FName Stat)
 {
 	if (Stat.IsNone() || !Stats) return 1.f;
-	const URPGData& D = URPGData::Get(Stats);
+	const UTSData& D = UTSData::Get(Stats);
 	const double PerPoint = Stat == TEXT("might") ? D.Tuning(TEXT("mightScaling"), 0.06)
 	                      : Stat == TEXT("agility") ? D.Tuning(TEXT("agilityScaling"), 0.06)
 	                      : Stat == TEXT("focus") ? D.Tuning(TEXT("focusScaling"), 0.07) : 0.0;
@@ -66,7 +66,7 @@ void RPGCombat::Dot(ARPGCharacterBase* Target, float Amount, AActor* Src)
 bool RPGCombat::Deal(ARPGCharacterBase* Src, ARPGCharacterBase* Target, const FRPGHit& Hit)
 {
 	if (!Src || !Target || Target->IsDead() || Target->Tags.Has(TEXT("Invulnerable"))) return false;
-	const URPGData& D = URPGData::Get(Target);
+	const UTSData& D = UTSData::Get(Target);
 	URPGSession* Session = URPGSession::Get(Target);
 	const bool bTargetIsPlayer = Target->Team == ERPGTeam::Player;
 	const FVector TextAt = Target->Head() + FVector(0, 0, 20);
@@ -90,12 +90,12 @@ bool RPGCombat::Deal(ARPGCharacterBase* Src, ARPGCharacterBase* Target, const FR
 	float Poise = Hit.Poise, Knock = Hit.Knockback;
 
 	// --- block / perfect block ---
-	if (const RPGJson::FObj Guard = Target->GuardStyle())
+	if (const TSJson::FObj Guard = Target->GuardStyle())
 	{
 		const FVector From = Hit.From.IsSet() ? Hit.From.GetValue() : Src->GetActorLocation();
-		if (Angle2D(Target->GetActorForwardVector(), From - Target->GetActorLocation()) <= RPGJson::Num(Guard, TEXT("arc"), 120) * 0.5)
+		if (Angle2D(Target->GetActorForwardVector(), From - Target->GetActorLocation()) <= TSJson::Num(Guard, TEXT("arc"), 120) * 0.5)
 		{
-			const float Perfect = float(RPGJson::Num(Guard, TEXT("perfectWindow"), 0));
+			const float Perfect = float(TSJson::Num(Guard, TEXT("perfectWindow"), 0));
 			if (Perfect > 0.f && Target->GuardTime <= Perfect)
 			{
 				Session->Float(TextAt + FVector(0, 0, 20), TEXT("PERFECT BLOCK"), FLinearColor::White, 1.1f);
@@ -107,12 +107,12 @@ bool RPGCombat::Deal(ARPGCharacterBase* Src, ARPGCharacterBase* Target, const FR
 				Session->Shake(3.f);
 				return true;
 			}
-			const float Cost = Amount * float(RPGJson::Num(Guard, TEXT("staminaPerDamage"), 0.8));
+			const float Cost = Amount * float(TSJson::Num(Guard, TEXT("staminaPerDamage"), 0.8));
 			if (Target->Stats->Stamina >= Cost)
 			{
 				Target->Stats->Stamina -= Cost;
 				Target->Stats->StaminaDelay = float(D.Tuning(TEXT("staminaRegenDelay"), 0.55));
-				Amount = FMath::RoundToInt(Amount * (1.f - float(RPGJson::Num(Guard, TEXT("reduction"), 0.7))));
+				Amount = FMath::RoundToInt(Amount * (1.f - float(TSJson::Num(Guard, TEXT("reduction"), 0.7))));
 				Poise *= 0.3f; Knock *= 0.3f;
 				Session->Float(TextAt + FVector(0, 0, 25), TEXT("BLOCK"), FLinearColor(0.78f, 0.83f, 0.88f), 0.8f);
 			}
@@ -135,11 +135,11 @@ bool RPGCombat::Deal(ARPGCharacterBase* Src, ARPGCharacterBase* Target, const FR
 	}
 
 	// --- mana shield ---
-	if (const RPGJson::FObj MS = Target->PassiveStyle())
+	if (const TSJson::FObj MS = Target->PassiveStyle())
 	{
-		if (RPGJson::Str(MS, TEXT("type")) == TEXT("manaShield") && Amount > 0 && Target->Stats->Mana > 0)
+		if (TSJson::Str(MS, TEXT("type")) == TEXT("manaShield") && Amount > 0 && Target->Stats->Mana > 0)
 		{
-			const float PerMana = float(RPGJson::Num(MS, TEXT("damagePerMana"), 1));
+			const float PerMana = float(TSJson::Num(MS, TEXT("damagePerMana"), 1));
 			const int32 Absorbed = FMath::Min(Amount, FMath::FloorToInt(Target->Stats->Mana * PerMana));
 			Target->Stats->Mana -= Absorbed / PerMana;
 			Amount -= Absorbed;
@@ -148,8 +148,8 @@ bool RPGCombat::Deal(ARPGCharacterBase* Src, ARPGCharacterBase* Target, const FR
 			if (Target->Stats->Mana < 1.f)
 			{
 				Target->Stats->Mana = 0;
-				Target->Stats->ManaLock = float(RPGJson::Num(MS, TEXT("breakRegenLock"), 3));
-				Target->Stagger(float(RPGJson::Num(MS, TEXT("breakStagger"), 0.6)));
+				Target->Stats->ManaLock = float(TSJson::Num(MS, TEXT("breakRegenLock"), 3));
+				Target->Stagger(float(TSJson::Num(MS, TEXT("breakStagger"), 0.6)));
 				Session->Float(TextAt + FVector(0, 0, 30), TEXT("SHIELD SHATTERED"), FLinearColor(0.62f, 0.72f, 1.f), 1.1f);
 			}
 		}
@@ -163,7 +163,7 @@ bool RPGCombat::Deal(ARPGCharacterBase* Src, ARPGCharacterBase* Target, const FR
 		const FLinearColor C = bTargetIsPlayer ? FLinearColor(1.f, 0.35f, 0.35f) : (bCrit ? FLinearColor(1.f, 0.83f, 0.3f) : FLinearColor::White);
 		Session->Float(TextAt, bCrit ? FString::Printf(TEXT("%d!"), Amount) : FString::FromInt(Amount), C, bCrit ? 1.35f : 1.f);
 	}
-	if (UNiagaraSystem* FX = RPGAssets::Load<UNiagaraSystem>(RPGAssets::DamageFX))
+	if (UNiagaraSystem* FX = TSAssets::Load<UNiagaraSystem>(RPGAssets::DamageFX))
 	{
 		UNiagaraFunctionLibrary::SpawnSystemAtLocation(Target->GetWorld(), FX, Target->Chest(), FRotator::ZeroRotator, FVector(0.6f));
 	}
@@ -184,7 +184,7 @@ bool RPGCombat::Deal(ARPGCharacterBase* Src, ARPGCharacterBase* Target, const FR
 		FVector Dir = Hit.Dir.IsSet() ? Hit.Dir.GetValue() : (Target->GetActorLocation() - Src->GetActorLocation());
 		Dir = Dir.GetSafeNormal2D();
 		const ARPGEnemy* E = Cast<ARPGEnemy>(Target);
-		const float Mul = E ? float(RPGJson::Num(E->Def, TEXT("knockbackMul"), 1.0)) : 1.f;
+		const float Mul = E ? float(TSJson::Num(E->Def, TEXT("knockbackMul"), 1.0)) : 1.f;
 		Target->Knock(Dir * D.Px(Knock) * Mul);
 	}
 

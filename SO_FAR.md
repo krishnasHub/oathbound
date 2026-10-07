@@ -1,7 +1,7 @@
 # SO FAR — Action RPG handoff
 
 Read this first at the start of a session. It records where the project stands, how it is built, the conventions that matter, and what to do next.
-Last updated: 2026-10-06 (HD-2D, front end, day/night, ambient life, shields, parallel tests, screenshots, slim git).
+Last updated: 2026-10-06 (HD-2D, front end, day/night, ambient life, shields, parallel tests, screenshots, slim git; Tessera + Loom plugins, phase 1).
 
 ---
 
@@ -33,6 +33,8 @@ Last updated: 2026-10-06 (HD-2D, front end, day/night, ambient life, shields, pa
 | `tools/sync-data.js` | Copies the data into `prototype/rpg-prototype.html` and `unreal/Content/Data/game-data.json`. Run it after every data edit (play.ps1 also runs it automatically). |
 | `prototype/rpg-prototype.html` | Standalone HTML top-down prototype |
 | `unreal/` | The UE 5.8 project (`ActionRPG.uproject`) |
+| `unreal/Plugins/Tessera` | Shared top-down HD-2D framework, **git submodule** (github.com/krishnasHub/tessera). See §7g |
+| `unreal/Plugins/Loom` | Shared story engine, **git submodule** (github.com/krishnasHub/loom). See §7g |
 | `unreal/Tools/rpg.ps1` | Developer commands: build, run, editor, prepare, shot, sync, test |
 | `unreal/Tools/*.py` | Headless editor scripts: `create_materials.py` (M_RPG_Glow/Telegraph/Fresnel/Flash), `fix_material_usage.py`, `import_pixel.py` (imports the pixel art; builds M_RPG_Sprite / PixelWorld / Minimap / NightShade), `audit_content.py` (which Content assets the game uses; writes `Content/.gitignore`) |
 | `tools/pixelart/` | Python + numpy (no PIL): `characters.py` (sprite sheets, portraits), `environment.py` (textures, props), `ui_art.py` (UI, minimap frames, fades), `extras.py` (cursors, backdrops, effects, ambient creatures), `build_all.py` (writes `unreal/ImportSource/Pixel/`) |
@@ -106,6 +108,11 @@ Third-person (`mode: "third"`): WASD move, mouse look, LMB attack, Space jump, L
 - The **`python` command on PATH is the Windows Store stub, which hangs.** Use **node** for scripts. Write scripts to the scratchpad instead of using `node -e` with quotes.
 - **A clean build is a unity build:** several .cpp files are compiled as one, so names in anonymous namespaces must be unique across files (C4459 / C2374 otherwise). Incremental builds don't show this; a fresh clone does. Shared constants go in a named namespace in a header (e.g. `RPGSpriteSheet` in `RPGSprite.h`).
 - UE 5.8 `FJsonObject` keys are `UE::TSharedString`, so convert with `FString(*KV.Key)`.
+- **World subsystems initialize before the world has its game instance**, and also for transient editor worlds:
+  read game-instance data in `OnWorldBeginPlay`, and limit game-only subsystems with `DoesSupportWorldType`.
+- Every plugin module needs its `IMPLEMENT_MODULE` (otherwise "module could not be initialized" at startup), and
+  a module that calls `FJsonObject` itself must list `Json` in its own Build.cs.
+- Windows PowerShell 5.1 `Set-Content -Encoding utf8` writes a BOM; edit files with node or the editor tools.
 - Template content comes from the TP_ThirdPerson Combat variant: SKM_Manny_Simple / SKM_Quinn_Simple, ABP_Manny_Combat, AM_ComboAttack (Melee01–03), AM_ChargedAttack and NS_Damage. Starter Content was copied from `D:\UInreal_Projects\Test1`.
   - CoreRedirect `/Script/TP_ThirdPerson` → `/Script/ActionRPG`, so the template's anim notifies map to our classes.
 - Material parameters:
@@ -124,10 +131,10 @@ Third-person (`mode: "third"`): WASD move, mouse look, LMB attack, Space jump, L
   - SkyAtmosphere, SkyLight, VolumetricCloud, fog and PostProcess
   - Lumen and virtual shadow maps
 - **Units:** gameplay data is in prototype pixels, converted with `world3d.unitsPerPx = 3.5`. Tiles are 300 uu.
+- **Plugins (§7g):** Tessera gives `TSJson`, `UTSData` (data, map, `RegionAt`, `Px()`), `TSLook`, `TSAssets`,
+  `ATSWorldBuilder`, `ATSSky`; Loom gives `ULMStory`.
 - **Core/:**
-  - `RPGJson.h`: JSON helpers.
-  - `URPGData`: data subsystem, map, `RegionAt`, `Px()`.
-  - `RPGAssets`: asset paths, `Shape()`, `StarterMat()`.
+  - `RPGAssets`: this game's asset paths (mannequins, montages, `StarterMat()`, `StarterProp()`).
 - **Combat/:**
   - Stats, tags and the `RPGCombat::Deal` pipeline.
   - Projectile, loot, FX.
@@ -137,7 +144,8 @@ Third-person (`mode: "third"`): WASD move, mouse look, LMB attack, Space jump, L
 - **Game/:**
   - `RPGGameMode`: spawning, self-test flags, probe.
   - `RPGPlayerController`.
-  - `URPGStory`: flags, quests, dialogue with seeded hidden rolls, encounters, factions, floaters.
+  - `URPGSession`: this game's glue to Loom (conditions, actions, placeholders, verb costs, quest rewards), duels,
+    the bridge-crossing rule, floaters / toasts / shake.
   - `ARPGSelfTest`: scenarios.
 - **UI/:** Slate widgets (`SRPGHud`, `SRPGDialogue`, `SRPGCharSelect`, `SRPGPanel`) plus the `ARPGHUD` canvas for world text, markers and threat arrows.
   - Dialogue uses `FInputModeUIOnly` with focus reclaim. This fixed the freeze when pressing 1 at Brask's surrender.
@@ -210,7 +218,7 @@ Same game, three ways to draw it. `world3d.look` or `-RPGLook=hd2d|flat2d|mesh3d
 
 **Decision (2026-10-05): HD-2D is the game's look** (`world3d.look = "hd2d"`, the default). The user likes the procedural sprites; iterate on them slowly rather than replacing them. Sprite rows include a guard frame (row 12, cols 1-3) for shields. Character select frames the sprite head-on; tilt-shift DOF is on the gameplay camera only.
 - **Art pipeline:** `tools/pixelart/build_all.py` (Python + numpy, no PIL) draws all sprites, textures, props and the baked map into `unreal/ImportSource/Pixel/`. `unreal/Tools/import_pixel.py` imports them (nearest filter, no mips) and builds `M_RPG_Sprite` (flipbook card, world-up normal, flip/tint/flash) and `M_RPG_PixelWorld` (world-projected 32 px textures). It is part of `prepare` and play.ps1's first-run step.
-- **Code:** `Core/RPGLook` (mode, card rotation, pixel material swap: `RPGAssets::StarterMat` returns pixel versions in HD-2D), `Characters/RPGSprite` (picks direction/action/frame from character state; the 3D body stays hidden but keeps animating, so montage hit timing is unchanged), `ARPGWorldBuilder::BuildFlat2D` and the tree/bush cards in `BuildTreesAndScatter`.
+- **Code:** Tessera `TSLook` (mode, card rotation, pixel material swap: `RPGAssets::StarterMat` returns pixel versions in HD-2D), `Characters/RPGSprite` (picks direction/action/frame from character state; the 3D body stays hidden but keeps animating, so montage hit timing is unchanged), `ARPGWorldBuilder::BuildFlat2D` and the tree/bush cards in `BuildTreesAndScatter`.
 - **Lessons:** in flat 2D, hidden 3D geometry must also leave lighting (distance-field shadows). Ortho plus Lumen/SSAO smears dark bands, so GI and AO are off there. Same-depth cards z-fight, so a tiny x tie-break is added. HD-2D depth of field needs a big virtual sensor (400 mm) to show at this distance.
 - **Results:** `lookdev/index.html` (local only; 15 side-by-side screenshots + a live sprite animation player). Sun override for time of day: `-RPGSun=pitch,yaw,lux,r,g,b`.
 - **Open in HD-2D:** no cast/bow-specific frames (casting uses the attack row, drawing the bow holds the wind-up frame); the mana shield, guard arc and aim line are still 3D effects; weapon-style swaps (Knight longsword) don't change the sprite. Flat 2D: clicking characters aims at the actor, not the drawn sprite.
@@ -226,7 +234,7 @@ Same game, three ways to draw it. `world3d.look` or `-RPGLook=hd2d|flat2d|mesh3d
 
 - **Camera:** HD-2D arm 5300 (zoom 4300-6300).
 - **Minimap** (`SRPGMinimap`, bottom right): `MAP_Mini` (a clean baked map: tiles, trees, red roofs) through the UI material `M_RPG_Minimap` (window centred on the hero, cut by `MM_Mask_<shape>`), dots for foes / villagers / quest givers, and a class frame `MM_Frame_<shape>`: orb (Mage), shield (Knight), coin (Thief), book (Scholar). The HUD clock sits above it.
-- **Day/night** (`world3d.dayNight`, `ARPGWorldBuilder::UpdateSky`): starts 14:00, 30 s per game hour; sun 6-20 (golden from ~17), moon 20-6 (a second atmosphere light), a shadowless fill light (dusk shadows not black), sky fill, volumetric fog thickening toward night (`fog.day/dusk/night`), and a grade: exposure clamped to `exposureMinEV..exposureMaxEV` (otherwise auto exposure turns night back into day), plus cooler / desaturated nights and warm dusks. The hero carries a soft warm `NightGlow` after dark. The main forward-shading light switches between sun and moon. `-RPGHour=` starts at an hour; `-RPGSun=` freezes the sun.
+- **Day/night** (`world3d.dayNight`, Tessera `ATSSky`): starts 14:00, 30 s per game hour; sun 6-20 (golden from ~17), moon 20-6 (a second atmosphere light), a shadowless fill light (dusk shadows not black), sky fill, volumetric fog thickening toward night (`fog.day/dusk/night`), and a grade: exposure clamped to `exposureMinEV..exposureMaxEV` (otherwise auto exposure turns night back into day), plus cooler / desaturated nights and warm dusks. The hero carries a soft warm `NightGlow` after dark. The main forward-shading light switches between sun and moon. `-RPGHour=` starts at an hour; `-RPGSun=` freezes the sun.
 - **Characters at 2x** (`tools/pixelart/characters.py`: drawn in 32-unit coordinates, sampled at `RES = 2`, so 64x64 frames): finer outlines and rims, catch-lights, and clearly different men and women (`fem`: slimmer, lashes, lips, long hair out from under helmets / hats / hoods via `longHair`, their own colours; men: brows, stubble, broader build).
 
 ## 7e. Polish pass (2026-10-06)
@@ -248,6 +256,23 @@ Same game, three ways to draw it. `world3d.look` or `-RPGLook=hd2d|flat2d|mesh3d
 - **History rewritten locally** (filter-branch) without the ignored files: LFS referenced by history went from ~790 MB to 173 MB. Backup: `.git/backup-before-slim.bundle` (old refs also under `refs/original`).
 - Mage tagline no longer mentions the old mana shield.
 
+## 7g. Shared plugins: Tessera and Loom (2026-10-06)
+
+More games are planned (sci-fi, stealth, faster action); they share the top-down HD-2D view, the mechanics and
+dynamic story. So the reusable code is moving into two plugins, each its own repo, used here as git submodules:
+
+- **Loom** (`LM` prefix, engine-only dependencies): `ULMStory`: dialogue nodes, text variants, conditions, actions,
+  hidden seeded checks (formula in `CheckRules`), flags, disposition, factions, quests, encounter outcomes. Games
+  register conditions / actions / placeholders / verb rules and listen to events (`OnQuest`, `OnDialogueOpened`...).
+- **Tessera** (`TS` prefix): `TesseraCore` (`UTSData`, `TSLook`, `TSAssets`, `TSJson`, `TSCmd`, `TSConfig`) and
+  `TesseraWorld` (`ATSWorldBuilder`: helpers, height field, cutaways, flicker, navmesh; `ATSSky`: sky and day/night).
+- **Rule:** nothing in either plugin may name a game. File names, sections, map symbols, material paths, switch
+  prefixes and wording come from the game's data, `[Tessera]` config or registered hooks.
+- **Phases:** 1 done (Loom; Tessera core + world; all 11 tests pass; screenshots unchanged). 2: characters, stats,
+  combat, abilities, projectiles, loot, sprite component. 3: top-down hero controls, perception (stealth), UI kit,
+  Loom-to-UI dialogue box. 4: tooling (launcher, test harness, import scripts, pixel-art primitives).
+- Backup of everything before the split: `C:\Users\krish\dev\action-rpg-backup-2026-10-06` (full copy incl. `.git`).
+
 ## 8. Next steps / open threads
 
 **Pending (user, then Claude): GitHub reset.** Local `main` has the slimmed history; `origin/main` still has the old one
@@ -259,7 +284,7 @@ pushing, rerun the fresh-clone check (clone, `rpg.ps1 build`, `play.ps1 -Test`).
 0. **Top-down follow-ups** (spike done 2026-10-05; `walk` test covers click-to-move/talk/attack):
    - Fog of war / vision cone as a post-process (the prototype's signature mechanic).
    - Hover highlight (outline) on characters; a ground decal instead of the HUD ring for the move target.
-   - Enemies onto the navmesh (`ARPGWorldBuilder::BuildNavigation` builds it at runtime; enemies still steer directly).
+   - Enemies onto the navmesh (`ATSWorldBuilder` builds it at runtime; enemies still steer directly).
    - Dialogue presentation: camera push-in; portraits are built but off until there's real illustrated art.
    - Open question: should villagers be attackable? (A default click on a villager currently talks.)
    - Saves and load (title has New Game / Quit only), difficulty settings, music.

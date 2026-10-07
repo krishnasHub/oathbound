@@ -1,6 +1,7 @@
 #include "RPGPlayerCharacter.h"
+#include "TSSky.h"
 #include "ActionRPG.h"
-#include "RPGData.h"
+#include "TSData.h"
 #include "RPGAssets.h"
 #include "RPGCombat.h"
 #include "RPGSession.h"
@@ -11,7 +12,7 @@
 #include "RPGInventoryComponent.h"
 #include "RPGAbilityComponent.h"
 #include "RPGPoseMesh.h"
-#include "RPGLook.h"
+#include "TSLook.h"
 #include "RPGSprite.h"
 #include "Components/PointLightComponent.h"
 #include "RPGWorldBuilder.h"
@@ -123,59 +124,59 @@ void ARPGPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	const URPGData& D = URPGData::Get(this);
-	const RPGJson::FObj Cam = RPGJson::Obj(D.World3D(), TEXT("camera"));
-	CameraBoom->TargetArmLength = float(RPGJson::Num(Cam, TEXT("armLength"), 430));
-	CameraBoom->CameraLagSpeed = float(RPGJson::Num(Cam, TEXT("lagSpeed"), 12));
-	const TArray<TSharedPtr<FJsonValue>> Off = RPGJson::Arr(Cam, TEXT("socketOffset"));
+	const UTSData& D = UTSData::Get(this);
+	const TSJson::FObj Cam = TSJson::Obj(D.World(), TEXT("camera"));
+	CameraBoom->TargetArmLength = float(TSJson::Num(Cam, TEXT("armLength"), 430));
+	CameraBoom->CameraLagSpeed = float(TSJson::Num(Cam, TEXT("lagSpeed"), 12));
+	const TArray<TSharedPtr<FJsonValue>> Off = TSJson::Arr(Cam, TEXT("socketOffset"));
 	if (Off.Num() == 3) CameraBoom->SocketOffset = FVector(Off[0]->AsNumber(), Off[1]->AsNumber(), Off[2]->AsNumber());
-	Camera->FieldOfView = float(RPGJson::Num(Cam, TEXT("fov"), 80));
+	Camera->FieldOfView = float(TSJson::Num(Cam, TEXT("fov"), 80));
 
 	// Top-down: a fixed 3/4 view that follows the hero but never turns, so the screen matches the map.
 	bTopDown = IsTopDown(this);
 	if (bTopDown)
 	{
-		const RPGJson::FObj Td = RPGJson::Obj(Cam, TEXT("topdown"));
+		const TSJson::FObj Td = TSJson::Obj(Cam, TEXT("topdown"));
 		CameraBoom->bUsePawnControlRotation = false;
 		CameraBoom->SetUsingAbsoluteRotation(true);
-		CameraBoom->SetWorldRotation(FRotator(float(RPGJson::Num(Td, TEXT("pitch"), -55)), float(RPGJson::Num(Td, TEXT("yaw"), -90)), 0.f));
+		CameraBoom->SetWorldRotation(FRotator(float(TSJson::Num(Td, TEXT("pitch"), -55)), float(TSJson::Num(Td, TEXT("yaw"), -90)), 0.f));
 		CameraBoom->bDoCollisionTest = false;   // walls and roofs get cut away instead (ARPGWorldBuilder)
 		CameraBoom->SocketOffset = FVector::ZeroVector;
-		CameraBoom->TargetArmLength = ZoomTarget = float(RPGJson::Num(Td, TEXT("armLength"), 2000));
-		CameraBoom->CameraLagSpeed = float(RPGJson::Num(Td, TEXT("lagSpeed"), 10));
-		MinArm = float(RPGJson::Num(Td, TEXT("minArm"), 1100));
-		MaxArm = float(RPGJson::Num(Td, TEXT("maxArm"), 3000));
-		ZoomStep = float(RPGJson::Num(Td, TEXT("zoomStep"), 220));
-		Camera->FieldOfView = float(RPGJson::Num(Td, TEXT("fov"), 50));
+		CameraBoom->TargetArmLength = ZoomTarget = float(TSJson::Num(Td, TEXT("armLength"), 2000));
+		CameraBoom->CameraLagSpeed = float(TSJson::Num(Td, TEXT("lagSpeed"), 10));
+		MinArm = float(TSJson::Num(Td, TEXT("minArm"), 1100));
+		MaxArm = float(TSJson::Num(Td, TEXT("maxArm"), 3000));
+		ZoomStep = float(TSJson::Num(Td, TEXT("zoomStep"), 220));
+		Camera->FieldOfView = float(TSJson::Num(Td, TEXT("fov"), 50));
 
 		// 2D look tests: HD-2D frames lower and tighter; Flat 2D looks straight down through an orthographic lens.
-		const RPGJson::FObj L2 = RPGJson::Obj(D.World3D(), TEXT("looks2d"));
-		CameraBoom->SetWorldRotation(RPGLook::CameraRotation());
-		if (RPGLook::Mode() == RPGLook::EMode::HD2D)
+		const TSJson::FObj L2 = TSJson::Obj(D.World(), TEXT("looks2d"));
+		CameraBoom->SetWorldRotation(TSLook::CameraRotation());
+		if (TSLook::Mode() == TSLook::EMode::HD2D)
 		{
-			const RPGJson::FObj H = RPGJson::Obj(L2, TEXT("hd2dCamera"));
-			CameraBoom->TargetArmLength = ZoomTarget = float(RPGJson::Num(H, TEXT("armLength"), 3000));
-			MinArm = float(RPGJson::Num(H, TEXT("minArm"), 2400));
-			MaxArm = float(RPGJson::Num(H, TEXT("maxArm"), 3800));
-			Camera->FieldOfView = float(RPGJson::Num(H, TEXT("fov"), 30));
+			const TSJson::FObj H = TSJson::Obj(L2, TEXT("hd2dCamera"));
+			CameraBoom->TargetArmLength = ZoomTarget = float(TSJson::Num(H, TEXT("armLength"), 3000));
+			MinArm = float(TSJson::Num(H, TEXT("minArm"), 2400));
+			MaxArm = float(TSJson::Num(H, TEXT("maxArm"), 3800));
+			Camera->FieldOfView = float(TSJson::Num(H, TEXT("fov"), 30));
 			// Tilt-shift: focus on the hero, so the top and bottom of the screen go soft (a big virtual sensor makes
 			// the depth of field shallow enough to show at this distance).
 			FPostProcessSettings& PP = Camera->PostProcessSettings;
 			// (Off by default: the user preferred everything crisp. hd2dCamera.tiltShift = true brings it back.)
-			PP.bOverride_DepthOfFieldFocalDistance = RPGJson::Bool(H, TEXT("tiltShift"), false) && !FParse::Param(FCommandLine::Get(), TEXT("RPGNoDOF"));
+			PP.bOverride_DepthOfFieldFocalDistance = TSJson::Bool(H, TEXT("tiltShift"), false) && !FParse::Param(FCommandLine::Get(), TEXT("RPGNoDOF"));
 			PP.DepthOfFieldFocalDistance = CameraBoom->TargetArmLength;
-			PP.bOverride_DepthOfFieldFstop = true;         PP.DepthOfFieldFstop = float(RPGJson::Num(H, TEXT("focusFstop"), 0.5));
+			PP.bOverride_DepthOfFieldFstop = true;         PP.DepthOfFieldFstop = float(TSJson::Num(H, TEXT("focusFstop"), 0.5));
 			PP.bOverride_DepthOfFieldMinFstop = true;      PP.DepthOfFieldMinFstop = 0.f;
-			PP.bOverride_DepthOfFieldSensorWidth = true;   PP.DepthOfFieldSensorWidth = float(RPGJson::Num(H, TEXT("sensorWidth"), 400));
+			PP.bOverride_DepthOfFieldSensorWidth = true;   PP.DepthOfFieldSensorWidth = float(TSJson::Num(H, TEXT("sensorWidth"), 400));
 			Camera->PostProcessBlendWeight = 1.f;
 		}
-		else if (RPGLook::Mode() == RPGLook::EMode::Flat2D)
+		else if (TSLook::Mode() == TSLook::EMode::Flat2D)
 		{
-			const RPGJson::FObj Fc = RPGJson::Obj(L2, TEXT("flatCamera"));
+			const TSJson::FObj Fc = TSJson::Obj(L2, TEXT("flatCamera"));
 			Camera->SetProjectionMode(ECameraProjectionMode::Orthographic);
-			Camera->SetOrthoWidth(ZoomTarget = float(RPGJson::Num(Fc, TEXT("orthoWidth"), 3800)));
-			MinArm = float(RPGJson::Num(Fc, TEXT("minWidth"), 2800));
-			MaxArm = float(RPGJson::Num(Fc, TEXT("maxWidth"), 5200));
+			Camera->SetOrthoWidth(ZoomTarget = float(TSJson::Num(Fc, TEXT("orthoWidth"), 3800)));
+			MinArm = float(TSJson::Num(Fc, TEXT("minWidth"), 2800));
+			MaxArm = float(TSJson::Num(Fc, TEXT("maxWidth"), 5200));
 			ZoomStep = 300.f;
 			CameraBoom->TargetArmLength = 4000.f;
 		}
@@ -192,16 +193,16 @@ void ARPGPlayerCharacter::BeginPlay()
 	NightGlow->SetCastShadows(false);
 	NightGlow->RegisterComponent();
 
-	ComboMontage = RPGAssets::Load<UAnimMontage>(RPGAssets::ComboMontage);
+	ComboMontage = TSAssets::Load<UAnimMontage>(RPGAssets::ComboMontage);
 	if (ComboMontage) for (const FCompositeSection& S : ComboMontage->CompositeSections) ComboSections.Add(S.SectionName);
 
-	UMaterialInterface* Fresnel = RPGAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Fresnel.M_RPG_Fresnel"));
+	UMaterialInterface* Fresnel = TSAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Fresnel.M_RPG_Fresnel"));
 	BubbleMat = UMaterialInstanceDynamic::Create(Fresnel, this);
 	BubbleMat->SetVectorParameterValue(TEXT("Color"), FLinearColor(0.55f, 0.65f, 1.f));
 	ShieldBubble->SetMaterial(0, BubbleMat);
 	GuardMat = UMaterialInstanceDynamic::Create(Fresnel, this);
 	GuardArc->SetMaterial(0, GuardMat);
-	AimMat = UMaterialInstanceDynamic::Create(RPGAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Telegraph.M_RPG_Telegraph")), this);
+	AimMat = UMaterialInstanceDynamic::Create(TSAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Telegraph.M_RPG_Telegraph")), this);
 	AimMat->SetVectorParameterValue(TEXT("Color"), FLinearColor(1.f, 0.93f, 0.7f));
 	AimLine->SetMaterial(0, AimMat);
 
@@ -209,26 +210,26 @@ void ARPGPlayerCharacter::BeginPlay()
 	if (!ClassDef.IsValid()) ApplyClass(ClassId, Sex);
 }
 
-RPGJson::FObj ARPGPlayerCharacter::Style() const
+TSJson::FObj ARPGPlayerCharacter::Style() const
 {
-	const TArray<TSharedPtr<FJsonValue>> Styles = RPGJson::Arr(ClassDef, TEXT("styles"));
+	const TArray<TSharedPtr<FJsonValue>> Styles = TSJson::Arr(ClassDef, TEXT("styles"));
 	if (Styles.IsEmpty()) return nullptr;
 	const FString Id = Styles[FMath::Clamp(StyleIndex, 0, Styles.Num() - 1)]->AsString();
-	return URPGData::Get(this).Entry(TEXT("weaponStyles"), Id);
+	return UTSData::Get(this).Entry(TEXT("weaponStyles"), Id);
 }
 
 void ARPGPlayerCharacter::ApplyClass(const FString& InClassId, const FString& InSex)
 {
-	const URPGData& D = URPGData::Get(this);
+	const UTSData& D = UTSData::Get(this);
 	ClassId = InClassId;
 	Sex = InSex;
 	ClassDef = D.Entry(TEXT("classes"), ClassId);
 	StyleIndex = 0;
-	DisplayName = RPGJson::Str(ClassDef, TEXT("name"));
-	NameColor = RPGJson::Color(RPGJson::Str(ClassDef, TEXT("color")));
+	DisplayName = TSJson::Str(ClassDef, TEXT("name"));
+	NameColor = TSJson::Color(TSJson::Str(ClassDef, TEXT("color")));
 
-	const RPGJson::FObj PlayerLook = RPGJson::Obj(RPGJson::Obj(D.World3D(), TEXT("looks")), TEXT("player"));
-	SetLook(RPGJson::Str(PlayerLook, Sex, Sex == TEXT("female") ? TEXT("quinn") : TEXT("manny")), FString(), 1.f);
+	const TSJson::FObj PlayerLook = TSJson::Obj(TSJson::Obj(D.World(), TEXT("looks")), TEXT("player"));
+	SetLook(TSJson::Str(PlayerLook, Sex, Sex == TEXT("female") ? TEXT("quinn") : TEXT("manny")), FString(), 1.f);
 	UseSprite(ClassId + (Sex == TEXT("female") ? TEXT("_f") : TEXT("_m")));
 	// Render the posed copy; the animated mesh keeps animating (and firing notifies) while hidden.
 	PoseMesh->SetSkinnedAssetAndUpdate(GetMesh()->GetSkeletalMeshAsset());
@@ -237,18 +238,18 @@ void ARPGPlayerCharacter::ApplyClass(const FString& InClassId, const FString& In
 	GetMesh()->SetVisibility(false, false);
 
 	// Stats, as the prototype's classBaseStats().
-	const RPGJson::FObj PlayerDef = D.Section(TEXT("player"));
+	const TSJson::FObj PlayerDef = D.Section(TEXT("player"));
 	Stats->Base.Reset();
-	const RPGJson::FObj Attrs = RPGJson::Obj(ClassDef, TEXT("attributes"));
+	const TSJson::FObj Attrs = TSJson::Obj(ClassDef, TEXT("attributes"));
 	if (Attrs.IsValid()) for (const auto& KV : Attrs->Values) Stats->Base.Add(FName(*KV.Key), float(KV.Value->AsNumber()));
-	Stats->Base.Add(TEXT("hpFlat"), float(RPGJson::Num(ClassDef, TEXT("hpBase"), 60)));
-	Stats->Base.Add(TEXT("manaFlat"), float(RPGJson::Num(ClassDef, TEXT("manaBase"), 30)));
-	Stats->Base.Add(TEXT("manaRegen"), float(RPGJson::Num(ClassDef, TEXT("manaRegen"), D.Tuning(TEXT("manaRegen"), 2.5))));
+	Stats->Base.Add(TEXT("hpFlat"), float(TSJson::Num(ClassDef, TEXT("hpBase"), 60)));
+	Stats->Base.Add(TEXT("manaFlat"), float(TSJson::Num(ClassDef, TEXT("manaBase"), 30)));
+	Stats->Base.Add(TEXT("manaRegen"), float(TSJson::Num(ClassDef, TEXT("manaRegen"), D.Tuning(TEXT("manaRegen"), 2.5))));
 	Stats->Base.Add(TEXT("level"), 1.f);
-	Stats->Base.Add(TEXT("critPct"), float(RPGJson::Num(ClassDef, TEXT("critPct"), 5)));
-	Stats->Base.Add(TEXT("weaponDamage"), float(RPGJson::Num(PlayerDef, TEXT("unarmedDamage"), 4)));
+	Stats->Base.Add(TEXT("critPct"), float(TSJson::Num(ClassDef, TEXT("critPct"), 5)));
+	Stats->Base.Add(TEXT("weaponDamage"), float(TSJson::Num(PlayerDef, TEXT("unarmedDamage"), 4)));
 	Stats->Effects.Reset();
-	MaxPoise = Poise = float(RPGJson::Num(PlayerDef, TEXT("poise"), 60));
+	MaxPoise = Poise = float(TSJson::Num(PlayerDef, TEXT("poise"), 60));
 	Xp = 0;
 	AttrPoints = 0;
 
@@ -256,23 +257,23 @@ void ARPGPlayerCharacter::ApplyClass(const FString& InClassId, const FString& In
 	for (const FString& Slot : { TEXT("weapon"), TEXT("armor"), TEXT("trinket") }) Stats->RemoveModifiers(FName(Slot));
 	Inventory->Items.Reset();
 	Inventory->Equipment.Reset();
-	Inventory->Capacity = int32(RPGJson::Num(PlayerDef, TEXT("inventorySize"), 16));
-	Inventory->Gold = int32(RPGJson::Num(PlayerDef, TEXT("startGold"), 10));
-	for (const TSharedPtr<FJsonValue>& V : RPGJson::Arr(ClassDef, TEXT("startItems")))
+	Inventory->Capacity = int32(TSJson::Num(PlayerDef, TEXT("inventorySize"), 16));
+	Inventory->Gold = int32(TSJson::Num(PlayerDef, TEXT("startGold"), 10));
+	for (const TSharedPtr<FJsonValue>& V : TSJson::Arr(ClassDef, TEXT("startItems")))
 	{
-		const RPGJson::FObj S = V->AsObject();
-		FRPGItem It = URPGInventoryComponent::MakeItem(this, RPGJson::Str(S, TEXT("item")));
-		It.Qty = int32(RPGJson::Num(S, TEXT("qty"), 1));
+		const TSJson::FObj S = V->AsObject();
+		FRPGItem It = URPGInventoryComponent::MakeItem(this, TSJson::Str(S, TEXT("item")));
+		It.Qty = int32(TSJson::Num(S, TEXT("qty"), 1));
 		Inventory->Add(It);
-		if (RPGJson::Bool(S, TEXT("equip"))) Inventory->Equip(It.Uid);
+		if (TSJson::Bool(S, TEXT("equip"))) Inventory->Equip(It.Uid);
 	}
 	Stats->Fill();
 
 	TArray<FString> AbilityIds;
-	for (const TSharedPtr<FJsonValue>& V : RPGJson::Arr(ClassDef, TEXT("abilities"))) AbilityIds.Add(V->AsString());
+	for (const TSharedPtr<FJsonValue>& V : TSJson::Arr(ClassDef, TEXT("abilities"))) AbilityIds.Add(V->AsString());
 	Abilities->Setup(AbilityIds);
 
-	GetCharacterMovement()->MaxWalkSpeed = D.Px(RPGJson::Num(ClassDef, TEXT("moveSpeed"), 165));
+	GetCharacterMovement()->MaxWalkSpeed = D.Px(TSJson::Num(ClassDef, TEXT("moveSpeed"), 165));
 	RefreshWeapons();
 	UE_LOG(LogRPG, Display, TEXT("Player is a %s %s: HP %.0f, stamina %.0f, mana %.0f, speed %.0f uu/s."),
 		*Sex, *ClassId, Stats->MaxHP(), Stats->MaxStamina(), Stats->MaxMana(), GetCharacterMovement()->MaxWalkSpeed);
@@ -280,7 +281,7 @@ void ARPGPlayerCharacter::ApplyClass(const FString& InClassId, const FString& In
 
 int32 ARPGPlayerCharacter::XpToNext(const UObject* Ctx, int32 InLevel)
 {
-	const URPGData& D = URPGData::Get(Ctx);
+	const UTSData& D = UTSData::Get(Ctx);
 	return FMath::RoundToInt(D.Tuning(TEXT("xpBase"), 40) * FMath::Pow(D.Tuning(TEXT("xpGrowth"), 1.45), InLevel - 1));
 }
 
@@ -294,16 +295,16 @@ void ARPGPlayerCharacter::GainXp(int32 Amount)
 	{
 		Xp -= XpToNext(this, Level());
 		Stats->Base.FindOrAdd(TEXT("level")) += 1.f;
-		const int32 Points = int32(URPGData::Get(this).Tuning(TEXT("pointsPerLevel"), 3));
+		const int32 Points = int32(UTSData::Get(this).Tuning(TEXT("pointsPerLevel"), 3));
 		AttrPoints += Points;
 		Stats->Fill();
 		ARPGFX::Ring(GetWorld(), GetActorLocation() - FVector(0, 0, 86), 220.f, FLinearColor(1.f, 0.83f, 0.3f), 0.8f);
 		Session->Toast(FString::Printf(TEXT("Level %d! +%d attribute points — press C"), Level(), Points), FLinearColor(1.f, 0.83f, 0.3f));
 		for (int32 I = 0; I < Abilities->Ids.Num(); ++I)
 		{
-			const RPGJson::FObj A = Abilities->Def(Abilities->Ids[I]);
-			if (int32(RPGJson::Num(A, TEXT("unlockLevel"), 1)) == Level())
-				Session->Toast(FString::Printf(TEXT("New ability: %s [%d]"), *RPGJson::Str(A, TEXT("name")), I + 1), RPGJson::Color(RPGJson::Str(A, TEXT("color"))));
+			const TSJson::FObj A = Abilities->Def(Abilities->Ids[I]);
+			if (int32(TSJson::Num(A, TEXT("unlockLevel"), 1)) == Level())
+				Session->Toast(FString::Printf(TEXT("New ability: %s [%d]"), *TSJson::Str(A, TEXT("name")), I + 1), TSJson::Color(TSJson::Str(A, TEXT("color"))));
 		}
 	}
 }
@@ -456,8 +457,8 @@ void ARPGPlayerCharacter::OpenPicker()
 		return;
 	}
 	Picker = Start;
-	const RPGJson::FObj Cfg = RPGJson::Obj(RPGJson::Obj(URPGData::Get(this).World3D(), TEXT("camera")), TEXT("abilityPicker"));
-	UGameplayStatics::SetGlobalTimeDilation(this, float(RPGJson::Num(Cfg, TEXT("timeScale"), 0.2)));
+	const TSJson::FObj Cfg = TSJson::Obj(TSJson::Obj(UTSData::Get(this).World(), TEXT("camera")), TEXT("abilityPicker"));
+	UGameplayStatics::SetGlobalTimeDilation(this, float(TSJson::Num(Cfg, TEXT("timeScale"), 0.2)));
 }
 
 void ARPGPlayerCharacter::CyclePicker(int32 Step)
@@ -510,7 +511,7 @@ FName ARPGPlayerCharacter::CursorIcon() const
 	auto Weapon = [this]() -> FName
 	{
 		if (bDrawing || BowOut > 0.f) return TEXT("arrow");
-		if (RPGJson::Str(RPGJson::Obj(Style(), TEXT("primary")), TEXT("type")) == TEXT("bolt")) return TEXT("wand");
+		if (TSJson::Str(TSJson::Obj(Style(), TEXT("primary")), TEXT("type")) == TEXT("bolt")) return TEXT("wand");
 		return ClassId == TEXT("knight") ? FName(TEXT("sword")) : FName(TEXT("dagger"));
 	};
 	if (bDrawing) return TEXT("arrow");
@@ -522,7 +523,7 @@ FName ARPGPlayerCharacter::CursorIcon() const
 
 float ARPGPlayerCharacter::TalkRange() const
 {
-	const URPGData& D = URPGData::Get(this);
+	const UTSData& D = UTSData::Get(this);
 	return D.Px(D.Tuning(TEXT("interactRange"), 48)) + 60.f;
 }
 
@@ -531,7 +532,7 @@ FString ARPGPlayerCharacter::TalkBlocker(const ARPGCharacterBase* C) const
 	if (!C || C->IsDead() || C->IsLeaving()) return TEXT("...");
 	const ARPGEnemy* E = Cast<ARPGEnemy>(C);
 	if (C->DialogueRoot.IsEmpty())
-		return E && !RPGJson::Bool(E->Def, TEXT("intelligent")) ? TEXT("It can't be reasoned with.") : TEXT("They have nothing to say.");
+		return E && !TSJson::Bool(E->Def, TEXT("intelligent")) ? TEXT("It can't be reasoned with.") : TEXT("They have nothing to say.");
 	// Foes talk only while their faction is still neutral; mid-fight it takes Silver Words.
 	if (C->Team == ERPGTeam::Enemy && !C->IsPassive()) return TEXT("They're past talking.");
 	return FString();
@@ -551,7 +552,7 @@ void ARPGPlayerCharacter::TryTalk(ARPGCharacterBase* C)
 
 bool ARPGPlayerCharacter::IsTopDown(const UObject* WorldContext)
 {
-	return RPGJson::Str(RPGJson::Obj(URPGData::Get(WorldContext).World3D(), TEXT("camera")), TEXT("mode")) == TEXT("topdown");
+	return TSJson::Str(TSJson::Obj(UTSData::Get(WorldContext).World(), TEXT("camera")), TEXT("mode")) == TEXT("topdown");
 }
 
 FRotator ARPGPlayerCharacter::MoveFrame() const
@@ -723,11 +724,11 @@ void ARPGPlayerCharacter::PlayBowShot()
 	BowOut = 1.2f;
 }
 
-void ARPGPlayerCharacter::OnAbilityUsed(const RPGJson::FObj& Ability)
+void ARPGPlayerCharacter::OnAbilityUsed(const TSJson::FObj& Ability)
 {
-	const FString Type = RPGJson::Str(Ability, TEXT("type"));
-	const bool bMage = RPGJson::Str(RPGJson::Obj(Style(), TEXT("primary")), TEXT("type")) == TEXT("bolt");
-	const bool bBow = RPGJson::Str(RPGJson::Obj(Style(), TEXT("secondary")), TEXT("type")) == TEXT("bow");
+	const FString Type = TSJson::Str(Ability, TEXT("type"));
+	const bool bMage = TSJson::Str(TSJson::Obj(Style(), TEXT("primary")), TEXT("type")) == TEXT("bolt");
+	const bool bBow = TSJson::Str(TSJson::Obj(Style(), TEXT("secondary")), TEXT("type")) == TEXT("bow");
 	if (bMage && Type != TEXT("blink")) PlayCast();                      // Fireball, Frost Nova, Chain Lightning
 	if (bBow && Type == TEXT("projectile")) PlayBowShot();                // Volley
 }
@@ -745,7 +746,7 @@ void ARPGPlayerCharacter::UpdateBowString()
 		for (const auto& P : Parts)
 		{
 			UStaticMeshComponent* M = NewObject<UStaticMeshComponent>(this);
-			M->SetStaticMesh(RPGAssets::Shape(P[0]));
+			M->SetStaticMesh(TSAssets::Shape(P[0]));
 			M->SetMaterial(0, RPGAssets::StarterMat(P[1]));
 			M->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 			M->SetCastShadow(false);
@@ -800,7 +801,7 @@ void ARPGPlayerCharacter::UpdatePoses(float Dt)
 	}
 	// Thief: bow in hand + dagger on the belt while shooting; dagger in hand + bow on the back otherwise.
 	SetKitHolstered(TEXT("bow"), !bBowOut);
-	SetKitHolstered(TEXT("dagger"), bBowOut && RPGJson::Str(RPGJson::Obj(Style(), TEXT("secondary")), TEXT("type")) == TEXT("bow"));
+	SetKitHolstered(TEXT("dagger"), bBowOut && TSJson::Str(TSJson::Obj(Style(), TEXT("secondary")), TEXT("type")) == TEXT("bow"));
 	SetKitGlow(TEXT("staff"), OrbFlash);
 }
 
@@ -814,7 +815,7 @@ void ARPGPlayerCharacter::UpdateArcPreview()
 		while (ArcDots.Num() < N)
 		{
 			UStaticMeshComponent* Dot = NewObject<UStaticMeshComponent>(this);
-			Dot->SetStaticMesh(RPGAssets::Shape(TEXT("Sphere")));
+			Dot->SetStaticMesh(TSAssets::Shape(TEXT("Sphere")));
 			Dot->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 			Dot->SetCastShadow(false);
 			Dot->SetMaterial(0, AimMat);
@@ -828,14 +829,14 @@ void ARPGPlayerCharacter::UpdateArcPreview()
 	for (UStaticMeshComponent* Dot : ArcDots) Dot->SetVisibility(bShow);
 	if (!bShow) return;
 
-	const URPGData& D = URPGData::Get(this);
-	const RPGJson::FObj B = RPGJson::Obj(Style(), TEXT("secondary"));
+	const UTSData& D = UTSData::Get(this);
+	const TSJson::FObj B = TSJson::Obj(Style(), TEXT("secondary"));
 	const float K = DrawFraction();
 	const FVector From = Muzzle();
-	const FVector To = ArrowTarget(From, D.Px(RPGJson::Num(B, TEXT("range"), 520)) * (0.5f + 0.5f * K));
+	const FVector To = ArrowTarget(From, D.Px(TSJson::Num(B, TEXT("range"), 520)) * (0.5f + 0.5f * K));
 	FVector V;
 	float G = 0.f, T = 1.f;
-	ARPGProjectile::ArcLaunch(this, From, To, D.Px(RPGJson::Num(B, TEXT("speed"), 560)) * (0.6f + 0.4f * K), V, G, T);
+	ARPGProjectile::ArcLaunch(this, From, To, D.Px(TSJson::Num(B, TEXT("speed"), 560)) * (0.6f + 0.4f * K), V, G, T);
 	for (int32 I = 0; I < ArcDots.Num(); ++I)
 	{
 		const float t = T * float(I + 1) / float(ArcDots.Num());
@@ -876,7 +877,7 @@ void ARPGPlayerCharacter::FaceAim()
 
 ARPGCharacterBase* ARPGPlayerCharacter::TalkTarget() const
 {
-	const float Range = URPGData::Get(this).Px(URPGData::Get(this).Tuning(TEXT("interactRange"), 48)) + 60.f;
+	const float Range = UTSData::Get(this).Px(UTSData::Get(this).Tuning(TEXT("interactRange"), 48)) + 60.f;
 	ARPGCharacterBase* Best = nullptr;
 	float BestD = Range;
 	for (TActorIterator<ARPGCharacterBase> It(GetWorld()); It; ++It)
@@ -922,8 +923,8 @@ void ARPGPlayerCharacter::PrimaryAttack()
 	LastAttackInput = GetWorld()->GetTimeSeconds();
 	if (bDead || IsDodging() || Tags.Has(TEXT("Staggered"))) return;
 	Tags.Remove(TEXT("Hidden"));
-	const RPGJson::FObj Primary = RPGJson::Obj(Style(), TEXT("primary"));
-	if (RPGJson::Str(Primary, TEXT("type")) == TEXT("bolt")) { if (BoltCooldown <= 0.f) FireBolt(); return; }
+	const TSJson::FObj Primary = TSJson::Obj(Style(), TEXT("primary"));
+	if (TSJson::Str(Primary, TEXT("type")) == TEXT("bolt")) { if (BoltCooldown <= 0.f) FireBolt(); return; }
 	if (!bAttacking) StartCombo();
 }
 
@@ -968,10 +969,10 @@ ARPGCharacterBase* ARPGPlayerCharacter::UnderCursor(bool& bHostile) const
 		if (!bFoe && C->DialogueRoot.IsEmpty()) continue;
 		// Generous: anywhere on the body, plus a little slack around it.
 		float Miss = FMath::Min(FMath::PointDistToLine(C->Chest(), R, O), FMath::PointDistToLine(C->GetActorLocation() - FVector(0, 0, 40), R, O));
-		if (RPGLook::IsSprite())
+		if (TSLook::IsSprite())
 		{
 			// A sprite is drawn on a card standing at the feet: test points up the card, where its body is drawn.
-			const FVector Up = -FRotationMatrix(RPGLook::CardRotation()).GetUnitAxis(EAxis::Y);
+			const FVector Up = -FRotationMatrix(TSLook::CardRotation()).GetUnitAxis(EAxis::Y);
 			const FVector Feet = C->GetActorLocation() - FVector(0, 0, C->GetSimpleCollisionHalfHeight());
 			for (const float H : { 30.f, 90.f, 150.f })
 				Miss = FMath::Min(Miss, FMath::PointDistToLine(Feet + Up * H * C->GetActorScale3D().Z, R, O));
@@ -1025,19 +1026,19 @@ void ARPGPlayerCharacter::Repath(const FVector& To)
 
 bool ARPGPlayerCharacter::InAttackRange(const ARPGCharacterBase* T) const
 {
-	const URPGData& D = URPGData::Get(this);
-	const RPGJson::FObj Primary = RPGJson::Obj(Style(), TEXT("primary"));
+	const UTSData& D = UTSData::Get(this);
+	const TSJson::FObj Primary = TSJson::Obj(Style(), TEXT("primary"));
 	const float Dist = FVector::Dist2D(T->GetActorLocation(), GetActorLocation()) - T->Radius();
-	if (RPGJson::Str(Primary, TEXT("type")) == TEXT("bolt"))
+	if (TSJson::Str(Primary, TEXT("type")) == TEXT("bolt"))
 	{
-		if (Dist > D.Px(RPGJson::Num(Primary, TEXT("range"), 440)) * 0.8f) return false;
+		if (Dist > D.Px(TSJson::Num(Primary, TEXT("range"), 440)) * 0.8f) return false;
 		FHitResult H;
 		FCollisionQueryParams Q(SCENE_QUERY_STAT(ClickLOS), false, this);
 		Q.AddIgnoredActor(T);
 		return !GetWorld()->LineTraceSingleByChannel(H, Chest(), T->Chest(), ECC_Visibility, Q);
 	}
-	const TArray<TSharedPtr<FJsonValue>> Combo = RPGJson::Arr(Primary, TEXT("combo"));
-	const double Reach = Combo.IsEmpty() ? 44 : RPGJson::Num(Combo[0]->AsObject(), TEXT("range"), 44);
+	const TArray<TSharedPtr<FJsonValue>> Combo = TSJson::Arr(Primary, TEXT("combo"));
+	const double Reach = Combo.IsEmpty() ? 44 : TSJson::Num(Combo[0]->AsObject(), TEXT("range"), 44);
 	return Dist <= (D.Px(Reach) + Radius()) * 0.85f;
 }
 
@@ -1084,9 +1085,9 @@ FVector ARPGPlayerCharacter::UpdateClickGoal(float Dt)
 
 void ARPGPlayerCharacter::StartCombo()
 {
-	const TArray<TSharedPtr<FJsonValue>> Combo = RPGJson::Arr(RPGJson::Obj(Style(), TEXT("primary")), TEXT("combo"));
+	const TArray<TSharedPtr<FJsonValue>> Combo = TSJson::Arr(TSJson::Obj(Style(), TEXT("primary")), TEXT("combo"));
 	if (Combo.IsEmpty() || !ComboMontage) return;
-	if (!Stats->SpendStamina(float(RPGJson::Num(Combo[0]->AsObject(), TEXT("stamina"), 12))))
+	if (!Stats->SpendStamina(float(TSJson::Num(Combo[0]->AsObject(), TEXT("stamina"), 12))))
 	{
 		URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No stamina"), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
 		return;
@@ -1096,7 +1097,7 @@ void ARPGPlayerCharacter::StartCombo()
 	bDrawing = false;
 	FaceAim();
 	// Heavier styles swing slower, daggers faster (until style-specific animations arrive).
-	const float Rate = float(RPGJson::Num(Style(), TEXT("animRate"), 1.0));
+	const float Rate = float(TSJson::Num(Style(), TEXT("animRate"), 1.0));
 	PlayMontage(ComboMontage, Rate);
 	SpriteAttackAt = GetWorld()->GetTimeSeconds();
 	FOnMontageEnded Ended;
@@ -1107,11 +1108,11 @@ void ARPGPlayerCharacter::StartCombo()
 void ARPGPlayerCharacter::CheckCombo()
 {
 	if (!bAttacking) return;
-	const TArray<TSharedPtr<FJsonValue>> Combo = RPGJson::Arr(RPGJson::Obj(Style(), TEXT("primary")), TEXT("combo"));
-	const bool bBuffered = bAttackHeld || GetWorld()->GetTimeSeconds() - LastAttackInput <= float(RPGJson::Num(Style(), TEXT("comboWindow"), 0.45)) + 0.2f;
+	const TArray<TSharedPtr<FJsonValue>> Combo = TSJson::Arr(TSJson::Obj(Style(), TEXT("primary")), TEXT("combo"));
+	const bool bBuffered = bAttackHeld || GetWorld()->GetTimeSeconds() - LastAttackInput <= float(TSJson::Num(Style(), TEXT("comboWindow"), 0.45)) + 0.2f;
 	const int32 Next = ComboStep + 1;
 	if (!bBuffered || Next >= Combo.Num() || ComboSections.IsEmpty()) return;
-	if (!Stats->SpendStamina(float(RPGJson::Num(Combo[Next]->AsObject(), TEXT("stamina"), 12)))) return;
+	if (!Stats->SpendStamina(float(TSJson::Num(Combo[Next]->AsObject(), TEXT("stamina"), 12)))) return;
 	ComboStep = Next;
 	FaceAim();
 	Anim()->Montage_JumpToSection(ComboSections[ComboStep % ComboSections.Num()], ComboMontage);
@@ -1121,19 +1122,19 @@ void ARPGPlayerCharacter::CheckCombo()
 void ARPGPlayerCharacter::DoAttackTrace(FName SourceBone)
 {
 	if (!bAttacking) return;
-	const URPGData& D = URPGData::Get(this);
-	const RPGJson::FObj St = Style();
-	const RPGJson::FObj Primary = RPGJson::Obj(St, TEXT("primary"));
-	const TArray<TSharedPtr<FJsonValue>> Combo = RPGJson::Arr(Primary, TEXT("combo"));
+	const UTSData& D = UTSData::Get(this);
+	const TSJson::FObj St = Style();
+	const TSJson::FObj Primary = TSJson::Obj(St, TEXT("primary"));
+	const TArray<TSharedPtr<FJsonValue>> Combo = TSJson::Arr(Primary, TEXT("combo"));
 	if (!Combo.IsValidIndex(ComboStep)) return;
-	const RPGJson::FObj A = Combo[ComboStep]->AsObject();
+	const TSJson::FObj A = Combo[ComboStep]->AsObject();
 
-	const float Range = D.Px(RPGJson::Num(A, TEXT("range"), 44)) + Radius();
-	const float Arc = float(RPGJson::Num(A, TEXT("arc"), 110));
-	const float Base = Stats->Get(TEXT("weaponDamage")) * float(RPGJson::Num(A, TEXT("mult"), 1)) * float(RPGJson::Num(St, TEXT("damageMul"), 1));
-	if (const double Lunge = RPGJson::Num(A, TEXT("lunge"), 0)) Knock(Facing() * D.Px(Lunge));
+	const float Range = D.Px(TSJson::Num(A, TEXT("range"), 44)) + Radius();
+	const float Arc = float(TSJson::Num(A, TEXT("arc"), 110));
+	const float Base = Stats->Get(TEXT("weaponDamage")) * float(TSJson::Num(A, TEXT("mult"), 1)) * float(TSJson::Num(St, TEXT("damageMul"), 1));
+	if (const double Lunge = TSJson::Num(A, TEXT("lunge"), 0)) Knock(Facing() * D.Px(Lunge));
 
-	const RPGJson::FObj Poison = [&]() -> RPGJson::FObj { for (const FRPGEffect& E : Stats->Effects) if (E.OnHitPoison) return E.OnHitPoison; return nullptr; }();
+	const TSJson::FObj Poison = [&]() -> TSJson::FObj { for (const FRPGEffect& E : Stats->Effects) if (E.OnHitPoison) return E.OnHitPoison; return nullptr; }();
 	for (ARPGCharacterBase* E : RPGCombat::Opponents(this))
 	{
 		const FVector To = E->GetActorLocation() - GetActorLocation();
@@ -1141,7 +1142,7 @@ void ARPGPlayerCharacter::DoAttackTrace(FName SourceBone)
 		if (FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(Facing(), To.GetSafeNormal2D()))) > Arc * 0.5f) continue;
 
 		float Mul = 1.f;
-		const double Backstab = RPGJson::Num(St, TEXT("backstab"), 0);
+		const double Backstab = TSJson::Num(St, TEXT("backstab"), 0);
 		if (Backstab > 0 && FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(E->Facing(), (-To).GetSafeNormal2D()))) > 110.f)
 		{
 			Mul = float(Backstab);
@@ -1149,16 +1150,16 @@ void ARPGPlayerCharacter::DoAttackTrace(FName SourceBone)
 		}
 		FRPGHit H;
 		H.Base = Base * Mul;
-		H.Scaling = FName(RPGJson::Str(Primary, TEXT("scaling"), TEXT("might")));
-		H.Poise = float(RPGJson::Num(A, TEXT("poise"), 10));
-		H.Knockback = float(RPGJson::Num(A, TEXT("knockback"), 100));
+		H.Scaling = FName(TSJson::Str(Primary, TEXT("scaling"), TEXT("might")));
+		H.Poise = float(TSJson::Num(A, TEXT("poise"), 10));
+		H.Knockback = float(TSJson::Num(A, TEXT("knockback"), 100));
 		if (RPGCombat::Deal(this, E, H) && !E->IsDead() && Poison)
 		{
 			FRPGEffect P;
 			P.Id = TEXT("poison"); P.Name = TEXT("Poison");
-			P.Duration = float(RPGJson::Num(Poison, TEXT("duration"), 3));
-			P.Period = float(RPGJson::Num(Poison, TEXT("period"), 0.5));
-			P.Dot = float(RPGJson::Num(Poison, TEXT("damage"), 4)) * RPGCombat::ScaleBy(Stats, FName(RPGJson::Str(Poison, TEXT("scaling"))));
+			P.Duration = float(TSJson::Num(Poison, TEXT("duration"), 3));
+			P.Period = float(TSJson::Num(Poison, TEXT("period"), 0.5));
+			P.Dot = float(TSJson::Num(Poison, TEXT("damage"), 4)) * RPGCombat::ScaleBy(Stats, FName(TSJson::Str(Poison, TEXT("scaling"))));
 			P.Source = this;
 			E->Stats->AddEffect(P);
 		}
@@ -1172,21 +1173,21 @@ void ARPGPlayerCharacter::OnComboEnded(UAnimMontage* Montage, bool bInterrupted)
 
 void ARPGPlayerCharacter::FireBolt()
 {
-	const URPGData& D = URPGData::Get(this);
-	const RPGJson::FObj P = RPGJson::Obj(Style(), TEXT("primary"));
-	BoltCooldown = float(RPGJson::Num(P, TEXT("cooldown"), 0.45));
+	const UTSData& D = UTSData::Get(this);
+	const TSJson::FObj P = TSJson::Obj(Style(), TEXT("primary"));
+	BoltCooldown = float(TSJson::Num(P, TEXT("cooldown"), 0.45));
 	CastSlow = 0.15f;
 	FaceAim();
 	PlayCast();
 	const FVector From = Muzzle();
 	const FVector Dir = AimDirection(From);
 	FRPGHit H;
-	H.Base = float(RPGJson::Num(P, TEXT("damage"), 5)) + Stats->Get(TEXT("weaponDamage")) * float(RPGJson::Num(P, TEXT("weaponRatio"), 0.5));
-	H.Scaling = FName(RPGJson::Str(P, TEXT("scaling"), TEXT("focus")));
-	H.Poise = float(RPGJson::Num(P, TEXT("poise"), 10));
-	H.Knockback = float(RPGJson::Num(P, TEXT("knockback"), 60));
-	ARPGProjectile::Fire(this, From + Dir * 12.f, Dir, D.Px(RPGJson::Num(P, TEXT("speed"), 480)), D.Px(RPGJson::Num(P, TEXT("range"), 440)),
-		D.Px(RPGJson::Num(P, TEXT("radius"), 5)), RPGJson::Color(RPGJson::Str(P, TEXT("color"), TEXT("#b9a4ff"))), false, H);
+	H.Base = float(TSJson::Num(P, TEXT("damage"), 5)) + Stats->Get(TEXT("weaponDamage")) * float(TSJson::Num(P, TEXT("weaponRatio"), 0.5));
+	H.Scaling = FName(TSJson::Str(P, TEXT("scaling"), TEXT("focus")));
+	H.Poise = float(TSJson::Num(P, TEXT("poise"), 10));
+	H.Knockback = float(TSJson::Num(P, TEXT("knockback"), 60));
+	ARPGProjectile::Fire(this, From + Dir * 12.f, Dir, D.Px(TSJson::Num(P, TEXT("speed"), 480)), D.Px(TSJson::Num(P, TEXT("range"), 440)),
+		D.Px(TSJson::Num(P, TEXT("radius"), 5)), TSJson::Color(TSJson::Str(P, TEXT("color"), TEXT("#b9a4ff"))), false, H);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1200,7 +1201,7 @@ void ARPGPlayerCharacter::OnSecondary()
 	if (Picker >= 0) { ClosePicker(false); return; }
 	if (bTalkMode) { SetTalkMode(false); return; }
 	if (bDead) return;
-	const FString Type = RPGJson::Str(RPGJson::Obj(Style(), TEXT("secondary")), TEXT("type"));
+	const FString Type = TSJson::Str(TSJson::Obj(Style(), TEXT("secondary")), TEXT("type"));
 	if (Type == TEXT("block")) { bGuardHeld = true; GuardTime = 0.f; }
 	else if (Type == TEXT("bow")) { bDrawing = true; DrawTime = 0.f; }
 }
@@ -1212,44 +1213,44 @@ void ARPGPlayerCharacter::OnSecondaryReleased()
 	bDrawing = false;
 }
 
-RPGJson::FObj ARPGPlayerCharacter::GuardStyle() const
+TSJson::FObj ARPGPlayerCharacter::GuardStyle() const
 {
 	if (!bGuardHeld || bAttacking || IsDodging() || Tags.Has(TEXT("Staggered"))) return nullptr;
-	const RPGJson::FObj Sec = RPGJson::Obj(Style(), TEXT("secondary"));
-	return RPGJson::Str(Sec, TEXT("type")) == TEXT("block") ? Sec : nullptr;
+	const TSJson::FObj Sec = TSJson::Obj(Style(), TEXT("secondary"));
+	return TSJson::Str(Sec, TEXT("type")) == TEXT("block") ? Sec : nullptr;
 }
 
-RPGJson::FObj ARPGPlayerCharacter::PassiveStyle() const { return RPGJson::Obj(Style(), TEXT("passive")); }
+TSJson::FObj ARPGPlayerCharacter::PassiveStyle() const { return TSJson::Obj(Style(), TEXT("passive")); }
 
 float ARPGPlayerCharacter::DrawFraction() const
 {
-	const float Full = float(RPGJson::Num(RPGJson::Obj(Style(), TEXT("secondary")), TEXT("drawTime"), 0.8));
+	const float Full = float(TSJson::Num(TSJson::Obj(Style(), TEXT("secondary")), TEXT("drawTime"), 0.8));
 	return bDrawing ? FMath::Clamp(DrawTime / Full, 0.f, 1.f) : 0.f;
 }
 
 void ARPGPlayerCharacter::FireArrow(float Held)
 {
-	const URPGData& D = URPGData::Get(this);
-	const RPGJson::FObj B = RPGJson::Obj(Style(), TEXT("secondary"));
-	if (Held < RPGJson::Num(B, TEXT("minDraw"), 0.12)) return;
+	const UTSData& D = UTSData::Get(this);
+	const TSJson::FObj B = TSJson::Obj(Style(), TEXT("secondary"));
+	if (Held < TSJson::Num(B, TEXT("minDraw"), 0.12)) return;
 	Tags.Remove(TEXT("Hidden"));
-	const float K = FMath::Clamp(Held / float(RPGJson::Num(B, TEXT("drawTime"), 0.8)), 0.f, 1.f);
+	const float K = FMath::Clamp(Held / float(TSJson::Num(B, TEXT("drawTime"), 0.8)), 0.f, 1.f);
 	const bool bFull = K >= 1.f;
-	const float MinMul = float(RPGJson::Num(B, TEXT("minMul"), 0.35));
-	const float Mul = (MinMul + (1.f - MinMul) * K) * (bFull ? float(RPGJson::Num(B, TEXT("fullBonus"), 1.3)) : 1.f);
+	const float MinMul = float(TSJson::Num(B, TEXT("minMul"), 0.35));
+	const float Mul = (MinMul + (1.f - MinMul) * K) * (bFull ? float(TSJson::Num(B, TEXT("fullBonus"), 1.3)) : 1.f);
 	FaceAim();
 	const FVector From = Muzzle();
 	const FVector Dir = AimDirection(From);
 	PlayBowShot();
 	FRPGHit H;
-	H.Base = (float(RPGJson::Num(B, TEXT("damage"), 10)) + Stats->Get(TEXT("weaponDamage")) * float(RPGJson::Num(B, TEXT("weaponRatio"), 0.5))) * Mul;
-	H.Scaling = FName(RPGJson::Str(B, TEXT("scaling"), TEXT("agility")));
-	H.Poise = float(RPGJson::Num(B, TEXT("poise"), 20)) * Mul;
-	H.Knockback = float(RPGJson::Num(B, TEXT("knockback"), 120)) * Mul;
+	H.Base = (float(TSJson::Num(B, TEXT("damage"), 10)) + Stats->Get(TEXT("weaponDamage")) * float(TSJson::Num(B, TEXT("weaponRatio"), 0.5))) * Mul;
+	H.Scaling = FName(TSJson::Str(B, TEXT("scaling"), TEXT("agility")));
+	H.Poise = float(TSJson::Num(B, TEXT("poise"), 20)) * Mul;
+	H.Knockback = float(TSJson::Num(B, TEXT("knockback"), 120)) * Mul;
 	// A partial draw flies slower and not as far; the arrow arcs to land on its target.
-	const float Range = D.Px(RPGJson::Num(B, TEXT("range"), 520)) * (0.5f + 0.5f * K);
-	ARPGProjectile::FireArrow(this, From + Dir * 20.f, ArrowTarget(From, Range), D.Px(RPGJson::Num(B, TEXT("speed"), 560)) * (0.6f + 0.4f * K),
-		6.f, bFull ? FLinearColor(1.f, 0.85f, 0.3f) : RPGJson::Color(RPGJson::Str(B, TEXT("color"), TEXT("#e8d9b0"))), H);
+	const float Range = D.Px(TSJson::Num(B, TEXT("range"), 520)) * (0.5f + 0.5f * K);
+	ARPGProjectile::FireArrow(this, From + Dir * 20.f, ArrowTarget(From, Range), D.Px(TSJson::Num(B, TEXT("speed"), 560)) * (0.6f + 0.4f * K),
+		6.f, bFull ? FLinearColor(1.f, 0.85f, 0.3f) : TSJson::Color(TSJson::Str(B, TEXT("color"), TEXT("#e8d9b0"))), H);
 	if (bFull) URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("Full draw!"), FLinearColor(1.f, 0.95f, 0.75f), 0.8f);
 }
 
@@ -1261,10 +1262,10 @@ void ARPGPlayerCharacter::OnDodge()
 {
 	if (bInputLocked) return;
 	if (IsDodging() || bDead || Tags.Has(TEXT("Staggered"))) return;
-	const URPGData& D = URPGData::Get(this);
-	const RPGJson::FObj Base = RPGJson::Obj(D.Section(TEXT("tuning")), TEXT("dodge"));
-	const RPGJson::FObj Over = RPGJson::Obj(ClassDef, TEXT("dodge"));
-	auto Get = [&](const TCHAR* K, double Def) { return RPGJson::Num(Over, K, RPGJson::Num(Base, K, Def)); };
+	const UTSData& D = UTSData::Get(this);
+	const TSJson::FObj Base = TSJson::Obj(D.Section(TEXT("tuning")), TEXT("dodge"));
+	const TSJson::FObj Over = TSJson::Obj(ClassDef, TEXT("dodge"));
+	auto Get = [&](const TCHAR* K, double Def) { return TSJson::Num(Over, K, TSJson::Num(Base, K, Def)); };
 	if (!Stats->SpendStamina(float(Get(TEXT("cost"), 22))))
 	{
 		URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No stamina"), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
@@ -1282,11 +1283,11 @@ void ARPGPlayerCharacter::OnDodge()
 	const FVector Dir = Wish.IsNearlyZero() ? Fallback : Wish.GetSafeNormal();
 	Tags.Add(TEXT("Invulnerable"), float(Get(TEXT("iframes"), 0.26)));
 	StartDash(Dir, D.Px(Get(TEXT("speed"), 430)), float(Get(TEXT("duration"), 0.32)), nullptr);
-	if (UAnimSequenceBase* Dash = RPGAssets::Load<UAnimSequenceBase>(RPGAssets::DashAnim))
+	if (UAnimSequenceBase* Dash = TSAssets::Load<UAnimSequenceBase>(RPGAssets::DashAnim))
 		if (UAnimInstance* A = Anim()) A->PlaySlotAnimationAsDynamicMontage(Dash, TEXT("DefaultSlot"), 0.05f, 0.15f, 1.25f);
 }
 
-void ARPGPlayerCharacter::StartDash(const FVector& Dir, float Speed, float Duration, const RPGJson::FObj& Strike)
+void ARPGPlayerCharacter::StartDash(const FVector& Dir, float Speed, float Duration, const TSJson::FObj& Strike)
 {
 	if (UAnimInstance* A = Anim()) A->Montage_Stop(0.1f);
 	bAttacking = false;
@@ -1316,23 +1317,23 @@ void ARPGPlayerCharacter::DrinkPotion()
 
 void ARPGPlayerCharacter::SwapStyle()
 {
-	const int32 N = RPGJson::Arr(ClassDef, TEXT("styles")).Num();
+	const int32 N = TSJson::Arr(ClassDef, TEXT("styles")).Num();
 	if (N < 2 || bAttacking || IsDodging()) return;
 	StyleIndex = (StyleIndex + 1) % N;
 	ComboStep = 0;
 	bGuardHeld = bDrawing = false;
 	RefreshWeapons();
-	URPGSession::Get(this)->Toast(TEXT("Switched to ") + RPGJson::Str(Style(), TEXT("name")), NameColor);
+	URPGSession::Get(this)->Toast(TEXT("Switched to ") + TSJson::Str(Style(), TEXT("name")), NameColor);
 }
 
 USkinnedMeshComponent* ARPGPlayerCharacter::BodyMesh() const { return PoseMesh; }
 
 void ARPGPlayerCharacter::RefreshWeapons()
 {
-	const TArray<TSharedPtr<FJsonValue>> Styles = RPGJson::Arr(ClassDef, TEXT("styles"));
+	const TArray<TSharedPtr<FJsonValue>> Styles = TSJson::Arr(ClassDef, TEXT("styles"));
 	if (Styles.IsEmpty()) return;
 	TArray<FString> Kits;
-	for (const TSharedPtr<FJsonValue>& V : RPGJson::Arr(RPGJson::Obj(URPGData::Get(this).World3D(), TEXT("styleKits")), Styles[FMath::Clamp(StyleIndex, 0, Styles.Num() - 1)]->AsString())) Kits.Add(V->AsString());
+	for (const TSharedPtr<FJsonValue>& V : TSJson::Arr(TSJson::Obj(UTSData::Get(this).World(), TEXT("styleKits")), Styles[FMath::Clamp(StyleIndex, 0, Styles.Num() - 1)]->AsString())) Kits.Add(V->AsString());
 	SetWeaponKits(Kits);
 }
 
@@ -1366,7 +1367,7 @@ void ARPGPlayerCharacter::Die(AActor* Killer)
 void ARPGPlayerCharacter::Respawn()
 {
 	URPGSession* Session = URPGSession::Get(this);
-	const int32 Lost = FMath::FloorToInt(Inventory->Gold * URPGData::Get(this).Tuning(TEXT("deathGoldPenalty"), 0.1));
+	const int32 Lost = FMath::FloorToInt(Inventory->Gold * UTSData::Get(this).Tuning(TEXT("deathGoldPenalty"), 0.1));
 	Inventory->Gold -= Lost;
 	bDead = false;
 	GetMesh()->SetAnimationMode(EAnimationMode::AnimationBlueprint);
@@ -1387,8 +1388,8 @@ void ARPGPlayerCharacter::Respawn()
 void ARPGPlayerCharacter::UpdateVisuals(float Dt)
 {
 	// The Mage's barrier (held RMB): a bubble engulfs him, fading as his stamina runs down.
-	const RPGJson::FObj Guarding = GuardStyle();
-	const bool bShield = !bDead && Guarding && RPGJson::Bool(Guarding, TEXT("barrier"));
+	const TSJson::FObj Guarding = GuardStyle();
+	const bool bShield = !bDead && Guarding && TSJson::Bool(Guarding, TEXT("barrier"));
 	ShieldBubble->SetVisibility(bShield);
 	if (bShield)
 	{
@@ -1406,8 +1407,8 @@ void ARPGPlayerCharacter::UpdateVisuals(float Dt)
 
 	// Raised guard: the left arm comes up into a guard pose (procedural, until real block
 	// animations arrive) and the shield on the forearm rises with it; a brief white flash marks the perfect-block window.
-	const RPGJson::FObj Guard = GuardStyle();
-	const float Perfect = Guard ? float(RPGJson::Num(Guard, TEXT("perfectWindow"), 0)) : 0.f;
+	const TSJson::FObj Guard = GuardStyle();
+	const float Perfect = Guard ? float(TSJson::Num(Guard, TEXT("perfectWindow"), 0)) : 0.f;
 	const bool bPerfect = Perfect > 0.f && GuardTime <= Perfect;
 	GuardArc->SetVisibility(bPerfect);
 	if (bPerfect)
@@ -1438,10 +1439,10 @@ void ARPGPlayerCharacter::Tick(float Dt)
 	// Camera shake from hits.
 	ShakeOffset = Session->ShakeAmount > 0.2f ? FVector(0, FMath::FRandRange(-1.f, 1.f), FMath::FRandRange(-1.f, 1.f)) * Session->ShakeAmount : FVector::ZeroVector;
 	Camera->SetRelativeLocation(ShakeOffset);
-	if (bTopDown && RPGLook::Mode() == RPGLook::EMode::Flat2D) Camera->SetOrthoWidth(FMath::FInterpTo(Camera->OrthoWidth, ZoomTarget, Dt, 8.f));
+	if (bTopDown && TSLook::Mode() == TSLook::EMode::Flat2D) Camera->SetOrthoWidth(FMath::FInterpTo(Camera->OrthoWidth, ZoomTarget, Dt, 8.f));
 	else if (bTopDown) CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, ZoomTarget, Dt, 8.f);
 	if (bTopDown) Camera->PostProcessSettings.DepthOfFieldFocalDistance = CameraBoom->TargetArmLength;   // keep the hero in focus while zooming
-	if (NightGlow) NightGlow->SetIntensity(5.f * ARPGWorldBuilder::Night());
+	if (NightGlow) NightGlow->SetIntensity(5.f * ATSSky::Night());
 
 
 	if (bDead)
@@ -1475,10 +1476,10 @@ void ARPGPlayerCharacter::Tick(float Dt)
 				if (DashHit.Contains(E) || FVector::Dist2D(E->GetActorLocation(), GetActorLocation()) > Radius() + E->Radius() + 40.f) continue;
 				DashHit.Add(E);
 				FRPGHit H;
-				H.Base = float(RPGJson::Num(DashStrike, TEXT("damage"), 16));
-				H.Scaling = FName(RPGJson::Str(DashStrike, TEXT("scaling")));
-				H.Poise = float(RPGJson::Num(DashStrike, TEXT("poise"), 30));
-				H.Knockback = float(RPGJson::Num(DashStrike, TEXT("knockback"), 100));
+				H.Base = float(TSJson::Num(DashStrike, TEXT("damage"), 16));
+				H.Scaling = FName(TSJson::Str(DashStrike, TEXT("scaling")));
+				H.Poise = float(TSJson::Num(DashStrike, TEXT("poise"), 30));
+				H.Knockback = float(TSJson::Num(DashStrike, TEXT("knockback"), 100));
 				H.Dir = DodgeDir;
 				RPGCombat::Deal(this, E, H);
 			}
@@ -1491,22 +1492,22 @@ void ARPGPlayerCharacter::Tick(float Dt)
 	// goal does its own attacking once in range.
 	if (bAttackHeld && !bAttacking && Goal == EClickGoal::None)
 	{
-		const RPGJson::FObj Primary = RPGJson::Obj(Style(), TEXT("primary"));
-		if (RPGJson::Str(Primary, TEXT("type")) == TEXT("bolt")) { if (BoltCooldown <= 0.f) FireBolt(); }
+		const TSJson::FObj Primary = TSJson::Obj(Style(), TEXT("primary"));
+		if (TSJson::Str(Primary, TEXT("type")) == TEXT("bolt")) { if (BoltCooldown <= 0.f) FireBolt(); }
 		else StartCombo();
 	}
 
 	// Strafe toward the camera while blocking / drawing / casting; otherwise turn toward movement.
-	const RPGJson::FObj Sec = RPGJson::Obj(Style(), TEXT("secondary"));
+	const TSJson::FObj Sec = TSJson::Obj(Style(), TEXT("secondary"));
 	const bool bAiming = GuardStyle().IsValid() || bDrawing || CastSlow > 0.f;
 	GetCharacterMovement()->bOrientRotationToMovement = !bAiming && !bAttacking;
 	if (bAiming && GuardStyle().IsValid() && !bDrawing) FaceThreat();   // the shield turns toward who's coming at you
 	else if (bAiming) FaceAim();
-	if (const RPGJson::FObj G = GuardStyle())
+	if (const TSJson::FObj G = GuardStyle())
 	{
 		// Holding a shield (or the Mage's barrier) wears you out: stamina drains, and when it's gone the guard drops.
-		Stats->StaminaRegenMul = float(RPGJson::Num(G, TEXT("staminaRegenMul"), 0.35));
-		const float Drain = float(RPGJson::Num(G, TEXT("staminaDrain"), 0)) * Dt;
+		Stats->StaminaRegenMul = float(TSJson::Num(G, TEXT("staminaRegenMul"), 0.35));
+		const float Drain = float(TSJson::Num(G, TEXT("staminaDrain"), 0)) * Dt;
 		if (Drain > 0.f)
 		{
 			Stats->Stamina = FMath::Max(0.f, Stats->Stamina - Drain);
@@ -1525,8 +1526,8 @@ void ARPGPlayerCharacter::Tick(float Dt)
 	if (Controller && (!MoveInput.IsNearlyZero() || !ClickDir.IsNearlyZero()))
 	{
 		float Mul = 1.f;
-		if (bAttacking) Mul = float(RPGJson::Num(URPGData::Get(this).Section(TEXT("combat")), TEXT("attackMoveMul"), 0.35));
-		else if (bAiming && (GuardStyle().IsValid() || bDrawing)) Mul = float(RPGJson::Num(Sec, TEXT("moveMul"), 0.5));
+		if (bAttacking) Mul = float(TSJson::Num(UTSData::Get(this).Section(TEXT("combat")), TEXT("attackMoveMul"), 0.35));
+		else if (bAiming && (GuardStyle().IsValid() || bDrawing)) Mul = float(TSJson::Num(Sec, TEXT("moveMul"), 0.5));
 		else if (CastSlow > 0.f) Mul = 0.6f;
 		if (!ClickDir.IsNearlyZero()) AddMovementInput(ClickDir, Mul);
 		else

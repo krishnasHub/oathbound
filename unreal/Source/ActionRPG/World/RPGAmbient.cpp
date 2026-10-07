@@ -1,7 +1,8 @@
 #include "RPGAmbient.h"
+#include "TSSky.h"
 #include "RPGWorldBuilder.h"
-#include "RPGLook.h"
-#include "RPGData.h"
+#include "TSLook.h"
+#include "TSData.h"
 #include "RPGAssets.h"
 #include "RPGSession.h"
 #include "LMStory.h"
@@ -31,12 +32,12 @@ ARPGAmbient::FCard ARPGAmbient::MakeCard(const FString& Sheet, int32 Cols, int32
 {
 	FCard C;
 	C.Mesh = NewObject<UStaticMeshComponent>(this);
-	C.Mesh->SetStaticMesh(RPGAssets::Shape(TEXT("Plane")));
+	C.Mesh->SetStaticMesh(TSAssets::Shape(TEXT("Plane")));
 	C.Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	C.Mesh->SetUsingAbsoluteLocation(true);
 	C.Mesh->SetUsingAbsoluteRotation(true);
 	C.Mesh->SetUsingAbsoluteScale(true);
-	C.Mat = RPGLook::SpriteMaterial(this, Sheet, Cols, Rows);
+	C.Mat = TSLook::SpriteMaterial(this, Sheet, Cols, Rows);
 	if (C.Mat) C.Mesh->SetMaterial(0, C.Mat);
 	C.Mesh->SetupAttachment(RootComponent);
 	C.Mesh->RegisterComponent();
@@ -53,7 +54,7 @@ void ARPGAmbient::Place(FCard& C, float SizeUU, int32 Col, int32 Row, bool bVisi
 {
 	C.Mesh->SetVisibility(bVisible);
 	if (!bVisible || !C.Mat) return;
-	const FRotator R = RPGLook::CardRotation();
+	const FRotator R = TSLook::CardRotation();
 	const FVector Up = -FRotationMatrix(R).GetUnitAxis(EAxis::Y);
 	const FVector Feet(C.Pos.X, C.Pos.Y, Ground(C.Pos) + C.Lift);
 	C.Mesh->SetWorldLocationAndRotation(Feet + Up * (SizeUU * 0.5f - SizeUU * 0.06f), R);
@@ -78,8 +79,8 @@ void ARPGAmbient::Init(ARPGWorldBuilder* InWorld)
 {
 	World = InWorld;
 	Rand.Initialize(1234);
-	const URPGData& D = URPGData::Get(this);
-	const float U = RPGLook::SpriteUnits();
+	const UTSData& D = UTSData::Get(this);
+	const float U = TSLook::SpriteUnits();
 	BirdSize = 16.f * U * 0.9f;
 	GooseSize = 24.f * U;
 	ManSize = 32.f * U;
@@ -124,7 +125,7 @@ void ARPGAmbient::Init(ARPGWorldBuilder* InWorld)
 	if (ProwlRoute.Num()) Prowler.Pos = ProwlRoute[0];
 
 	// Fireflies over the meadows.
-	UMaterialInterface* Glow = RPGAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Glow.M_RPG_Glow"));
+	UMaterialInterface* Glow = TSAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Glow.M_RPG_Glow"));
 	for (int32 I = 0; I < 40; ++I)
 	{
 		FFly F;
@@ -132,7 +133,7 @@ void ARPGAmbient::Init(ARPGWorldBuilder* InWorld)
 		F.Offset = FVector::ZeroVector;
 		F.Phase = Rand.FRand() * 10.f;
 		F.Mesh = NewObject<UStaticMeshComponent>(this);
-		F.Mesh->SetStaticMesh(RPGAssets::Shape(TEXT("Sphere")));
+		F.Mesh->SetStaticMesh(TSAssets::Shape(TEXT("Sphere")));
 		F.Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		F.Mesh->SetCastShadow(false);
 		F.Mesh->SetUsingAbsoluteLocation(true);
@@ -159,7 +160,7 @@ void ARPGAmbient::Tick(float Dt)
 	const APawn* P = PC ? PC->GetPawn() : nullptr;
 	if (!P || P->IsHidden()) { for (FBird& B : Birds) B.Mesh->SetVisibility(false); return; }
 	const FVector Hero = P->GetActorLocation();
-	const float Night = ARPGWorldBuilder::Night();
+	const float Night = ATSSky::Night();
 	TickBirds(Dt, Hero, Night < 0.5f);
 	TickGeese(Dt, Hero, Night < 0.5f);
 	TickProwler(Dt, Hero, Night > 0.6f);

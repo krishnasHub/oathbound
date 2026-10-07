@@ -2,7 +2,7 @@
 #include "RPGAssets.h"
 #include "RPGCharacterBase.h"
 #include "RPGPlayerCharacter.h"
-#include "RPGData.h"
+#include "TSData.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
@@ -42,12 +42,12 @@ ARPGProjectile* ARPGProjectile::Fire(ARPGCharacterBase* Owner, const FVector& Fr
 	Pr->Hit = InHit;
 	Pr->Color = InColor;
 
-	UMaterialInstanceDynamic* M = UMaterialInstanceDynamic::Create(RPGAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Glow.M_RPG_Glow")), Pr);
+	UMaterialInstanceDynamic* M = UMaterialInstanceDynamic::Create(TSAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Glow.M_RPG_Glow")), Pr);
 	M->SetVectorParameterValue(TEXT("Color"), InColor);
 	if (bArrow)
 	{
 		// Shaft: a thin cylinder lying along the flight direction, faint glow so it reads against grass.
-		Pr->Body->SetStaticMesh(RPGAssets::Shape(TEXT("Cylinder")));
+		Pr->Body->SetStaticMesh(TSAssets::Shape(TEXT("Cylinder")));
 		Pr->Body->SetRelativeScale3D(FVector(0.03f, 0.03f, 0.75f));
 		Pr->Body->SetWorldRotation(FRotationMatrix::MakeFromZ(Dir).Rotator());
 		M->SetScalarParameterValue(TEXT("Intensity"), 1.5f);
@@ -55,7 +55,7 @@ ARPGProjectile* ARPGProjectile::Fire(ARPGCharacterBase* Owner, const FVector& Fr
 	}
 	else
 	{
-		Pr->Body->SetStaticMesh(RPGAssets::Shape(TEXT("Sphere")));
+		Pr->Body->SetStaticMesh(TSAssets::Shape(TEXT("Sphere")));
 		Pr->Body->SetRelativeScale3D(FVector(Radius * 2.f / 100.f));
 		M->SetScalarParameterValue(TEXT("Intensity"), 14.f);
 		Pr->Glow->SetLightColor(InColor);
@@ -70,11 +70,11 @@ void ARPGProjectile::ArcLaunch(const UObject* Ctx, const FVector& From, const FV
 {
 	// Horizontal speed is constant, so the flight time is distance / speed. Gravity is picked so the arc rises
 	// Height above the straight line at mid-flight (g T^2 / 8), and the vertical launch so it ends at To.
-	const RPGJson::FObj A = RPGJson::Obj(URPGData::Get(Ctx).World3D(), TEXT("arrows"));
+	const TSJson::FObj A = TSJson::Obj(UTSData::Get(Ctx).World(), TEXT("arrows"));
 	const float D2 = FVector::Dist2D(From, To);
 	OutT = FMath::Max(D2 / FMath::Max(Speed, 1.f), 0.12f);
-	const float Height = FMath::Clamp(D2 * float(RPGJson::Num(A, TEXT("heightPerDistance"), 0.16)),
-		float(RPGJson::Num(A, TEXT("minHeight"), 30)), float(RPGJson::Num(A, TEXT("maxHeight"), 320)));
+	const float Height = FMath::Clamp(D2 * float(TSJson::Num(A, TEXT("heightPerDistance"), 0.16)),
+		float(TSJson::Num(A, TEXT("minHeight"), 30)), float(TSJson::Num(A, TEXT("maxHeight"), 320)));
 	OutG = 8.f * Height / (OutT * OutT);
 	const FVector Flat = FVector(To.X - From.X, To.Y - From.Y, 0.f) / OutT;
 	OutVel = FVector(Flat.X, Flat.Y, (To.Z - From.Z) / OutT + 0.5f * OutG * OutT);
@@ -83,9 +83,9 @@ void ARPGProjectile::ArcLaunch(const UObject* Ctx, const FVector& From, const FV
 UStaticMeshComponent* ARPGProjectile::AddArrowPart(const TCHAR* Shape, const FLinearColor& Col, const FVector& Loc, const FRotator& Rot, const FVector& Scale)
 {
 	UStaticMeshComponent* C = NewObject<UStaticMeshComponent>(this);
-	C->SetStaticMesh(RPGAssets::Shape(Shape));
+	C->SetStaticMesh(TSAssets::Shape(Shape));
 	C->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	C->SetMaterial(0, RPGAssets::Color(this, Col));
+	C->SetMaterial(0, TSAssets::Color(this, Col));
 	C->SetupAttachment(Root);
 	C->SetRelativeLocationAndRotation(Loc, Rot);
 	C->SetRelativeScale3D(Scale);
@@ -125,10 +125,10 @@ ARPGProjectile* ARPGProjectile::FireArrow(ARPGCharacterBase* Owner, const FVecto
 	Pr->AddArrowPart(TEXT("Cube"), InColor, FVector(-60.f, 0, 0), FRotator(0, 0, 90.f), FVector(0.32f, 0.025f, 0.16f));
 	// A faint streak behind it, so a shot reads as a shot.
 	Pr->Trail = NewObject<UStaticMeshComponent>(Pr);
-	Pr->Trail->SetStaticMesh(RPGAssets::Shape(TEXT("Cylinder")));
+	Pr->Trail->SetStaticMesh(TSAssets::Shape(TEXT("Cylinder")));
 	Pr->Trail->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Pr->Trail->SetCastShadow(false);
-	UMaterialInstanceDynamic* TM = UMaterialInstanceDynamic::Create(RPGAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Telegraph.M_RPG_Telegraph")), Pr);
+	UMaterialInstanceDynamic* TM = UMaterialInstanceDynamic::Create(TSAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Telegraph.M_RPG_Telegraph")), Pr);
 	TM->SetVectorParameterValue(TEXT("Color"), FMath::Lerp(InColor, FLinearColor::White, 0.5f));
 	TM->SetScalarParameterValue(TEXT("Intensity"), 1.2f);
 	TM->SetScalarParameterValue(TEXT("Opacity"), 0.28f);
@@ -142,7 +142,7 @@ ARPGProjectile* ARPGProjectile::FireArrow(ARPGCharacterBase* Owner, const FVecto
 
 void ARPGProjectile::Burst()
 {
-	if (UNiagaraSystem* FX = RPGAssets::Load<UNiagaraSystem>(RPGAssets::DamageFX))
+	if (UNiagaraSystem* FX = TSAssets::Load<UNiagaraSystem>(RPGAssets::DamageFX))
 	{
 		UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), FX, GetActorLocation(), FRotator::ZeroRotator, FVector(0.5f));
 	}

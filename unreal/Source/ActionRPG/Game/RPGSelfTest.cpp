@@ -1,6 +1,6 @@
 #include "RPGSelfTest.h"
 #include "ActionRPG.h"
-#include "RPGData.h"
+#include "TSData.h"
 #include "RPGSession.h"
 #include "LMStory.h"
 #include "RPGPlayerCharacter.h"
@@ -69,7 +69,7 @@ void ARPGSelfTest::Tick(float Dt)
 	URPGSession* S = URPGSession::Get(this);
 	ARPGPlayerCharacter* Pl = P();
 	if (!Pl || T < Next) return;
-	const URPGData& D = URPGData::Get(this);
+	const UTSData& D = UTSData::Get(this);
 	auto Quit = [&](float After) { Next = T + After; Step = 1000; };
 	if (Step == 1000) { Report(TEXT("done")); FPlatformMisc::RequestExit(false); Step = 1001; return; }
 

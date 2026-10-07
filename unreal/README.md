@@ -76,16 +76,22 @@ Useful switches (`-Extra`): `-RPGHour=22` (start at that hour), `-RPGLook=hd2d|f
 
 | Piece | Where | Notes |
 |---|---|---|
-| Game rules | `Content/Data/game-data.json` | Synced from `../data`. Read at startup by `URPGData` |
-| Look | `Core/RPGLook` | HD-2D (default), flat 2D or 3D meshes; card rotation, pixel materials |
-| World | `World/RPGWorldBuilder` | Map rows → terrain, river, bridge, cottages (cut away when they hide you), tree cards, ruins, fires; sun + moon day/night cycle, fog, exposure grade; runtime navmesh |
+| Game rules | `Content/Data/game-data.json` | Synced from `../data`. Read at startup by Tessera's `UTSData` (`[Tessera]` in `Config/DefaultGame.ini` names the file, the `world3d` section and the `RPG` switch prefix) |
+| Look | Tessera `TSLook` | HD-2D (default), flat 2D or 3D meshes; card rotation, pixel materials (paths in `world3d.looks2d`) |
+| World | `World/RPGWorldBuilder` on Tessera's `ATSWorldBuilder` + `ATSSky` | Map rows → terrain, river, bridge, cottages (cut away when they hide you), tree cards, ruins, fires; sun + moon day/night cycle, fog, exposure grade; runtime navmesh |
 | Ambient life | `World/RPGAmbient` | Birds and geese by day, a prowler and fireflies by night; they react to the hero |
 | Characters | `Characters/` | `ARPGCharacterBase` (hidden mannequin for animation timing) + `URPGSpriteComponent` (the pixel sprite you see) → player, enemy (AI state machine), NPC |
 | Combat | `Combat/` | Stats, damage pipeline (blocks, barrier), abilities (12 types), arcing arrows, inventory, loot, effects |
-| Story | `Game/RPGStory` | Flags, quests, dialogue engine (seeded hidden rolls), encounters, factions |
+| Story | Loom `ULMStory` + `Game/RPGSession` | Loom: flags, quests, dialogue engine (seeded hidden rolls), encounters, factions. `URPGSession` registers this game's conditions / actions / placeholders with it, and keeps duels, the bridge rule and the HUD feedback queues |
 | UI | `UI/` | Slate: title, character select (animated backdrops per class), HUD, minimap (class-shaped frame), dialogue, pause menu, game cursor, deep-night darkness |
 | Input | `RPGPlayerCharacter` | Enhanced Input in code; click-to-move / attack / talk |
 | Materials | `Tools/create_materials.py`, `Tools/import_pixel.py` | Glow, telegraph, fresnel, flash; sprite, pixel-world, minimap, night-shade |
+
+## Plugins
+
+`Plugins/Tessera` and `Plugins/Loom` are git submodules (github.com/krishnasHub/tessera, /loom), shared with future
+games. Nothing in them may name this game: anything game-specific is data, config or a hook the game registers.
+Change them in place, commit in the plugin's repo, then commit the new plugin version here.
 
 ## What's in git
 

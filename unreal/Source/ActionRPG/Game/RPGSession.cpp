@@ -1,7 +1,7 @@
 #include "RPGSession.h"
 #include "ActionRPG.h"
 #include "LMStory.h"
-#include "RPGData.h"
+#include "TSData.h"
 #include "RPGCharacterBase.h"
 #include "RPGPlayerCharacter.h"
 #include "RPGEnemy.h"
@@ -111,23 +111,23 @@ void URPGSession::UpdateEncounters()
 	ARPGPlayerCharacter* P = Player();
 	const ULMStory* L = Story();
 	if (!P || P->IsDead() || L->IsDialogueOpen() || Duel.IsValid() || EncounterCooldown > 0.f) return;
-	const URPGData& D = URPGData::Get(this);
-	const RPGJson::FObj All = D.Section(TEXT("encounters"));
+	const UTSData& D = UTSData::Get(this);
+	const TSJson::FObj All = D.Section(TEXT("encounters"));
 	if (!All) return;
 	for (const auto& KV : All->Values)
 	{
 		const FString Id = FString(*KV.Key);
-		const RPGJson::FObj Enc = KV.Value->AsObject();
+		const TSJson::FObj Enc = KV.Value->AsObject();
 		if (L->HasFlag(Id + TEXT("_passable"))) continue;
 		ARPGEnemy* Leader = nullptr;
-		for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->Type == RPGJson::Str(Enc, TEXT("leader"))) { Leader = *It; break; }
+		for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->Type == TSJson::Str(Enc, TEXT("leader"))) { Leader = *It; break; }
 		if (!Leader || Leader->IsDead() || !Leader->IsPassive()) continue;
 
 		// (Nobody stops you to talk: the hero chooses to talk (E + click) or to fight. Slipping past without either
 		// still turns the faction hostile.)
-		if (P->GetActorLocation().Y > RPGJson::Num(Enc, TEXT("crossRow"), 12) * D.TileSize + 30.f)
+		if (P->GetActorLocation().Y > TSJson::Num(Enc, TEXT("crossRow"), 12) * D.TileSize + 30.f)
 		{
-			SetHostile(RPGJson::Str(Enc, TEXT("faction")), RPGJson::Str(Enc, TEXT("crossBark")));   // you tried to slip past
+			SetHostile(TSJson::Str(Enc, TEXT("faction")), TSJson::Str(Enc, TEXT("crossBark")));   // you tried to slip past
 		}
 	}
 }
@@ -155,23 +155,23 @@ ARPGCharacterBase* URPGSession::DialogueNpc() const { return Cast<ARPGCharacterB
 
 void URPGSession::Bind(ULMStory* L)
 {
-	L->SetData(URPGData::Get(this).Root);
+	L->SetData(UTSData::Get(this).Root);
 	L->DefaultVerb = TEXT("persuade");
 
 	// What the hero is and has.
 	L->StatValue = [this](FName Stat) { const ARPGPlayerCharacter* P = Player(); return P ? P->Stats->Get(Stat) : 0.f; };
 	L->ItemCount = [this](const FString& Item) { const ARPGPlayerCharacter* P = Player(); return P ? P->Inventory->Count(Item) : 0; };
-	auto OneOf = [](const RPGJson::FObj& C, const FString& Key, const FString& Value)
+	auto OneOf = [](const TSJson::FObj& C, const FString& Key, const FString& Value)
 	{
 		const TSharedPtr<FJsonValue> V = C->TryGetField(Key);
 		if (!V) return false;
 		if (V->Type == EJson::Array) { for (const auto& X : V->AsArray()) if (X->AsString() == Value) return true; return false; }
 		return V->AsString() == Value;
 	};
-	L->AddCondition(TEXT("class"), [this, OneOf](const RPGJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && OneOf(C, TEXT("class"), P->ClassId); });
-	L->AddCondition(TEXT("sex"), [this](const RPGJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && RPGJson::Str(C, TEXT("sex")) == P->Sex; });
-	L->AddCondition(TEXT("gold"), [this](const RPGJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && P->Inventory->Gold >= RPGJson::Num(C, TEXT("gold")); });
-	L->AddCondition(TEXT("hasItem"), [this](const RPGJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && P->Inventory->Count(RPGJson::Str(C, TEXT("hasItem"))) > 0; });
+	L->AddCondition(TEXT("class"), [this, OneOf](const TSJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && OneOf(C, TEXT("class"), P->ClassId); });
+	L->AddCondition(TEXT("sex"), [this](const TSJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && TSJson::Str(C, TEXT("sex")) == P->Sex; });
+	L->AddCondition(TEXT("gold"), [this](const TSJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && P->Inventory->Gold >= TSJson::Num(C, TEXT("gold")); });
+	L->AddCondition(TEXT("hasItem"), [this](const TSJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && P->Inventory->Count(TSJson::Str(C, TEXT("hasItem"))) > 0; });
 
 	L->AddPlaceholder(TEXT("gold"), [this]() { const ARPGPlayerCharacter* P = Player(); return P ? FString::FromInt(P->Inventory->Gold) : FString(TEXT("0")); });
 	L->AddPlaceholder(TEXT("title"), [this]()
@@ -179,28 +179,28 @@ void URPGSession::Bind(ULMStory* L)
 		const ARPGPlayerCharacter* P = Player();
 		const TSharedPtr<FJsonValue> Title = P && P->ClassDef ? P->ClassDef->TryGetField(TEXT("title")) : nullptr;
 		if (!Title) return FString(TEXT("traveler"));
-		return Title->Type == EJson::Object ? RPGJson::Str(Title->AsObject(), P->Sex) : Title->AsString();
+		return Title->Type == EJson::Object ? TSJson::Str(Title->AsObject(), P->Sex) : Title->AsString();
 	});
 
 	// Verbs: class-only verbs, and the Mage's Hypnotize costs mana.
-	L->VerbAvailable = [this](const RPGJson::FObj& V)
+	L->VerbAvailable = [this](const TSJson::FObj& V)
 	{
-		const FString VerbClass = RPGJson::Str(V, TEXT("class"));
+		const FString VerbClass = TSJson::Str(V, TEXT("class"));
 		const ARPGPlayerCharacter* P = Player();
 		return VerbClass.IsEmpty() || (P && P->ClassId == VerbClass);
 	};
-	L->DecorateVerb = [this](const RPGJson::FObj& V, FLMChoiceView& View)
+	L->DecorateVerb = [this](const TSJson::FObj& V, FLMChoiceView& View)
 	{
-		const int32 Mana = int32(RPGJson::Num(V, TEXT("mana"), 0));
+		const int32 Mana = int32(TSJson::Num(V, TEXT("mana"), 0));
 		if (!Mana) return;
 		View.Verb += FString::Printf(TEXT(" · %d mana"), Mana);
 		const ARPGPlayerCharacter* P = Player();
 		if (P && P->Stats->Mana < Mana) View.bEnabled = false;
 	};
-	L->PayVerb = [this](const RPGJson::FObj& V) { if (ARPGPlayerCharacter* P = Player()) P->Stats->Mana -= float(RPGJson::Num(V, TEXT("mana"), 0)); };
+	L->PayVerb = [this](const TSJson::FObj& V) { if (ARPGPlayerCharacter* P = Player()) P->Stats->Mana -= float(TSJson::Num(V, TEXT("mana"), 0)); };
 
 	// Actions.
-	auto GiveItem = [this](const FString& Id, const RPGJson::FObj& Weights)
+	auto GiveItem = [this](const FString& Id, const TSJson::FObj& Weights)
 	{
 		ARPGPlayerCharacter* P = Player();
 		if (!P) return;
@@ -217,68 +217,68 @@ void URPGSession::Bind(ULMStory* L)
 		Toast(FString::Printf(TEXT("%+d gold"), Amount), Gold);
 		P->Inventory->OnChanged.Broadcast();
 	};
-	L->AddAction(TEXT("restore"), [this](const RPGJson::FObj& A) { if (ARPGPlayerCharacter* P = Player(); P && RPGJson::Bool(A, TEXT("restore"))) P->Restore(); });
-	L->AddAction(TEXT("gold"), [AddGold](const RPGJson::FObj& A) { AddGold(int32(RPGJson::Num(A, TEXT("gold")))); });
-	L->AddAction(TEXT("takeGold"), [AddGold](const RPGJson::FObj& A) { AddGold(-int32(RPGJson::Num(A, TEXT("takeGold")))); });
-	L->AddAction(TEXT("giveItem"), [GiveItem](const RPGJson::FObj& A) { GiveItem(RPGJson::Str(A, TEXT("giveItem")), nullptr); });
-	L->AddAction(TEXT("buy"), [this](const RPGJson::FObj& A)
+	L->AddAction(TEXT("restore"), [this](const TSJson::FObj& A) { if (ARPGPlayerCharacter* P = Player(); P && TSJson::Bool(A, TEXT("restore"))) P->Restore(); });
+	L->AddAction(TEXT("gold"), [AddGold](const TSJson::FObj& A) { AddGold(int32(TSJson::Num(A, TEXT("gold")))); });
+	L->AddAction(TEXT("takeGold"), [AddGold](const TSJson::FObj& A) { AddGold(-int32(TSJson::Num(A, TEXT("takeGold")))); });
+	L->AddAction(TEXT("giveItem"), [GiveItem](const TSJson::FObj& A) { GiveItem(TSJson::Str(A, TEXT("giveItem")), nullptr); });
+	L->AddAction(TEXT("buy"), [this](const TSJson::FObj& A)
 	{
 		ARPGPlayerCharacter* P = Player();
-		const RPGJson::FObj Buy = RPGJson::Obj(A, TEXT("buy"));
-		const int32 Cost = int32(RPGJson::Num(Buy, TEXT("cost"), 0));
+		const TSJson::FObj Buy = TSJson::Obj(A, TEXT("buy"));
+		const int32 Cost = int32(TSJson::Num(Buy, TEXT("cost"), 0));
 		if (!P || P->Inventory->Gold < Cost) return;
-		const FRPGItem It = URPGInventoryComponent::MakeItem(this, RPGJson::Str(Buy, TEXT("item")));
+		const FRPGItem It = URPGInventoryComponent::MakeItem(this, TSJson::Str(Buy, TEXT("item")));
 		if (P->Inventory->Add(It)) { P->Inventory->Gold -= Cost; Toast(TEXT("Bought ") + It.Name, URPGInventoryComponent::RarityColor(this, It.Rarity)); }
 		else Toast(TEXT("Bag is full"));
 		P->Inventory->OnChanged.Broadcast();
 	});
-	L->AddAction(TEXT("hostile"), [this](const RPGJson::FObj& A) { SetHostile(RPGJson::Str(A, TEXT("hostile"))); });
-	L->AddAction(TEXT("duel"), [this](const RPGJson::FObj& A) { if (ARPGCharacterBase* N = DialogueNpc(); N && RPGJson::Bool(A, TEXT("duel"))) StartDuel(N); });
-	L->AddAction(TEXT("leave"), [this](const RPGJson::FObj& A)
+	L->AddAction(TEXT("hostile"), [this](const TSJson::FObj& A) { SetHostile(TSJson::Str(A, TEXT("hostile"))); });
+	L->AddAction(TEXT("duel"), [this](const TSJson::FObj& A) { if (ARPGCharacterBase* N = DialogueNpc(); N && TSJson::Bool(A, TEXT("duel"))) StartDuel(N); });
+	L->AddAction(TEXT("leave"), [this](const TSJson::FObj& A)
 	{
-		const FString F = RPGJson::Str(A, TEXT("leave"));
+		const FString F = TSJson::Str(A, TEXT("leave"));
 		for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->FactionId() == F && !It->IsDead()) It->Leave();
 	});
-	L->AddAction(TEXT("leaveSelf"), [this](const RPGJson::FObj& A) { if (ARPGEnemy* E = Cast<ARPGEnemy>(DialogueNpc()); E && RPGJson::Bool(A, TEXT("leaveSelf"))) E->Leave(); });
-	L->AddAction(TEXT("recruit"), [this](const RPGJson::FObj& A)
+	L->AddAction(TEXT("leaveSelf"), [this](const TSJson::FObj& A) { if (ARPGEnemy* E = Cast<ARPGEnemy>(DialogueNpc()); E && TSJson::Bool(A, TEXT("leaveSelf"))) E->Leave(); });
+	L->AddAction(TEXT("recruit"), [this](const TSJson::FObj& A)
 	{
-		const URPGData& D = URPGData::Get(this);
-		const FString Id = RPGJson::Str(A, TEXT("recruit"));
-		const TArray<TSharedPtr<FJsonValue>> At = RPGJson::Arr(D.Entry(TEXT("npcs"), Id), TEXT("spawnAt"));
+		const UTSData& D = UTSData::Get(this);
+		const FString Id = TSJson::Str(A, TEXT("recruit"));
+		const TArray<TSharedPtr<FJsonValue>> At = TSJson::Arr(D.Entry(TEXT("npcs"), Id), TEXT("spawnAt"));
 		if (At.Num() != 2) return;
 		const FVector Loc = D.TileCenter(int32(At[0]->AsNumber()), int32(At[1]->AsNumber())) + FVector(0, 0, 120);
 		FActorSpawnParameters SP;
 		SP.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 		if (ARPGNPC* N = GetWorld()->SpawnActor<ARPGNPC>(Loc, FRotator::ZeroRotator, SP)) N->Init(Id);
 	});
-	L->AddAction(TEXT("dropStash"), [this](const RPGJson::FObj& A)
+	L->AddAction(TEXT("dropStash"), [this](const TSJson::FObj& A)
 	{
-		if (ARPGCharacterBase* N = DialogueNpc(); N && RPGJson::Bool(A, TEXT("dropStash"))) RPGLoot::DropTable(GetWorld(), N->GetActorLocation(), TEXT("stash"));
+		if (ARPGCharacterBase* N = DialogueNpc(); N && TSJson::Bool(A, TEXT("dropStash"))) RPGLoot::DropTable(GetWorld(), N->GetActorLocation(), TEXT("stash"));
 	});
 
 	// Events.
 	L->ObjectiveLabels = { { TEXT("kill"), TEXT("Slain") }, { TEXT("collect"), TEXT("Found") } };
 	L->OnQuest.AddLambda([this, GiveItem](const FString& Id, FName What)
 	{
-		const RPGJson::FObj Def = Story()->Entry(TEXT("quests"), Id);
-		const FString Name = RPGJson::Str(Def, TEXT("name"));
+		const TSJson::FObj Def = Story()->Entry(TEXT("quests"), Id);
+		const FString Name = TSJson::Str(Def, TEXT("name"));
 		if (What == TEXT("started")) { Toast(TEXT("Quest started: ") + Name, Gold); return; }
-		if (What == TEXT("complete")) { Toast(FString::Printf(TEXT("%s: complete — return to %s"), *Name, *RPGJson::Str(Def, TEXT("giver"))), Green); return; }
+		if (What == TEXT("complete")) { Toast(FString::Printf(TEXT("%s: complete — return to %s"), *Name, *TSJson::Str(Def, TEXT("giver"))), Green); return; }
 		if (What != TEXT("turnedIn")) return;
 		Toast(TEXT("Quest complete: ") + Name, Green);
 		ARPGPlayerCharacter* P = Player();
 		if (!P) return;
-		const RPGJson::FObj O = RPGJson::Obj(Def, TEXT("objective"));
-		if (RPGJson::Str(O, TEXT("type")) == TEXT("collect")) P->Inventory->Remove(RPGJson::Str(O, TEXT("item")), int32(RPGJson::Num(O, TEXT("count"), 1)));
-		const RPGJson::FObj R = RPGJson::Obj(Def, TEXT("reward"));
-		if (const int32 G = int32(RPGJson::Num(R, TEXT("gold"), 0))) { P->Inventory->Gold += G; Toast(FString::Printf(TEXT("+%d gold"), G), Gold); }
-		if (RPGJson::Has(R, TEXT("item")))
+		const TSJson::FObj O = TSJson::Obj(Def, TEXT("objective"));
+		if (TSJson::Str(O, TEXT("type")) == TEXT("collect")) P->Inventory->Remove(TSJson::Str(O, TEXT("item")), int32(TSJson::Num(O, TEXT("count"), 1)));
+		const TSJson::FObj R = TSJson::Obj(Def, TEXT("reward"));
+		if (const int32 G = int32(TSJson::Num(R, TEXT("gold"), 0))) { P->Inventory->Gold += G; Toast(FString::Printf(TEXT("+%d gold"), G), Gold); }
+		if (TSJson::Has(R, TEXT("item")))
 		{
-			RPGJson::FObj Weights;
-			if (RPGJson::Has(R, TEXT("rarity"))) { Weights = MakeShared<FJsonObject>(); Weights->SetNumberField(RPGJson::Str(R, TEXT("rarity")), 1); }
-			GiveItem(RPGJson::Str(R, TEXT("item")), Weights);
+			TSJson::FObj Weights;
+			if (TSJson::Has(R, TEXT("rarity"))) { Weights = MakeShared<FJsonObject>(); Weights->SetNumberField(TSJson::Str(R, TEXT("rarity")), 1); }
+			GiveItem(TSJson::Str(R, TEXT("item")), Weights);
 		}
-		P->GainXp(int32(RPGJson::Num(R, TEXT("xp"), 0)));
+		P->GainXp(int32(TSJson::Num(R, TEXT("xp"), 0)));
 		P->Inventory->OnChanged.Broadcast();
 	});
 	L->OnResolved.AddLambda([this](const FString& Encounter, const FString&)

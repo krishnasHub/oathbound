@@ -12,6 +12,7 @@
 		}
 	],
 	"Plugins": [
+		{ "Name": "Tessera", "Enabled": true },
 		{ "Name": "Loom", "Enabled": true },
 		{ "Name": "EnhancedInput", "Enabled": true },
 		{ "Name": "ControlRig", "Enabled": true },

@@ -33,6 +33,8 @@
       "spriteUnits": { "hd2d": 6.5, "flat2d": 9.375 },
       "hd2dCamera": { "pitch": -40, "armLength": 6600, "minArm": 5400, "maxArm": 7800, "fov": 30, "tiltShift": false, "focusFstop": 0.5, "sensorWidth": 400 },
       "flatCamera": { "orthoWidth": 3800, "minWidth": 2800, "maxWidth": 5200 },
+      "materials": { "sprite": "/Game/RPG/Materials/M_RPG_Sprite.M_RPG_Sprite", "pixelWorld": "/Game/RPG/Materials/M_RPG_PixelWorld.M_RPG_PixelWorld" },
+      "textureFolder": "/Game/RPG/Pixel",
       "pixelSize": 200,
       "pixelMaterials": {
         "M_Ground_Grass": "grass", "M_Ground_Gravel": "dirt", "M_CobbleStone_Pebble": "cobble", "M_CobbleStone_Rough": "cobble",
@@ -622,6 +624,7 @@
 
   "map": {
     "legend": "# wall  T tree  H house  ~ water  = bridge  . grass  , path  r ruins floor",
+    "floor": ".", "solid": "#TH~",
     "regions": [ { "id": "north", "name": "Ashford side", "maxRow": 13 },
                  { "id": "south", "name": "South bank",   "maxRow": 999 } ],
     "spawns": { "P": "player", "E": "npc:elder", "M": "npc:merchant", "s": "enemy:slime", "a": "enemy:archer", "B": "enemy:brute",

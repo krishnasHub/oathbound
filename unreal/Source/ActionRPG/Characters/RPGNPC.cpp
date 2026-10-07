@@ -1,5 +1,5 @@
 #include "RPGNPC.h"
-#include "RPGData.h"
+#include "TSData.h"
 #include "RPGSession.h"
 #include "LMStory.h"
 #include "RPGPlayerCharacter.h"
@@ -16,10 +16,10 @@ ARPGNPC::ARPGNPC()
 void ARPGNPC::Init(const FString& InId)
 {
 	NpcId = InId;
-	const RPGJson::FObj Def = URPGData::Get(this).Entry(TEXT("npcs"), NpcId);
-	DisplayName = RPGJson::Str(Def, TEXT("name"), NpcId);
-	NameColor = RPGJson::Color(RPGJson::Str(Def, TEXT("color")), FLinearColor::White);
-	DialogueRoot = RPGJson::Str(Def, TEXT("dialogue"));
+	const TSJson::FObj Def = UTSData::Get(this).Entry(TEXT("npcs"), NpcId);
+	DisplayName = TSJson::Str(Def, TEXT("name"), NpcId);
+	NameColor = TSJson::Color(TSJson::Str(Def, TEXT("color")), FLinearColor::White);
+	DialogueRoot = TSJson::Str(Def, TEXT("dialogue"));
 	TalkKey = NpcId;
 	SetLookFromData(NpcId);
 	Stats->Base.Add(TEXT("hpFlat"), 100.f);

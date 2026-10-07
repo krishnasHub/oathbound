@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "RPGJson.h"
+#include "TSJson.h"
 #include "RPGAbilityComponent.generated.h"
 
 class ARPGPlayerCharacter;
@@ -28,16 +28,16 @@ public:
 	TMap<FString, float> Cooldowns;
 
 	void Setup(const TArray<FString>& InIds);
-	RPGJson::FObj Def(const FString& Id) const;
+	TSJson::FObj Def(const FString& Id) const;
 	bool Unlocked(const FString& Id) const;
-	bool CanAfford(const RPGJson::FObj& D) const;
+	bool CanAfford(const TSJson::FObj& D) const;
 	bool TryActivate(int32 Slot);
 	void TickCooldowns(float Dt);
 
 private:
 	ARPGPlayerCharacter* Player() const;
-	bool Run(const RPGJson::FObj& D);
+	bool Run(const TSJson::FObj& D);
 	ARPGCharacterBase* TargetNearAim(float Range) const;
-	float Scaled(const RPGJson::FObj& D, float V) const;
+	float Scaled(const TSJson::FObj& D, float V) const;
 	void Fail(const FString& Msg) const;
 };

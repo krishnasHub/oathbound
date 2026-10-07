@@ -21,6 +21,8 @@ one) as the game changes.
 |---|---|
 | `play.ps1` | **Start here.** One-click launcher: play, test, package |
 | `unreal/` | The Unreal Engine 5.8 game (C++). See `unreal/README.md` |
+| `unreal/Plugins/Tessera` | Shared framework for top-down HD-2D games (git submodule: github.com/krishnasHub/tessera) |
+| `unreal/Plugins/Loom` | Shared story engine: dialogue, checks, quests, consequences (git submodule: github.com/krishnasHub/loom) |
 | `prototype/rpg-prototype.html` | The HTML top-down test bed for the rules: one file, open it in any browser |
 | `data/game-data.json` | The rules both versions share: stats, classes, abilities, enemies, items, quests, dialogue, map, look settings |
 | `tools/sync-data.js` | Pushes `data/game-data.json` into both versions (`play.ps1` does this for you) |
@@ -28,6 +30,9 @@ one) as the game changes.
 | `lookdev/` | Look tests (3D vs HD-2D vs flat 2D; fog vs tilt-shift). Local only, not in git |
 | `DESIGN.md`, `CHARACTERS.md` | Game design: mechanics, classes, dialogue, quest structure |
 | `SO_FAR.md` | Project log and handoff: where things stand, how it's built, what's next |
+
+Clone with `git clone --recurse-submodules` (or run `git submodule update --init` after a plain clone): the
+game builds on the two plugins above, which are their own repos so other games can share them.
 
 ## Play
 

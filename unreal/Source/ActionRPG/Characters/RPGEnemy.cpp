@@ -1,6 +1,6 @@
 #include "RPGEnemy.h"
 #include "ActionRPG.h"
-#include "RPGData.h"
+#include "TSData.h"
 #include "RPGAssets.h"
 #include "RPGCombat.h"
 #include "RPGSession.h"
@@ -52,32 +52,32 @@ ARPGEnemy::ARPGEnemy()
 
 void ARPGEnemy::Init(const FString& InType, const FVector& InHome)
 {
-	const URPGData& D = URPGData::Get(this);
+	const UTSData& D = UTSData::Get(this);
 	Type = InType;
 	Def = D.Entry(TEXT("enemies"), Type);
 	Home = InHome;
 	Region = D.RegionAt(Home.Y);
-	DisplayName = RPGJson::Str(Def, TEXT("name"), Type);
-	DialogueRoot = RPGJson::Str(Def, TEXT("dialogue"));
+	DisplayName = TSJson::Str(Def, TEXT("name"), Type);
+	DialogueRoot = TSJson::Str(Def, TEXT("dialogue"));
 	TalkKey = Type;
 	NameColor = FLinearColor(1.f, 0.85f, 0.78f);
 
 	SetLookFromData(Type);
 	{
-		const RPGJson::FObj W3 = D.World3D();
-		const FString Weapon = RPGJson::Str(RPGJson::Obj(RPGJson::Obj(W3, TEXT("looks")), Type), TEXT("weapon"));
+		const TSJson::FObj W3 = D.World();
+		const FString Weapon = TSJson::Str(TSJson::Obj(TSJson::Obj(W3, TEXT("looks")), Type), TEXT("weapon"));
 		TArray<FString> Kits;
-		for (const TSharedPtr<FJsonValue>& V : RPGJson::Arr(RPGJson::Obj(W3, TEXT("enemyKits")), Weapon)) Kits.Add(V->AsString());
+		for (const TSharedPtr<FJsonValue>& V : TSJson::Arr(TSJson::Obj(W3, TEXT("enemyKits")), Weapon)) Kits.Add(V->AsString());
 		SetWeaponKits(Kits);
 	}
 	Stats->Base.Reset();
-	Stats->Base.Add(TEXT("hpFlat"), float(RPGJson::Num(Def, TEXT("hp"), 30)));
-	Stats->Base.Add(TEXT("armor"), float(RPGJson::Num(Def, TEXT("armor"), 0)));
+	Stats->Base.Add(TEXT("hpFlat"), float(TSJson::Num(Def, TEXT("hp"), 30)));
+	Stats->Base.Add(TEXT("armor"), float(TSJson::Num(Def, TEXT("armor"), 0)));
 	Stats->Fill();
-	MaxPoise = Poise = float(RPGJson::Num(Def, TEXT("poise"), 30));
-	GetCharacterMovement()->MaxWalkSpeed = D.Px(RPGJson::Num(Def, TEXT("speed"), 80));
+	MaxPoise = Poise = float(TSJson::Num(Def, TEXT("poise"), 30));
+	GetCharacterMovement()->MaxWalkSpeed = D.Px(TSJson::Num(Def, TEXT("speed"), 80));
 
-	TelegraphMat = UMaterialInstanceDynamic::Create(RPGAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Telegraph.M_RPG_Telegraph")), this);
+	TelegraphMat = UMaterialInstanceDynamic::Create(TSAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Telegraph.M_RPG_Telegraph")), this);
 	Telegraph->SetMaterial(0, TelegraphMat);
 	Telegraph->SetRelativeLocation(FVector(0, 0, -GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() + 4.f));
 	Strafe = FMath::RandBool() ? 1.f : -1.f;
@@ -91,8 +91,8 @@ bool ARPGEnemy::IsPassive() const
 	return S && S->Story()->Faction(F) != TEXT("hostile") && S->Duel.Get() != this;
 }
 
-FString ARPGEnemy::FactionId() const { return RPGJson::Str(Def, TEXT("faction")); }
-FString ARPGEnemy::YieldDialogueId() const { return RPGJson::Str(Def, TEXT("yieldDialogue")); }
+FString ARPGEnemy::FactionId() const { return TSJson::Str(Def, TEXT("faction")); }
+FString ARPGEnemy::YieldDialogueId() const { return TSJson::Str(Def, TEXT("yieldDialogue")); }
 
 void ARPGEnemy::OnDamaged(ARPGCharacterBase* Src)
 {
@@ -116,13 +116,13 @@ void ARPGEnemy::OnStaggered()
 float ARPGEnemy::WindupProgress() const
 {
 	if (State != ERPGEnemyState::Windup || !CurAtk.IsValid()) return 0.f;
-	const float W = float(RPGJson::Num(CurAtk, TEXT("windup"), 0.5));
+	const float W = float(TSJson::Num(CurAtk, TEXT("windup"), 0.5));
 	return FMath::Clamp(1.f - T / W, 0.f, 1.f);
 }
 
-RPGJson::FObj ARPGEnemy::NextAttack() const
+TSJson::FObj ARPGEnemy::NextAttack() const
 {
-	const TArray<TSharedPtr<FJsonValue>> A = RPGJson::Arr(Def, TEXT("attacks"));
+	const TArray<TSharedPtr<FJsonValue>> A = TSJson::Arr(Def, TEXT("attacks"));
 	return A.IsEmpty() ? nullptr : A[AtkIndex % A.Num()]->AsObject();
 }
 
@@ -131,7 +131,7 @@ RPGJson::FObj ARPGEnemy::NextAttack() const
 void ARPGEnemy::Tick(float Dt)
 {
 	Super::Tick(Dt);
-	const URPGData& D = URPGData::Get(this);
+	const UTSData& D = UTSData::Get(this);
 
 	if (bDead)
 	{
@@ -173,15 +173,15 @@ void ARPGEnemy::Tick(float Dt)
 
 bool ARPGEnemy::CanSeePlayer(float Dist) const
 {
-	const URPGData& D = URPGData::Get(this);
+	const UTSData& D = UTSData::Get(this);
 	const ARPGPlayerCharacter* P = URPGSession::Get(this)->Player();
 	if (!P || P->IsDead() || P->Tags.Has(TEXT("Hidden"))) return false;
 	const bool bSameSide = bProvoked || D.RegionAt(P->GetActorLocation().Y) == Region;
-	if (!bSameSide || Dist >= D.Px(RPGJson::Num(Def, TEXT("aggro"), 170))) return false;
+	if (!bSameSide || Dist >= D.Px(TSJson::Num(Def, TEXT("aggro"), 170))) return false;
 
-	const RPGJson::FObj EV = RPGJson::Obj(D.Section(TEXT("tuning")), TEXT("enemyVision"));
-	const float Hear = D.Px(RPGJson::Num(Def, TEXT("hearRadius"), RPGJson::Num(EV, TEXT("hearRadius"), 70)));
-	const float Cone = float(RPGJson::Num(Def, TEXT("visionAngle"), RPGJson::Num(EV, TEXT("coneAngle"), 120)));
+	const TSJson::FObj EV = TSJson::Obj(D.Section(TEXT("tuning")), TEXT("enemyVision"));
+	const float Hear = D.Px(TSJson::Num(Def, TEXT("hearRadius"), TSJson::Num(EV, TEXT("hearRadius"), 70)));
+	const float Cone = float(TSJson::Num(Def, TEXT("visionAngle"), TSJson::Num(EV, TEXT("coneAngle"), 120)));
 	const FVector To = (P->GetActorLocation() - GetActorLocation()).GetSafeNormal2D();
 	const bool bInView = Dist < Hear || FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(Facing(), To))) <= Cone * 0.5f;
 	if (!bInView) return false;
@@ -206,11 +206,11 @@ void ARPGEnemy::FaceToward(const FVector& Target, float Dt, float Rate)
 
 void ARPGEnemy::RunAI(float Dt)
 {
-	const URPGData& D = URPGData::Get(this);
+	const UTSData& D = UTSData::Get(this);
 	URPGSession* Session = URPGSession::Get(this);
 	ARPGPlayerCharacter* P = Session->Player();
 	UCharacterMovementComponent* Move = GetCharacterMovement();
-	Move->MaxWalkSpeed = D.Px(RPGJson::Num(Def, TEXT("speed"), 80)) * (Tags.Has(TEXT("Slowed")) ? 0.4f : 1.f);
+	Move->MaxWalkSpeed = D.Px(TSJson::Num(Def, TEXT("speed"), 80)) * (Tags.Has(TEXT("Slowed")) ? 0.4f : 1.f);
 
 	if (IsPassive())
 	{
@@ -251,30 +251,30 @@ void ARPGEnemy::RunAI(float Dt)
 	{
 		if (bPlayerHidden) { State = ERPGEnemyState::Idle; bHasWander = false; break; }       // lost you in the smoke
 		if (!bSameSide) { State = ERPGEnemyState::Return; T = 6.f; break; }             // you left its territory
-		if (P->IsDead() || FVector::Dist2D(GetActorLocation(), Home) > D.Px(RPGJson::Num(Def, TEXT("leash"), 360)) ||
-			Dist > D.Px(RPGJson::Num(Def, TEXT("aggro"), 170)) * 1.8f)
+		if (P->IsDead() || FVector::Dist2D(GetActorLocation(), Home) > D.Px(TSJson::Num(Def, TEXT("leash"), 360)) ||
+			Dist > D.Px(TSJson::Num(Def, TEXT("aggro"), 170)) * 1.8f)
 		{
 			State = ERPGEnemyState::Return; T = 6.f; break;
 		}
-		const RPGJson::FObj Atk = NextAttack();
+		const TSJson::FObj Atk = NextAttack();
 		if (!Atk) break;
 		FaceToward(PL, Dt);
 		Move->bOrientRotationToMovement = false;
 		Cool -= Dt;
-		const FString AType = RPGJson::Str(Atk, TEXT("type"));
+		const FString AType = TSJson::Str(Atk, TEXT("type"));
 		if (AType == TEXT("ranged"))
 		{
-			const float Want = D.Px(RPGJson::Num(Def, TEXT("preferredDist"), 200));
+			const float Want = D.Px(TSJson::Num(Def, TEXT("preferredDist"), 200));
 			const float Dir = Dist < Want - D.Px(40) ? -1.f : (Dist > Want + D.Px(40) ? 1.f : 0.f);
 			if (FMath::FRand() < Dt * 0.4f) Strafe = -Strafe;
 			const FVector Fwd = (PL - GetActorLocation()).GetSafeNormal2D();
 			const FVector Side(-Fwd.Y, Fwd.X, 0);
 			AddMovementInput(Fwd * Dir + Side * Strafe * 0.6f, 1.f);
-			if (Cool <= 0.f && Dist < D.Px(RPGJson::Num(Atk, TEXT("range"), 260)) && CanSeePlayer(Dist)) BeginWindup(Atk);
+			if (Cool <= 0.f && Dist < D.Px(TSJson::Num(Atk, TEXT("range"), 260)) && CanSeePlayer(Dist)) BeginWindup(Atk);
 		}
 		else
 		{
-			const float Reach = D.Px(RPGJson::Num(Atk, TEXT("range"), 22));
+			const float Reach = D.Px(TSJson::Num(Atk, TEXT("range"), 22));
 			if (Dist - P->Radius() > Reach * 0.8f) MoveToward(PL, 1.f);
 			if (Cool <= 0.f && Dist - P->Radius() <= Reach + Radius() * 0.5f) BeginWindup(Atk);
 		}
@@ -284,13 +284,13 @@ void ARPGEnemy::RunAI(float Dt)
 	{
 		if (!bSameSide) { State = ERPGEnemyState::Return; T = 6.f; Telegraph->SetVisibility(false); SwingDelay = -1.f; if (Anim()) Anim()->Montage_Stop(0.2f); break; }
 		T -= Dt;
-		if (RPGJson::Str(CurAtk, TEXT("type")) == TEXT("ranged")) FaceToward(PL, Dt, 240.f);   // archers track you
+		if (TSJson::Str(CurAtk, TEXT("type")) == TEXT("ranged")) FaceToward(PL, Dt, 240.f);   // archers track you
 		if (T <= 0.f)
 		{
 			PerformAttack();
 			SpriteAttackAt = GetWorld()->GetTimeSeconds();
 			State = ERPGEnemyState::Recover;
-			T = float(RPGJson::Num(CurAtk, TEXT("recover"), 0.6));
+			T = float(TSJson::Num(CurAtk, TEXT("recover"), 0.6));
 		}
 		break;
 	}
@@ -305,7 +305,7 @@ void ARPGEnemy::RunAI(float Dt)
 		Move->bOrientRotationToMovement = true;
 		T -= Dt;
 		MoveToward(Home, 1.f);
-		if (CanSeePlayer(Dist) && FVector::Dist2D(GetActorLocation(), Home) < D.Px(RPGJson::Num(Def, TEXT("leash"), 360)) * 0.6f) { State = ERPGEnemyState::Chase; break; }
+		if (CanSeePlayer(Dist) && FVector::Dist2D(GetActorLocation(), Home) < D.Px(TSJson::Num(Def, TEXT("leash"), 360)) * 0.6f) { State = ERPGEnemyState::Chase; break; }
 		if (FVector::Dist2D(GetActorLocation(), Home) < 40.f || T <= 0.f) ResetToHome();
 		break;
 	}
@@ -313,11 +313,11 @@ void ARPGEnemy::RunAI(float Dt)
 	}
 }
 
-void ARPGEnemy::BeginWindup(const RPGJson::FObj& Atk)
+void ARPGEnemy::BeginWindup(const TSJson::FObj& Atk)
 {
 	CurAtk = Atk;
 	State = ERPGEnemyState::Windup;
-	T = float(RPGJson::Num(Atk, TEXT("windup"), 0.5));
+	T = float(TSJson::Num(Atk, TEXT("windup"), 0.5));
 	const ARPGPlayerCharacter* P = URPGSession::Get(this)->Player();
 	if (P) SetActorRotation(FRotator(0, (P->GetActorLocation() - GetActorLocation()).GetSafeNormal2D().Rotation().Yaw, 0));
 	BuildTelegraph();
@@ -325,10 +325,10 @@ void ARPGEnemy::BeginWindup(const RPGJson::FObj& Atk)
 	// Pick the montage swing that matches the attack and time it to land at the end of the wind-up.
 	SwingMontage = nullptr;
 	SwingDelay = -1.f;
-	const FString AType = RPGJson::Str(Atk, TEXT("type"));
+	const FString AType = TSJson::Str(Atk, TEXT("type"));
 	if (MeshKind == TEXT("slime") || AType == TEXT("ranged")) return;
-	if (AType == TEXT("slam")) SwingMontage = RPGAssets::Load<UAnimMontage>(RPGAssets::ChargedMontage);
-	else SwingMontage = RPGAssets::Load<UAnimMontage>(RPGAssets::ComboMontage);
+	if (AType == TEXT("slam")) SwingMontage = TSAssets::Load<UAnimMontage>(RPGAssets::ChargedMontage);
+	else SwingMontage = TSAssets::Load<UAnimMontage>(RPGAssets::ComboMontage);
 	if (!SwingMontage || SwingMontage->CompositeSections.IsEmpty()) return;
 	const int32 Section = AType == TEXT("slam") ? SwingMontage->CompositeSections.Num() - 1 : AtkIndex % SwingMontage->CompositeSections.Num();
 	SwingSection = SwingMontage->CompositeSections[Section].SectionName;
@@ -339,8 +339,8 @@ void ARPGEnemy::BeginWindup(const RPGJson::FObj& Atk)
 
 void ARPGEnemy::BuildTelegraph()
 {
-	const URPGData& D = URPGData::Get(this);
-	const FString AType = RPGJson::Str(CurAtk, TEXT("type"));
+	const UTSData& D = UTSData::Get(this);
+	const FString AType = TSJson::Str(CurAtk, TEXT("type"));
 	const float Scale = GetActorScale3D().X;
 	TArray<FVector> V; TArray<int32> Tri;
 
@@ -356,14 +356,14 @@ void ARPGEnemy::BuildTelegraph()
 		}
 	};
 
-	if (AType == TEXT("slam")) Fan(D.Px(RPGJson::Num(CurAtk, TEXT("radius"), 95)) / Scale, 360.f);
+	if (AType == TEXT("slam")) Fan(D.Px(TSJson::Num(CurAtk, TEXT("radius"), 95)) / Scale, 360.f);
 	else if (AType == TEXT("ranged"))
 	{
-		const float L = D.Px(RPGJson::Num(CurAtk, TEXT("range"), 260)) / Scale, W = 9.f / Scale;
+		const float L = D.Px(TSJson::Num(CurAtk, TEXT("range"), 260)) / Scale, W = 9.f / Scale;
 		V = { FVector(0, -W, 0), FVector(0, W, 0), FVector(L, W, 0), FVector(L, -W, 0) };
 		Tri = { 0, 1, 3, 1, 2, 3 };
 	}
-	else Fan((D.Px(RPGJson::Num(CurAtk, TEXT("range"), 22)) + Radius()) / Scale, float(RPGJson::Num(CurAtk, TEXT("arc"), 110)));
+	else Fan((D.Px(TSJson::Num(CurAtk, TEXT("range"), 22)) + Radius()) / Scale, float(TSJson::Num(CurAtk, TEXT("arc"), 110)));
 
 	TArray<FVector> N; N.Init(FVector::UpVector, V.Num());
 	Telegraph->CreateMeshSection(0, V, Tri, N, TArray<FVector2D>(), TArray<FColor>(), TArray<FProcMeshTangent>(), false);
@@ -374,46 +374,46 @@ void ARPGEnemy::BuildTelegraph()
 
 void ARPGEnemy::PerformAttack()
 {
-	const URPGData& D = URPGData::Get(this);
+	const UTSData& D = UTSData::Get(this);
 	URPGSession* Session = URPGSession::Get(this);
 	ARPGPlayerCharacter* P = Session->Player();
 	Telegraph->SetVisibility(false);
-	const RPGJson::FObj A = CurAtk;
-	const FString AType = RPGJson::Str(A, TEXT("type"));
+	const TSJson::FObj A = CurAtk;
+	const FString AType = TSJson::Str(A, TEXT("type"));
 	FRPGHit Hit;
-	Hit.Base = float(RPGJson::Num(A, TEXT("damage"), 8));
-	Hit.Poise = float(RPGJson::Num(A, TEXT("poise"), 0));
-	Hit.Knockback = float(RPGJson::Num(A, TEXT("knockback"), 0));
+	Hit.Base = float(TSJson::Num(A, TEXT("damage"), 8));
+	Hit.Poise = float(TSJson::Num(A, TEXT("poise"), 0));
+	Hit.Knockback = float(TSJson::Num(A, TEXT("knockback"), 0));
 
 	if (AType == TEXT("melee"))
 	{
-		if (const double Lunge = RPGJson::Num(A, TEXT("lunge"), 0)) Knock(Facing() * D.Px(Lunge));
+		if (const double Lunge = TSJson::Num(A, TEXT("lunge"), 0)) Knock(Facing() * D.Px(Lunge));
 		if (P && !P->IsDead())
 		{
 			const FVector To = P->GetActorLocation() - GetActorLocation();
 			const float Angle = FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(Facing(), To.GetSafeNormal2D())));
-			if (To.Size2D() - P->Radius() <= D.Px(RPGJson::Num(A, TEXT("range"), 22)) + Radius() * 0.5f && Angle <= RPGJson::Num(A, TEXT("arc"), 110) * 0.5)
+			if (To.Size2D() - P->Radius() <= D.Px(TSJson::Num(A, TEXT("range"), 22)) + Radius() * 0.5f && Angle <= TSJson::Num(A, TEXT("arc"), 110) * 0.5)
 				RPGCombat::Deal(this, P, Hit);
 		}
 	}
 	else if (AType == TEXT("slam"))
 	{
 		Session->Shake(6.f);
-		if (P && !P->IsDead() && FVector::Dist2D(P->GetActorLocation(), GetActorLocation()) <= D.Px(RPGJson::Num(A, TEXT("radius"), 95)) + P->Radius())
+		if (P && !P->IsDead() && FVector::Dist2D(P->GetActorLocation(), GetActorLocation()) <= D.Px(TSJson::Num(A, TEXT("radius"), 95)) + P->Radius())
 			RPGCombat::Deal(this, P, Hit);
 	}
 	else if (AType == TEXT("ranged") && P)
 	{
-		const RPGJson::FObj Pr = RPGJson::Obj(A, TEXT("projectile"));
+		const TSJson::FObj Pr = TSJson::Obj(A, TEXT("projectile"));
 		const FVector From = Chest() + Facing() * (Radius() + 20.f);
 		// An arrow lobbed at where the player stands now: keep moving and it lands behind you.
-		ARPGProjectile::FireArrow(this, From, P->Chest(), D.Px(RPGJson::Num(Pr, TEXT("speed"), 300)),
-			D.Px(RPGJson::Num(Pr, TEXT("radius"), 4)), RPGJson::Color(RPGJson::Str(Pr, TEXT("fletch"), TEXT("#c83a2a"))), Hit);
+		ARPGProjectile::FireArrow(this, From, P->Chest(), D.Px(TSJson::Num(Pr, TEXT("speed"), 300)),
+			D.Px(TSJson::Num(Pr, TEXT("radius"), 4)), TSJson::Color(TSJson::Str(Pr, TEXT("fletch"), TEXT("#c83a2a"))), Hit);
 	}
 
-	RevealT = float(RPGJson::Num(RPGJson::Obj(D.Section(TEXT("tuning")), TEXT("threatSense")), TEXT("revealAfterAttack"), 1.5));
+	RevealT = float(TSJson::Num(TSJson::Obj(D.Section(TEXT("tuning")), TEXT("threatSense")), TEXT("revealAfterAttack"), 1.5));
 	++AtkIndex;
-	Cool = float(RPGJson::Num(A, TEXT("cooldown"), 0));
+	Cool = float(TSJson::Num(A, TEXT("cooldown"), 0));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -446,16 +446,16 @@ void ARPGEnemy::Die(AActor* Killer)
 	Super::Die(Killer);
 	Telegraph->SetVisibility(false);
 	SwingDelay = -1.f;
-	const double Respawn = RPGJson::Num(Def, TEXT("respawn"), 40);
+	const double Respawn = TSJson::Num(Def, TEXT("respawn"), 40);
 	RespawnTimer = Respawn < 0 ? BIG_NUMBER : float(Respawn);
 	DeathHide = 4.f;
 
 	URPGSession* Session = URPGSession::Get(this);
 	Session->Story()->OnKill(Type);
-	if (ARPGPlayerCharacter* P = Cast<ARPGPlayerCharacter>(Killer)) P->GainXp(int32(RPGJson::Num(Def, TEXT("xp"), 0)));
+	if (ARPGPlayerCharacter* P = Cast<ARPGPlayerCharacter>(Killer)) P->GainXp(int32(TSJson::Num(Def, TEXT("xp"), 0)));
 	RPGLoot::Drop(this);
 
-	const FString Resolve = RPGJson::Str(Def, TEXT("resolveOnDeath"));
+	const FString Resolve = TSJson::Str(Def, TEXT("resolveOnDeath"));
 	FString Enc, Outcome;
 	if (Resolve.Split(TEXT(":"), &Enc, &Outcome)) Session->Story()->Resolve(Enc, Outcome);
 }

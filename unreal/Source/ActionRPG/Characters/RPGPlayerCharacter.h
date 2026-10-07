@@ -42,8 +42,8 @@ public:
 
 	FString ClassId = TEXT("knight");
 	FString Sex = TEXT("male");
-	RPGJson::FObj ClassDef;
-	RPGJson::FObj Style() const;
+	TSJson::FObj ClassDef;
+	TSJson::FObj Style() const;
 	int32 StyleIndex = 0;
 
 	UPROPERTY(VisibleAnywhere, Category = "Camera") TObjectPtr<USpringArmComponent> CameraBoom;
@@ -70,8 +70,8 @@ public:
 	float DeathTimer = 0.f;
 
 	// Damage-pipeline hooks
-	virtual RPGJson::FObj GuardStyle() const override;
-	virtual RPGJson::FObj PassiveStyle() const override;
+	virtual TSJson::FObj GuardStyle() const override;
+	virtual TSJson::FObj PassiveStyle() const override;
 	virtual void OnStaggered() override;
 	virtual void Die(AActor* Killer) override;
 
@@ -92,7 +92,7 @@ public:
 	 *  no further than MaxRange. */
 	FVector ArrowTarget(const FVector& From, float MaxRange) const;
 	/** Called by the ability component after a successful cast, to play the matching pose. */
-	void OnAbilityUsed(const RPGJson::FObj& Ability);
+	void OnAbilityUsed(const TSJson::FObj& Ability);
 	/** Turn to face the aim (camera direction, or the cursor when top-down; yaw only). */
 	void FaceAim();
 	/** While blocking: turn toward the nearest foe coming at you (else the aim). */
@@ -106,7 +106,7 @@ public:
 	/** Weapon meshes for the current style (world3d.styleKits). */
 	void RefreshWeapons();
 	/** Invulnerable dash; with a Strike definition it damages everything it passes through (Charge, Shadow Dash). */
-	void StartDash(const FVector& Dir, float Speed, float Duration, const RPGJson::FObj& Strike);
+	void StartDash(const FVector& Dir, float Speed, float Duration, const TSJson::FObj& Strike);
 	void BindUIHooks(TFunction<void(FName)> Handler) { UIHandler = MoveTemp(Handler); }
 
 	FVector SpawnPoint;
@@ -244,7 +244,7 @@ private:
 	float DodgeTime = 0.f;
 	FVector DodgeDir = FVector::ForwardVector;
 	float DodgeSpeed = 0.f;
-	RPGJson::FObj DashStrike;
+	TSJson::FObj DashStrike;
 	TSet<TWeakObjectPtr<AActor>> DashHit;
 	FVector ShakeOffset = FVector::ZeroVector;
 

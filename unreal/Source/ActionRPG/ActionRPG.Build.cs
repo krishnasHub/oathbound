@@ -22,6 +22,8 @@ public class ActionRPG : ModuleRules
 			"RenderCore",               // GWhiteTexture for HUD triangles
 			"AIModule",                 // AAIController possesses enemies so CharacterMovement runs
 			"NavigationSystem",         // runtime navmesh for click-to-move
+			"TesseraCore",              // data, looks, assets (Plugins/Tessera)
+			"TesseraWorld",             // world builder base, sky and day/night, navmesh
 			"Loom"                      // story engine (Plugins/Loom)
 		});
 
