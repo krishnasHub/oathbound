@@ -16,6 +16,19 @@
     "interactRange": 48, "respawnMinDistance": 420, "deathGoldPenalty": 0.1
   },
 
+  "stats": {
+    "_doc": "Tessera stats and damage rules. A string value names a tuning number. Pools: max = flat stat + base + sum(stat x per); regen per second after regenDelay.",
+    "health": "hp",
+    "pools": {
+      "hp":      { "max": { "flat": "hpFlat", "per": { "vitality": "hpPerVitality", "level": "hpPerLevel" } }, "round": true },
+      "stamina": { "max": { "base": "staminaBase", "per": { "agility": "staminaPerAgility" } }, "regen": { "base": "staminaRegen" }, "regenDelay": "staminaRegenDelay" },
+      "mana":    { "max": { "flat": "manaFlat", "per": { "focus": "manaPerFocus" } }, "regen": { "flat": "manaRegen" } }
+    },
+    "crit": { "flat": "critPct", "per": { "agility": "critPctPerAgility" } },
+    "critMultiplier": "critMultiplier", "armorStat": "armor", "armorConstant": "armorConstant", "variance": "damageVariance",
+    "scaling": { "might": "mightScaling", "agility": "agilityScaling", "focus": "focusScaling" },
+    "staggerTime": "staggerTime", "poiseRegenDelay": "poiseRegenDelay"
+  },
   "world3d": {
     "_doc": "Unreal-only presentation settings. Gameplay numbers stay in pixels (shared with the HTML prototype); unitsPerPx converts them to Unreal units.",
     "tileSize": 300, "unitsPerPx": 3.5, "wallHeight": 380,
@@ -28,12 +41,25 @@
     },
     "look": "hd2d",
     "dialoguePortraits": false,
+    "assets": {
+      "_doc": "Assets Tessera loads by name. '/...' = object path; otherwise a Starter Content material name (RPGAssets::StarterMat).",
+      "sprite": "/Game/RPG/Materials/M_RPG_Sprite.M_RPG_Sprite", "pixelWorld": "/Game/RPG/Materials/M_RPG_PixelWorld.M_RPG_PixelWorld",
+      "glow": "/Game/RPG/Materials/M_RPG_Glow.M_RPG_Glow", "flash": "/Game/RPG/Materials/M_RPG_Flash.M_RPG_Flash",
+      "telegraph": "/Game/RPG/Materials/M_RPG_Telegraph.M_RPG_Telegraph",
+      "hitEffect": "/Game/Variant_Combat/VFX/NS_Damage.NS_Damage", "smoke": "/Game/StarterContent/Particles/P_Smoke.P_Smoke",
+      "coin": "M_Metal_Gold", "kitPart": "M_Metal_Steel"
+    },
+    "currencyKey": "gold",
+    "text": {
+      "_doc": "Overrides for words Tessera shows (defaults are generic English).",
+      "currencyGained": "+{n}g", "notEnough": "Not enough {pool}",
+      "bagFull": "Bag is full — salvage something (I, Shift+Click)"
+    },
     "looks2d": {
       "_doc": "Look tests. 'mesh3d' = mannequins + Starter Content. 'hd2d' = pixel-art sprite cards standing in the lit 3D world with pixel textures (Octopath style). 'flat2d' = orthographic top-down pixel map with flat sprites. Override per run with -RPGLook=hd2d|flat2d. Art: tools/pixelart, imported by unreal/Tools/import_pixel.py.",
       "spriteUnits": { "hd2d": 6.5, "flat2d": 9.375 },
       "hd2dCamera": { "pitch": -40, "armLength": 6600, "minArm": 5400, "maxArm": 7800, "fov": 30, "tiltShift": false, "focusFstop": 0.5, "sensorWidth": 400 },
       "flatCamera": { "orthoWidth": 3800, "minWidth": 2800, "maxWidth": 5200 },
-      "materials": { "sprite": "/Game/RPG/Materials/M_RPG_Sprite.M_RPG_Sprite", "pixelWorld": "/Game/RPG/Materials/M_RPG_PixelWorld.M_RPG_PixelWorld" },
       "textureFolder": "/Game/RPG/Pixel",
       "pixelSize": 200,
       "pixelMaterials": {

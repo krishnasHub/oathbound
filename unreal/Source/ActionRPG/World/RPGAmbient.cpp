@@ -1,4 +1,5 @@
 #include "RPGAmbient.h"
+#include "TSFeedback.h"
 #include "TSSky.h"
 #include "RPGWorldBuilder.h"
 #include "TSLook.h"
@@ -229,7 +230,7 @@ void ARPGAmbient::TickGeese(float Dt, const FVector& Hero, bool bDay)
 		{
 			G.State = GooseHonk; G.Timer = 0.6f; G.Vel = FVector::ZeroVector;
 			G.bFacingLeft = Hero.X < G.Pos.X;
-			if (Session) Session->Float(FVector(G.Pos.X, G.Pos.Y, Ground(G.Pos) + 170.f), TEXT("HONK!"), FLinearColor(1.f, 0.95f, 0.8f), 0.9f);
+			if (Session) UTSFeedback::Get(Session)->Float(FVector(G.Pos.X, G.Pos.Y, Ground(G.Pos) + 170.f), TEXT("HONK!"), FLinearColor(1.f, 0.95f, 0.8f), 0.9f);
 		}
 		int32 Col = 0;
 		switch (G.State)
@@ -288,7 +289,7 @@ void ARPGAmbient::TickProwler(float Dt, const FVector& Hero, bool bNight)
 		{
 			M.State = ProwlStartled; M.Timer = 0.5f; M.Vel = FVector::ZeroVector;
 			M.bFacingLeft = Hero.X < M.Pos.X;
-			if (URPGSession* S = URPGSession::Get(this)) S->Float(FVector(M.Pos.X, M.Pos.Y, Ground(M.Pos) + 260.f), TEXT("!"), FLinearColor(1.f, 0.85f, 0.3f), 1.3f);
+			if (URPGSession* S = URPGSession::Get(this)) UTSFeedback::Get(S)->Float(FVector(M.Pos.X, M.Pos.Y, Ground(M.Pos) + 260.f), TEXT("!"), FLinearColor(1.f, 0.85f, 0.3f), 1.3f);
 			break;
 		}
 		const FVector To = ProwlRoute[ProwlLeg] - M.Pos;

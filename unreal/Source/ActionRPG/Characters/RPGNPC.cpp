@@ -8,7 +8,7 @@
 
 ARPGNPC::ARPGNPC()
 {
-	Team = ERPGTeam::Villager;
+	Team = ETSTeam::Neutral;
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 	AIControllerClass = AAIController::StaticClass();
 }

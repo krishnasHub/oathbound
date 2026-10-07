@@ -1,19 +1,20 @@
 #include "RPGPlayerCharacter.h"
+#include "TSFeedback.h"
 #include "TSSky.h"
 #include "ActionRPG.h"
 #include "TSData.h"
 #include "RPGAssets.h"
-#include "RPGCombat.h"
+#include "TSCombat.h"
 #include "RPGSession.h"
 #include "LMStory.h"
 #include "RPGEnemy.h"
-#include "RPGFX.h"
-#include "RPGProjectile.h"
-#include "RPGInventoryComponent.h"
-#include "RPGAbilityComponent.h"
-#include "RPGPoseMesh.h"
+#include "TSFX.h"
+#include "TSProjectile.h"
+#include "TSInventory.h"
+#include "TSAbilities.h"
+#include "TSPoseMesh.h"
 #include "TSLook.h"
-#include "RPGSprite.h"
+#include "TSSprite.h"
 #include "Components/PointLightComponent.h"
 #include "RPGWorldBuilder.h"
 
@@ -41,7 +42,7 @@
 
 ARPGPlayerCharacter::ARPGPlayerCharacter()
 {
-	Team = ERPGTeam::Player;
+	Team = ETSTeam::Player;
 
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
@@ -56,10 +57,10 @@ ARPGPlayerCharacter::ARPGPlayerCharacter()
 	Camera->bUsePawnControlRotation = false;
 	Camera->FieldOfView = 80.f;
 
-	Inventory = CreateDefaultSubobject<URPGInventoryComponent>(TEXT("Inventory"));
-	Abilities = CreateDefaultSubobject<URPGAbilityComponent>(TEXT("Abilities"));
+	Inventory = CreateDefaultSubobject<UTSInventoryComponent>(TEXT("Inventory"));
+	Abilities = CreateDefaultSubobject<UTSAbilityComponent>(TEXT("Abilities"));
 
-	PoseMesh = CreateDefaultSubobject<URPGPoseMesh>(TEXT("PoseMesh"));
+	PoseMesh = CreateDefaultSubobject<UTSPoseMesh>(TEXT("PoseMesh"));
 	PoseMesh->SetupAttachment(GetCapsuleComponent());
 	PoseMesh->SetRelativeLocationAndRotation(FVector(0, 0, -90.f), FRotator(0, -90.f, 0));
 	// Guard: upper arm forward and down, forearm angled up across the chest, outer forearm (and the
@@ -250,6 +251,7 @@ void ARPGPlayerCharacter::ApplyClass(const FString& InClassId, const FString& In
 	Stats->Base.Add(TEXT("weaponDamage"), float(TSJson::Num(PlayerDef, TEXT("unarmedDamage"), 4)));
 	Stats->Effects.Reset();
 	MaxPoise = Poise = float(TSJson::Num(PlayerDef, TEXT("poise"), 60));
+	HitIframes = float(D.Tuning(TEXT("playerHitIframes"), 0.45));
 	Xp = 0;
 	AttrPoints = 0;
 
@@ -258,11 +260,11 @@ void ARPGPlayerCharacter::ApplyClass(const FString& InClassId, const FString& In
 	Inventory->Items.Reset();
 	Inventory->Equipment.Reset();
 	Inventory->Capacity = int32(TSJson::Num(PlayerDef, TEXT("inventorySize"), 16));
-	Inventory->Gold = int32(TSJson::Num(PlayerDef, TEXT("startGold"), 10));
+	Inventory->Currency = int32(TSJson::Num(PlayerDef, TEXT("startGold"), 10));
 	for (const TSharedPtr<FJsonValue>& V : TSJson::Arr(ClassDef, TEXT("startItems")))
 	{
 		const TSJson::FObj S = V->AsObject();
-		FRPGItem It = URPGInventoryComponent::MakeItem(this, TSJson::Str(S, TEXT("item")));
+		FTSItem It = UTSInventoryComponent::MakeItem(this, TSJson::Str(S, TEXT("item")));
 		It.Qty = int32(TSJson::Num(S, TEXT("qty"), 1));
 		Inventory->Add(It);
 		if (TSJson::Bool(S, TEXT("equip"))) Inventory->Equip(It.Uid);
@@ -276,7 +278,7 @@ void ARPGPlayerCharacter::ApplyClass(const FString& InClassId, const FString& In
 	GetCharacterMovement()->MaxWalkSpeed = D.Px(TSJson::Num(ClassDef, TEXT("moveSpeed"), 165));
 	RefreshWeapons();
 	UE_LOG(LogRPG, Display, TEXT("Player is a %s %s: HP %.0f, stamina %.0f, mana %.0f, speed %.0f uu/s."),
-		*Sex, *ClassId, Stats->MaxHP(), Stats->MaxStamina(), Stats->MaxMana(), GetCharacterMovement()->MaxWalkSpeed);
+		*Sex, *ClassId, Stats->MaxHealth(), Stats->Max(RPGStat::Stamina), Stats->Max(RPGStat::Mana), GetCharacterMovement()->MaxWalkSpeed);
 }
 
 int32 ARPGPlayerCharacter::XpToNext(const UObject* Ctx, int32 InLevel)
@@ -290,7 +292,7 @@ void ARPGPlayerCharacter::GainXp(int32 Amount)
 	if (Amount <= 0) return;
 	URPGSession* Session = URPGSession::Get(this);
 	Xp += Amount;
-	Session->Float(Head() + FVector(0, 0, 50), FString::Printf(TEXT("+%d XP"), Amount), FLinearColor(0.7f, 0.55f, 1.f), 0.8f);
+	UTSFeedback::Get(Session)->Float(Head() + FVector(0, 0, 50), FString::Printf(TEXT("+%d XP"), Amount), FLinearColor(0.7f, 0.55f, 1.f), 0.8f);
 	while (Xp >= XpToNext(this, Level()))
 	{
 		Xp -= XpToNext(this, Level());
@@ -298,13 +300,13 @@ void ARPGPlayerCharacter::GainXp(int32 Amount)
 		const int32 Points = int32(UTSData::Get(this).Tuning(TEXT("pointsPerLevel"), 3));
 		AttrPoints += Points;
 		Stats->Fill();
-		ARPGFX::Ring(GetWorld(), GetActorLocation() - FVector(0, 0, 86), 220.f, FLinearColor(1.f, 0.83f, 0.3f), 0.8f);
-		Session->Toast(FString::Printf(TEXT("Level %d! +%d attribute points — press C"), Level(), Points), FLinearColor(1.f, 0.83f, 0.3f));
+		ATSFX::Ring(GetWorld(), GetActorLocation() - FVector(0, 0, 86), 220.f, FLinearColor(1.f, 0.83f, 0.3f), 0.8f);
+		UTSFeedback::Get(Session)->Toast(FString::Printf(TEXT("Level %d! +%d attribute points — press C"), Level(), Points), FLinearColor(1.f, 0.83f, 0.3f));
 		for (int32 I = 0; I < Abilities->Ids.Num(); ++I)
 		{
 			const TSJson::FObj A = Abilities->Def(Abilities->Ids[I]);
 			if (int32(TSJson::Num(A, TEXT("unlockLevel"), 1)) == Level())
-				Session->Toast(FString::Printf(TEXT("New ability: %s [%d]"), *TSJson::Str(A, TEXT("name")), I + 1), TSJson::Color(TSJson::Str(A, TEXT("color"))));
+				UTSFeedback::Get(Session)->Toast(FString::Printf(TEXT("New ability: %s [%d]"), *TSJson::Str(A, TEXT("name")), I + 1), TSJson::Color(TSJson::Str(A, TEXT("color"))));
 		}
 	}
 }
@@ -453,7 +455,7 @@ void ARPGPlayerCharacter::OpenPicker()
 	}
 	if (Start == INDEX_NONE)
 	{
-		URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No abilities yet"), FLinearColor(0.8f, 0.8f, 0.8f), 0.8f);
+		UTSFeedback::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No abilities yet"), FLinearColor(0.8f, 0.8f, 0.8f), 0.8f);
 		return;
 	}
 	Picker = Start;
@@ -534,7 +536,7 @@ FString ARPGPlayerCharacter::TalkBlocker(const ARPGCharacterBase* C) const
 	if (C->DialogueRoot.IsEmpty())
 		return E && !TSJson::Bool(E->Def, TEXT("intelligent")) ? TEXT("It can't be reasoned with.") : TEXT("They have nothing to say.");
 	// Foes talk only while their faction is still neutral; mid-fight it takes Silver Words.
-	if (C->Team == ERPGTeam::Enemy && !C->IsPassive()) return TEXT("They're past talking.");
+	if (C->Team == ETSTeam::Hostile && !C->IsPassive()) return TEXT("They're past talking.");
 	return FString();
 }
 
@@ -544,7 +546,7 @@ void ARPGPlayerCharacter::TryTalk(ARPGCharacterBase* C)
 	const FString Why = TalkBlocker(C);
 	if (!Why.IsEmpty())
 	{
-		if (C) URPGSession::Get(this)->Float(C->Head() + FVector(0, 0, 40), Why, FLinearColor(0.85f, 0.85f, 0.8f), 0.9f);
+		if (C) UTSFeedback::Get(this)->Float(C->Head() + FVector(0, 0, 40), Why, FLinearColor(0.85f, 0.85f, 0.8f), 0.9f);
 		return;
 	}
 	Click(C, false, C->GetActorLocation());
@@ -593,7 +595,7 @@ void ARPGPlayerCharacter::OnKey(FName Key)
 	if (Key == TEXT("Ability4")) { Abilities->TryActivate(3); return; }
 	if (Key == TEXT("Debug")) { Session->SetDebug(!Session->IsDebug()); return; }
 	if (Key == TEXT("CheatLevel")) { if (Session->IsDebug()) GainXp(XpToNext(this, Level()) - Xp); return; }
-	if (Key == TEXT("CheatGold")) { if (Session->IsDebug()) { Inventory->Gold += 100; Inventory->OnChanged.Broadcast(); } return; }
+	if (Key == TEXT("CheatGold")) { if (Session->IsDebug()) { Inventory->Currency += 100; Inventory->OnChanged.Broadcast(); } return; }
 	if (Key == TEXT("Escape") && Picker >= 0) { ClosePicker(false); return; }   // Esc backs out of what you're doing first
 	if (Key == TEXT("Escape") && bTalkMode) { SetTalkMode(false); return; }
 	if (UIHandler) UIHandler(Key);   // Inventory / Character / Quests / Help / Escape (pause menu)
@@ -632,10 +634,10 @@ FVector ARPGPlayerCharacter::AimDirection(const FVector& From) const
 	FVector RayO, RayDir;
 	const bool bCursor = CursorRay(RayO, RayDir);
 	if (bTopDown && !bCursor) { CamPos = Chest(); CamFwd = (AimPoint() - CamPos).GetSafeNormal2D(); }
-	const ARPGCharacterBase* Best = nullptr;
+	const ATSCharacter* Best = nullptr;
 	float BestDot = FMath::Cos(FMath::DegreesToRadians(12.f));
 	float BestMiss = 0.f;
-	for (ARPGCharacterBase* E : RPGCombat::Opponents(this))
+	for (ATSCharacter* E : TSCombat::Opponents(this))
 	{
 		if (FVector::Dist(E->Chest(), Chest()) > 3000.f) continue;
 		if (bCursor)
@@ -680,12 +682,12 @@ FVector ARPGPlayerCharacter::ArrowTarget(const FVector& From, float MaxRange) co
 {
 	// A foe along the aim (the clicked one, the one under the cursor, or aim assist): its chest.
 	const FVector Dir = AimDirection(From);
-	const ARPGCharacterBase* Best = nullptr;
+	const ATSCharacter* Best = nullptr;
 	float BestAlong = MaxRange;
 	if (Goal == EClickGoal::Attack && GoalActor.IsValid()) { Best = GoalActor.Get(); BestAlong = FVector::Dist2D(From, Best->Chest()); }
 	else
 	{
-		for (ARPGCharacterBase* E : RPGCombat::Opponents(this))
+		for (ATSCharacter* E : TSCombat::Opponents(this))
 		{
 			const FVector To = E->Chest() - From;
 			const float Along = FVector::DotProduct(To, Dir);
@@ -836,7 +838,7 @@ void ARPGPlayerCharacter::UpdateArcPreview()
 	const FVector To = ArrowTarget(From, D.Px(TSJson::Num(B, TEXT("range"), 520)) * (0.5f + 0.5f * K));
 	FVector V;
 	float G = 0.f, T = 1.f;
-	ARPGProjectile::ArcLaunch(this, From, To, D.Px(TSJson::Num(B, TEXT("speed"), 560)) * (0.6f + 0.4f * K), V, G, T);
+	ATSProjectile::ArcLaunch(this, From, To, D.Px(TSJson::Num(B, TEXT("speed"), 560)) * (0.6f + 0.4f * K), V, G, T);
 	for (int32 I = 0; I < ArcDots.Num(); ++I)
 	{
 		const float t = T * float(I + 1) / float(ArcDots.Num());
@@ -852,7 +854,7 @@ void ARPGPlayerCharacter::FaceThreat()
 	// danger even when the cursor is elsewhere. Nobody close: face the cursor as usual.
 	const ARPGCharacterBase* Best = nullptr;
 	float BestD = 1400.f;
-	for (ARPGCharacterBase* C : RPGCombat::Opponents(this))
+	for (ATSCharacter* C : TSCombat::Opponents(this))
 	{
 		const ARPGEnemy* E = Cast<ARPGEnemy>(C);
 		if (!E || E->IsPassive() || !(E->State == ERPGEnemyState::Chase || E->State == ERPGEnemyState::Windup || E->State == ERPGEnemyState::Recover)) continue;
@@ -884,7 +886,7 @@ ARPGCharacterBase* ARPGPlayerCharacter::TalkTarget() const
 	{
 		ARPGCharacterBase* C = *It;
 		if (C == this || C->IsDead() || C->DialogueRoot.IsEmpty() || C->IsLeaving()) continue;
-		if (C->Team == ERPGTeam::Enemy && !C->IsPassive()) continue;
+		if (C->Team == ETSTeam::Hostile && !C->IsPassive()) continue;
 		const float D = FVector::Dist2D(C->GetActorLocation(), GetActorLocation()) - C->Radius();
 		if (D < BestD) { BestD = D; Best = C; }
 	}
@@ -936,7 +938,7 @@ void ARPGPlayerCharacter::OnAttackReleased() { bAttackHeld = false; bMoveHeld = 
 
 void ARPGPlayerCharacter::TestClick(const FVector& Point, ARPGCharacterBase* On)
 {
-	const bool bHostile = On && RPGCombat::Opponents(this).Contains(On);
+	const bool bHostile = On && TSCombat::Opponents(this).Contains(On);
 	Click(On, bHostile, Point);
 	bAttackHeld = bMoveHeld = false;   // a single click, not a hold
 }
@@ -958,7 +960,7 @@ ARPGCharacterBase* ARPGPlayerCharacter::UnderCursor(bool& bHostile) const
 	bHostile = false;
 	FVector O, R;
 	if (!CursorRay(O, R)) return nullptr;
-	const TArray<ARPGCharacterBase*> Foes = RPGCombat::Opponents(this);
+	const TArray<ATSCharacter*> Foes = TSCombat::Opponents(this);
 	ARPGCharacterBase* Best = nullptr;
 	float BestMiss = 0.f;
 	for (TActorIterator<ARPGCharacterBase> It(GetWorld()); It; ++It)
@@ -1087,9 +1089,9 @@ void ARPGPlayerCharacter::StartCombo()
 {
 	const TArray<TSharedPtr<FJsonValue>> Combo = TSJson::Arr(TSJson::Obj(Style(), TEXT("primary")), TEXT("combo"));
 	if (Combo.IsEmpty() || !ComboMontage) return;
-	if (!Stats->SpendStamina(float(TSJson::Num(Combo[0]->AsObject(), TEXT("stamina"), 12))))
+	if (!Stats->Spend(RPGStat::Stamina, float(TSJson::Num(Combo[0]->AsObject(), TEXT("stamina"), 12))))
 	{
-		URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No stamina"), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
+		UTSFeedback::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No stamina"), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
 		return;
 	}
 	ComboStep = 0;
@@ -1112,7 +1114,7 @@ void ARPGPlayerCharacter::CheckCombo()
 	const bool bBuffered = bAttackHeld || GetWorld()->GetTimeSeconds() - LastAttackInput <= float(TSJson::Num(Style(), TEXT("comboWindow"), 0.45)) + 0.2f;
 	const int32 Next = ComboStep + 1;
 	if (!bBuffered || Next >= Combo.Num() || ComboSections.IsEmpty()) return;
-	if (!Stats->SpendStamina(float(TSJson::Num(Combo[Next]->AsObject(), TEXT("stamina"), 12)))) return;
+	if (!Stats->Spend(RPGStat::Stamina, float(TSJson::Num(Combo[Next]->AsObject(), TEXT("stamina"), 12)))) return;
 	ComboStep = Next;
 	FaceAim();
 	Anim()->Montage_JumpToSection(ComboSections[ComboStep % ComboSections.Num()], ComboMontage);
@@ -1134,8 +1136,8 @@ void ARPGPlayerCharacter::DoAttackTrace(FName SourceBone)
 	const float Base = Stats->Get(TEXT("weaponDamage")) * float(TSJson::Num(A, TEXT("mult"), 1)) * float(TSJson::Num(St, TEXT("damageMul"), 1));
 	if (const double Lunge = TSJson::Num(A, TEXT("lunge"), 0)) Knock(Facing() * D.Px(Lunge));
 
-	const TSJson::FObj Poison = [&]() -> TSJson::FObj { for (const FRPGEffect& E : Stats->Effects) if (E.OnHitPoison) return E.OnHitPoison; return nullptr; }();
-	for (ARPGCharacterBase* E : RPGCombat::Opponents(this))
+	const TSJson::FObj Poison = [&]() -> TSJson::FObj { for (const FTSEffect& E : Stats->Effects) if (E.OnHit) return E.OnHit; return nullptr; }();
+	for (ATSCharacter* E : TSCombat::Opponents(this))
 	{
 		const FVector To = E->GetActorLocation() - GetActorLocation();
 		if (To.Size2D() - E->Radius() > Range || FMath::Abs(To.Z) > 200.f) continue;
@@ -1146,20 +1148,20 @@ void ARPGPlayerCharacter::DoAttackTrace(FName SourceBone)
 		if (Backstab > 0 && FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(E->Facing(), (-To).GetSafeNormal2D()))) > 110.f)
 		{
 			Mul = float(Backstab);
-			URPGSession::Get(this)->Float(E->Head() + FVector(0, 0, 45), TEXT("BACKSTAB"), FLinearColor(0.25f, 0.76f, 0.56f), 0.9f);
+			UTSFeedback::Get(this)->Float(E->Head() + FVector(0, 0, 45), TEXT("BACKSTAB"), FLinearColor(0.25f, 0.76f, 0.56f), 0.9f);
 		}
-		FRPGHit H;
+		FTSHit H;
 		H.Base = Base * Mul;
 		H.Scaling = FName(TSJson::Str(Primary, TEXT("scaling"), TEXT("might")));
 		H.Poise = float(TSJson::Num(A, TEXT("poise"), 10));
 		H.Knockback = float(TSJson::Num(A, TEXT("knockback"), 100));
-		if (RPGCombat::Deal(this, E, H) && !E->IsDead() && Poison)
+		if (TSCombat::Deal(this, E, H) && !E->IsDead() && Poison)
 		{
-			FRPGEffect P;
+			FTSEffect P;
 			P.Id = TEXT("poison"); P.Name = TEXT("Poison");
 			P.Duration = float(TSJson::Num(Poison, TEXT("duration"), 3));
 			P.Period = float(TSJson::Num(Poison, TEXT("period"), 0.5));
-			P.Dot = float(TSJson::Num(Poison, TEXT("damage"), 4)) * RPGCombat::ScaleBy(Stats, FName(TSJson::Str(Poison, TEXT("scaling"))));
+			P.Dot = float(TSJson::Num(Poison, TEXT("damage"), 4)) * Stats->ScaleBy(FName(TSJson::Str(Poison, TEXT("scaling"))));
 			P.Source = this;
 			E->Stats->AddEffect(P);
 		}
@@ -1181,12 +1183,12 @@ void ARPGPlayerCharacter::FireBolt()
 	PlayCast();
 	const FVector From = Muzzle();
 	const FVector Dir = AimDirection(From);
-	FRPGHit H;
+	FTSHit H;
 	H.Base = float(TSJson::Num(P, TEXT("damage"), 5)) + Stats->Get(TEXT("weaponDamage")) * float(TSJson::Num(P, TEXT("weaponRatio"), 0.5));
 	H.Scaling = FName(TSJson::Str(P, TEXT("scaling"), TEXT("focus")));
 	H.Poise = float(TSJson::Num(P, TEXT("poise"), 10));
 	H.Knockback = float(TSJson::Num(P, TEXT("knockback"), 60));
-	ARPGProjectile::Fire(this, From + Dir * 12.f, Dir, D.Px(TSJson::Num(P, TEXT("speed"), 480)), D.Px(TSJson::Num(P, TEXT("range"), 440)),
+	ATSProjectile::Fire(this, From + Dir * 12.f, Dir, D.Px(TSJson::Num(P, TEXT("speed"), 480)), D.Px(TSJson::Num(P, TEXT("range"), 440)),
 		D.Px(TSJson::Num(P, TEXT("radius"), 5)), TSJson::Color(TSJson::Str(P, TEXT("color"), TEXT("#b9a4ff"))), false, H);
 }
 
@@ -1213,6 +1215,21 @@ void ARPGPlayerCharacter::OnSecondaryReleased()
 	bDrawing = false;
 }
 
+bool ARPGPlayerCharacter::MeetsRequirement(const FString& Requirement, FString& Why) const
+{
+	if (Requirement == TEXT("shield") && TSJson::Str(TSJson::Obj(Style(), TEXT("secondary")), TEXT("type")) != TEXT("block"))
+	{
+		Why = TEXT("Needs a shield (press X)");
+		return false;
+	}
+	return true;
+}
+
+void ARPGPlayerCharacter::OnParley(ATSCharacter* Target, const FString& Node)
+{
+	URPGSession::Get(this)->OpenDialogue(Target, Node);
+}
+
 TSJson::FObj ARPGPlayerCharacter::GuardStyle() const
 {
 	if (!bGuardHeld || bAttacking || IsDodging() || Tags.Has(TEXT("Staggered"))) return nullptr;
@@ -1220,7 +1237,6 @@ TSJson::FObj ARPGPlayerCharacter::GuardStyle() const
 	return TSJson::Str(Sec, TEXT("type")) == TEXT("block") ? Sec : nullptr;
 }
 
-TSJson::FObj ARPGPlayerCharacter::PassiveStyle() const { return TSJson::Obj(Style(), TEXT("passive")); }
 
 float ARPGPlayerCharacter::DrawFraction() const
 {
@@ -1242,16 +1258,16 @@ void ARPGPlayerCharacter::FireArrow(float Held)
 	const FVector From = Muzzle();
 	const FVector Dir = AimDirection(From);
 	PlayBowShot();
-	FRPGHit H;
+	FTSHit H;
 	H.Base = (float(TSJson::Num(B, TEXT("damage"), 10)) + Stats->Get(TEXT("weaponDamage")) * float(TSJson::Num(B, TEXT("weaponRatio"), 0.5))) * Mul;
 	H.Scaling = FName(TSJson::Str(B, TEXT("scaling"), TEXT("agility")));
 	H.Poise = float(TSJson::Num(B, TEXT("poise"), 20)) * Mul;
 	H.Knockback = float(TSJson::Num(B, TEXT("knockback"), 120)) * Mul;
 	// A partial draw flies slower and not as far; the arrow arcs to land on its target.
 	const float Range = D.Px(TSJson::Num(B, TEXT("range"), 520)) * (0.5f + 0.5f * K);
-	ARPGProjectile::FireArrow(this, From + Dir * 20.f, ArrowTarget(From, Range), D.Px(TSJson::Num(B, TEXT("speed"), 560)) * (0.6f + 0.4f * K),
+	ATSProjectile::FireArrow(this, From + Dir * 20.f, ArrowTarget(From, Range), D.Px(TSJson::Num(B, TEXT("speed"), 560)) * (0.6f + 0.4f * K),
 		6.f, bFull ? FLinearColor(1.f, 0.85f, 0.3f) : TSJson::Color(TSJson::Str(B, TEXT("color"), TEXT("#e8d9b0"))), H);
-	if (bFull) URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("Full draw!"), FLinearColor(1.f, 0.95f, 0.75f), 0.8f);
+	if (bFull) UTSFeedback::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("Full draw!"), FLinearColor(1.f, 0.95f, 0.75f), 0.8f);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1266,9 +1282,9 @@ void ARPGPlayerCharacter::OnDodge()
 	const TSJson::FObj Base = TSJson::Obj(D.Section(TEXT("tuning")), TEXT("dodge"));
 	const TSJson::FObj Over = TSJson::Obj(ClassDef, TEXT("dodge"));
 	auto Get = [&](const TCHAR* K, double Def) { return TSJson::Num(Over, K, TSJson::Num(Base, K, Def)); };
-	if (!Stats->SpendStamina(float(Get(TEXT("cost"), 22))))
+	if (!Stats->Spend(RPGStat::Stamina, float(Get(TEXT("cost"), 22))))
 	{
-		URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No stamina"), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
+		UTSFeedback::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No stamina"), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
 		return;
 	}
 	const FRotator Yaw = MoveFrame();
@@ -1306,13 +1322,13 @@ void ARPGPlayerCharacter::StartDash(const FVector& Dir, float Speed, float Durat
 
 void ARPGPlayerCharacter::DrinkPotion()
 {
-	for (const FRPGItem& It : Inventory->Items)
+	for (const FTSItem& It : Inventory->Items)
 	{
 		if (It.Id != TEXT("potion")) continue;
-		if (!Inventory->Use(It.Uid)) URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("Already at full health"), FLinearColor(0.67f, 0.67f, 0.73f), 0.8f);
+		if (!Inventory->Use(It.Uid)) UTSFeedback::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("Already at full health"), FLinearColor(0.67f, 0.67f, 0.73f), 0.8f);
 		return;
 	}
-	URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No potions"), FLinearColor(0.67f, 0.67f, 0.73f), 0.8f);
+	UTSFeedback::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("No potions"), FLinearColor(0.67f, 0.67f, 0.73f), 0.8f);
 }
 
 void ARPGPlayerCharacter::SwapStyle()
@@ -1323,7 +1339,7 @@ void ARPGPlayerCharacter::SwapStyle()
 	ComboStep = 0;
 	bGuardHeld = bDrawing = false;
 	RefreshWeapons();
-	URPGSession::Get(this)->Toast(TEXT("Switched to ") + TSJson::Str(Style(), TEXT("name")), NameColor);
+	UTSFeedback::Get(this)->Toast(TEXT("Switched to ") + TSJson::Str(Style(), TEXT("name")), NameColor);
 }
 
 USkinnedMeshComponent* ARPGPlayerCharacter::BodyMesh() const { return PoseMesh; }
@@ -1340,7 +1356,7 @@ void ARPGPlayerCharacter::RefreshWeapons()
 void ARPGPlayerCharacter::Restore()
 {
 	Stats->Fill();
-	ARPGFX::Ring(GetWorld(), GetActorLocation() - FVector(0, 0, 86), 120.f, FLinearColor(0.37f, 0.88f, 0.54f), 0.5f);
+	ATSFX::Ring(GetWorld(), GetActorLocation() - FVector(0, 0, 86), 120.f, FLinearColor(0.37f, 0.88f, 0.54f), 0.5f);
 }
 
 void ARPGPlayerCharacter::OnStaggered()
@@ -1367,8 +1383,8 @@ void ARPGPlayerCharacter::Die(AActor* Killer)
 void ARPGPlayerCharacter::Respawn()
 {
 	URPGSession* Session = URPGSession::Get(this);
-	const int32 Lost = FMath::FloorToInt(Inventory->Gold * UTSData::Get(this).Tuning(TEXT("deathGoldPenalty"), 0.1));
-	Inventory->Gold -= Lost;
+	const int32 Lost = FMath::FloorToInt(Inventory->Currency * UTSData::Get(this).Tuning(TEXT("deathGoldPenalty"), 0.1));
+	Inventory->Currency -= Lost;
 	bDead = false;
 	GetMesh()->SetAnimationMode(EAnimationMode::AnimationBlueprint);
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
@@ -1379,8 +1395,8 @@ void ARPGPlayerCharacter::Respawn()
 	Stats->Fill();
 	KnockVelocity = FVector::ZeroVector;
 	for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (!It->IsDead() && !It->IsLeaving()) It->ResetToHome();
-	if (Session->Duel.IsValid()) { Session->Duel = nullptr; Session->Story()->SetFlag(TEXT("duel_lost")); Session->Toast(TEXT("You lost the duel."), FLinearColor(1.f, 0.5f, 0.5f)); }
-	Session->Toast(Lost ? FString::Printf(TEXT("You lost %d gold."), Lost) : FString(TEXT("You wake in the village.")), FLinearColor(1.f, 0.5f, 0.5f));
+	if (Session->Duel.IsValid()) { Session->Duel = nullptr; Session->Story()->SetFlag(TEXT("duel_lost")); UTSFeedback::Get(Session)->Toast(TEXT("You lost the duel."), FLinearColor(1.f, 0.5f, 0.5f)); }
+	UTSFeedback::Get(Session)->Toast(Lost ? FString::Printf(TEXT("You lost %d gold."), Lost) : FString(TEXT("You wake in the village.")), FLinearColor(1.f, 0.5f, 0.5f));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1401,7 +1417,7 @@ void ARPGPlayerCharacter::UpdateVisuals(float Dt)
 			ShieldBubble->SetWorldScale3D(FVector(D / 100.f));
 		}
 		BarrierPulse += Dt;
-		BubbleMat->SetScalarParameterValue(TEXT("Opacity"), 0.12f + 0.2f * Stats->Stamina / FMath::Max(1.f, Stats->MaxStamina()) + 0.04f * FMath::Sin(BarrierPulse * 6.f));
+		BubbleMat->SetScalarParameterValue(TEXT("Opacity"), 0.12f + 0.2f * Stats->Pool(RPGStat::Stamina).Current / FMath::Max(1.f, Stats->Max(RPGStat::Stamina)) + 0.04f * FMath::Sin(BarrierPulse * 6.f));
 		BubbleMat->SetScalarParameterValue(TEXT("Intensity"), 3.f);
 	}
 
@@ -1437,7 +1453,7 @@ void ARPGPlayerCharacter::Tick(float Dt)
 	URPGSession* Session = URPGSession::Get(this);
 
 	// Camera shake from hits.
-	ShakeOffset = Session->ShakeAmount > 0.2f ? FVector(0, FMath::FRandRange(-1.f, 1.f), FMath::FRandRange(-1.f, 1.f)) * Session->ShakeAmount : FVector::ZeroVector;
+	ShakeOffset = UTSFeedback::Get(Session)->ShakeAmount > 0.2f ? FVector(0, FMath::FRandRange(-1.f, 1.f), FMath::FRandRange(-1.f, 1.f)) * UTSFeedback::Get(Session)->ShakeAmount : FVector::ZeroVector;
 	Camera->SetRelativeLocation(ShakeOffset);
 	if (bTopDown && TSLook::Mode() == TSLook::EMode::Flat2D) Camera->SetOrthoWidth(FMath::FInterpTo(Camera->OrthoWidth, ZoomTarget, Dt, 8.f));
 	else if (bTopDown) CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, ZoomTarget, Dt, 8.f);
@@ -1452,8 +1468,8 @@ void ARPGPlayerCharacter::Tick(float Dt)
 		return;
 	}
 
-	Stats->StaminaRegenMul = 1.f;
-	Stats->TickStats(Dt, [this](float H) { RPGCombat::Heal(this, H); }, [this](float D, AActor* Src) { RPGCombat::Dot(this, D, Src); });
+	Stats->Pool(RPGStat::Stamina).RegenMul = 1.f;
+	Stats->TickStats(Dt, [this](float H) { TSCombat::Heal(this, H); }, [this](float D, AActor* Src) { TSCombat::Dot(this, D, Src); });
 	Abilities->TickCooldowns(Dt);
 	BoltCooldown -= Dt;
 	CastSlow -= Dt;
@@ -1471,17 +1487,17 @@ void ARPGPlayerCharacter::Tick(float Dt)
 		GetCharacterMovement()->Velocity.Y = DodgeDir.Y * DodgeSpeed;
 		if (DashStrike)
 		{
-			for (ARPGCharacterBase* E : RPGCombat::Opponents(this))
+			for (ATSCharacter* E : TSCombat::Opponents(this))
 			{
 				if (DashHit.Contains(E) || FVector::Dist2D(E->GetActorLocation(), GetActorLocation()) > Radius() + E->Radius() + 40.f) continue;
 				DashHit.Add(E);
-				FRPGHit H;
+				FTSHit H;
 				H.Base = float(TSJson::Num(DashStrike, TEXT("damage"), 16));
 				H.Scaling = FName(TSJson::Str(DashStrike, TEXT("scaling")));
 				H.Poise = float(TSJson::Num(DashStrike, TEXT("poise"), 30));
 				H.Knockback = float(TSJson::Num(DashStrike, TEXT("knockback"), 100));
 				H.Dir = DodgeDir;
-				RPGCombat::Deal(this, E, H);
+				TSCombat::Deal(this, E, H);
 			}
 		}
 		return;
@@ -1506,16 +1522,16 @@ void ARPGPlayerCharacter::Tick(float Dt)
 	if (const TSJson::FObj G = GuardStyle())
 	{
 		// Holding a shield (or the Mage's barrier) wears you out: stamina drains, and when it's gone the guard drops.
-		Stats->StaminaRegenMul = float(TSJson::Num(G, TEXT("staminaRegenMul"), 0.35));
+		Stats->Pool(RPGStat::Stamina).RegenMul = float(TSJson::Num(G, TEXT("staminaRegenMul"), 0.35));
 		const float Drain = float(TSJson::Num(G, TEXT("staminaDrain"), 0)) * Dt;
 		if (Drain > 0.f)
 		{
-			Stats->Stamina = FMath::Max(0.f, Stats->Stamina - Drain);
-			Stats->StaminaDelay = FMath::Max(Stats->StaminaDelay, 0.3f);
-			if (Stats->Stamina <= 0.f)
+			Stats->Pool(RPGStat::Stamina).Current = FMath::Max(0.f, Stats->Pool(RPGStat::Stamina).Current - Drain);
+			Stats->Pool(RPGStat::Stamina).Delay = FMath::Max(Stats->Pool(RPGStat::Stamina).Delay, 0.3f);
+			if (Stats->Pool(RPGStat::Stamina).Current <= 0.f)
 			{
 				bGuardHeld = false;
-				URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("Too tired to block"), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
+				UTSFeedback::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("Too tired to block"), FLinearColor(0.5f, 0.82f, 0.5f), 0.8f);
 			}
 		}
 	}

@@ -1,4 +1,5 @@
 #include "RPGSelfTest.h"
+#include "TSFeedback.h"
 #include "ActionRPG.h"
 #include "TSData.h"
 #include "RPGSession.h"
@@ -9,8 +10,9 @@
 #include "GameFramework/GameModeBase.h"
 #include "RPGEnemy.h"
 #include "RPGLoot.h"
-#include "RPGInventoryComponent.h"
-#include "RPGAbilityComponent.h"
+#include "TSLoot.h"
+#include "TSInventory.h"
+#include "TSAbilities.h"
 
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -81,20 +83,20 @@ void ARPGSelfTest::Tick(float Dt)
 			S->Story()->StartQuest(TEXT("slime_cull"));
 			Target = Find(TEXT("slime"));
 			Place(Target->GetActorLocation() - FVector(170, 0, 0), 0);
-			Report(FString::Printf(TEXT("knight vs slime: slime HP %.0f, player HP %.0f"), Target->Stats->HP, Pl->Stats->HP));
+			Report(FString::Printf(TEXT("knight vs slime: slime HP %.0f, player HP %.0f"), Target->Stats->Health(), Pl->Stats->Health()));
 			Step = 1; Next = T + 0.6f;
 		}
 		else if (Step == 1)
 		{
 			if (!Target.IsValid() || Target->IsDead())
 			{
-				Report(FString::Printf(TEXT("slime dead after %d swings. XP %d, level %d, quest %s, stamina %.0f"), Swings, Pl->Xp, Pl->Level(), *S->Story()->ProgressText(TEXT("slime_cull")), Pl->Stats->Stamina));
+				Report(FString::Printf(TEXT("slime dead after %d swings. XP %d, level %d, quest %s, stamina %.0f"), Swings, Pl->Xp, Pl->Level(), *S->Story()->ProgressText(TEXT("slime_cull")), Pl->Stats->Pool(RPGStat::Stamina).Current));
 				Step = 2; Next = T + 2.f;
 				return;
 			}
 			AimAt(Target->GetActorLocation());
 			if (FVector::Dist2D(Target->GetActorLocation(), Pl->GetActorLocation()) > 160.f) Place(Target->GetActorLocation() - (Target->GetActorLocation() - Pl->GetActorLocation()).GetSafeNormal2D() * 140.f, Pl->GetActorRotation().Yaw);
-			Pl->Stats->Stamina = Pl->Stats->MaxStamina();
+			Pl->Stats->Pool(RPGStat::Stamina).Current = Pl->Stats->Max(RPGStat::Stamina);
 			Pl->TestPress(TEXT("Attack"), true);
 			Pl->TestPress(TEXT("Attack"), false);
 			++Swings;
@@ -104,8 +106,8 @@ void ARPGSelfTest::Tick(float Dt)
 		else if (Step == 2)
 		{
 			int32 Pickups = 0;
-			for (TActorIterator<ARPGPickup> It(GetWorld()); It; ++It) ++Pickups;
-			Report(FString::Printf(TEXT("loot on ground: %d pickups; gold %d"), Pickups, Pl->Inventory->Gold));
+			for (TActorIterator<ATSPickup> It(GetWorld()); It; ++It) ++Pickups;
+			Report(FString::Printf(TEXT("loot on ground: %d pickups; gold %d"), Pickups, Pl->Inventory->Currency));
 			Quit(1.f);
 		}
 	}
@@ -154,12 +156,12 @@ void ARPGSelfTest::Tick(float Dt)
 		{
 			if (S->Story()->IsDialogueOpen())
 			{
-				Report(FString::Printf(TEXT("Brask yields at %.0f/%.0f HP after %d swings: %s"), Brask->Stats->HP, Brask->Stats->MaxHP(), Swings, *S->Story()->DialogueText.Left(60)));
+				Report(FString::Printf(TEXT("Brask yields at %.0f/%.0f HP after %d swings: %s"), Brask->Stats->Health(), Brask->Stats->MaxHealth(), Swings, *S->Story()->DialogueText.Left(60)));
 				Step = 29; Next = T + 0.5f;   // a player mid-fight is still clicking: click the game view, then press 1
 				return;
 			}
-			Pl->Stats->HP = Pl->Stats->MaxHP();
-			Pl->Stats->Stamina = Pl->Stats->MaxStamina();
+			Pl->Stats->Health() = Pl->Stats->MaxHealth();
+			Pl->Stats->Pool(RPGStat::Stamina).Current = Pl->Stats->Max(RPGStat::Stamina);
 			AimAt(Brask->GetActorLocation());
 			if (FVector::Dist2D(Brask->GetActorLocation(), Pl->GetActorLocation()) > 170.f) Place(Brask->GetActorLocation() - (Brask->GetActorLocation() - Pl->GetActorLocation()).GetSafeNormal2D() * 150.f, Pl->GetActorRotation().Yaw);
 			Pl->TestPress(TEXT("Attack"), true);
@@ -217,7 +219,7 @@ void ARPGSelfTest::Tick(float Dt)
 			Place(Target->GetActorLocation() - FVector(150, 0, 0), 0);
 			AimAt(Pl->GetActorLocation() - (Target->GetActorLocation() - Pl->GetActorLocation()));   // aim AWAY: the shield must turn to the threat itself
 			Pl->TestPress(TEXT("Secondary"), true);   // raise the shield early (normal block, not perfect)
-			Report(FString::Printf(TEXT("shield raised: guarding=%d, HP %.0f, stamina %.0f"), Pl->IsGuarding(), Pl->Stats->HP, Pl->Stats->Stamina));
+			Report(FString::Printf(TEXT("shield raised: guarding=%d, HP %.0f, stamina %.0f"), Pl->IsGuarding(), Pl->Stats->Health(), Pl->Stats->Pool(RPGStat::Stamina).Current));
 			Step = 1; Next = T + 1.0f;
 		}
 		else if (Step == 1)
@@ -231,7 +233,7 @@ void ARPGSelfTest::Tick(float Dt)
 		else if (Step == 2)
 		{
 			FScreenshotRequest::RequestScreenshot(FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots/RPG/block.png")), true, false);
-			Swings = int32(Pl->Stats->HP);
+			Swings = int32(Pl->Stats->Health());
 			Target->State = ERPGEnemyState::Chase;
 			Step = 20; Next = T + 0.5f;   // let the slime attack the raised shield
 		}
@@ -239,16 +241,16 @@ void ARPGSelfTest::Tick(float Dt)
 		{
 			static const TCHAR* Names[] = { TEXT("idle"), TEXT("chase"), TEXT("windup"), TEXT("recover"), TEXT("return"), TEXT("leaving") };
 			FString Seen;
-			for (const FRPGFloater& F : S->Floaters) Seen += F.Text + TEXT(" ");
+			for (const FTSFloater& F : UTSFeedback::Get(S)->Floaters) Seen += F.Text + TEXT(" ");
 			Report(FString::Printf(TEXT("slime %s dist=%.0f staggered=%d | HP %.0f stamina %.0f guard=%d | floaters: %s"), Names[uint8(Target->State)],
-				FVector::Dist2D(Target->GetActorLocation(), Pl->GetActorLocation()), Target->Tags.Has(TEXT("Staggered")), Pl->Stats->HP, Pl->Stats->Stamina, Pl->IsGuarding(), *Seen));
+				FVector::Dist2D(Target->GetActorLocation(), Pl->GetActorLocation()), Target->Tags.Has(TEXT("Staggered")), Pl->Stats->Health(), Pl->Stats->Pool(RPGStat::Stamina).Current, Pl->IsGuarding(), *Seen));
 			++Step; Next = T + 0.5f;
 			if (Step == 28) Step = 3;
 		}
 		else if (Step == 3)
 		{
 			Report(FString::Printf(TEXT("%s: after the slime's attacks: HP %d -> %.0f (an unblocked hit is ~7; a shield block stops it all), stamina %.0f, guarding=%d"),
-				FMath::RoundToInt(Pl->Stats->HP) >= Swings ? TEXT("PASS") : TEXT("FAIL"), Swings, Pl->Stats->HP, Pl->Stats->Stamina, Pl->IsGuarding()));
+				FMath::RoundToInt(Pl->Stats->Health()) >= Swings ? TEXT("PASS") : TEXT("FAIL"), Swings, Pl->Stats->Health(), Pl->Stats->Pool(RPGStat::Stamina).Current, Pl->IsGuarding()));
 			Pl->TestPress(TEXT("Secondary"), false);
 			Quit(1.f);
 		}
@@ -339,7 +341,7 @@ void ARPGSelfTest::Tick(float Dt)
 				return;
 			}
 			if (T - Started > 25.f) { Report(TEXT("FAIL: slime never died")); Quit(0.5f); return; }
-			Pl->Stats->Stamina = Pl->Stats->MaxStamina();
+			Pl->Stats->Pool(RPGStat::Stamina).Current = Pl->Stats->Max(RPGStat::Stamina);
 			Pl->TestClick(Target->GetActorLocation(), Target.Get());
 			++Swings;
 			Next = T + 0.45f;
@@ -473,7 +475,7 @@ void ARPGSelfTest::Tick(float Dt)
 		}
 		else if (Step == 1)
 		{
-			Pl->Stats->Stamina = Pl->Stats->MaxStamina();
+			Pl->Stats->Pool(RPGStat::Stamina).Current = Pl->Stats->Max(RPGStat::Stamina);
 			Pl->TestPress(TEXT("Ability2"), true);
 			Started = T;
 			Report(FString::Printf(TEXT("%s: smoke bomb thrown; slime staggered=%d, player hidden=%d"),
@@ -503,7 +505,7 @@ void ARPGSelfTest::Tick(float Dt)
 		if (Step == 0)
 		{
 			while (Pl->Level() < 4) Pl->GainXp(ARPGPlayerCharacter::XpToNext(Pl, Pl->Level()) - Pl->Xp);
-			Pl->Stats->Mana = Pl->Stats->MaxMana();
+			Pl->Stats->Pool(RPGStat::Mana).Current = Pl->Stats->Max(RPGStat::Mana);
 			Target = Find(TEXT("slime"));
 			if (Target.IsValid()) { Place(Target->GetActorLocation() - FVector(700, 0, 0), 0.f); AimAt(Target->GetActorLocation()); }
 			Pl->TestPicker(0, true);
@@ -592,16 +594,16 @@ void ARPGSelfTest::Tick(float Dt)
 		{
 			Target = Find(TEXT("archer"));
 			Place(Target->Home + FVector(-650, 0, 0), 0);
-			Report(FString::Printf(TEXT("mage vs archer: mana %.0f/%.0f, HP %.0f"), Pl->Stats->Mana, Pl->Stats->MaxMana(), Pl->Stats->HP));
+			Report(FString::Printf(TEXT("mage vs archer: mana %.0f/%.0f, HP %.0f"), Pl->Stats->Pool(RPGStat::Mana).Current, Pl->Stats->Max(RPGStat::Mana), Pl->Stats->Health()));
 			Step = 1; Next = T + 0.5f;
 		}
 		else if (Step == 1)
 		{
-			if (!Target.IsValid() || Target->IsDead()) { Report(FString::Printf(TEXT("archer dead. mana %.0f, HP %.0f/%.0f"), Pl->Stats->Mana, Pl->Stats->HP, Pl->Stats->MaxHP())); Quit(2.f); return; }
+			if (!Target.IsValid() || Target->IsDead()) { Report(FString::Printf(TEXT("archer dead. mana %.0f, HP %.0f/%.0f"), Pl->Stats->Pool(RPGStat::Mana).Current, Pl->Stats->Health(), Pl->Stats->MaxHealth())); Quit(2.f); return; }
 			AimAt(Target->GetActorLocation());
 			Pl->TestPress(TEXT("Attack"), true);
 			Pl->TestPress(TEXT("Attack"), false);
-			if (FMath::Fmod(T, 2.f) < 0.5f) Report(FString::Printf(TEXT("archer HP %.0f (%s), mana %.0f, HP %.0f"), Target->Stats->HP, Target->State == ERPGEnemyState::Windup ? TEXT("winding up") : TEXT("-"), Pl->Stats->Mana, Pl->Stats->HP));
+			if (FMath::Fmod(T, 2.f) < 0.5f) Report(FString::Printf(TEXT("archer HP %.0f (%s), mana %.0f, HP %.0f"), Target->Stats->Health(), Target->State == ERPGEnemyState::Windup ? TEXT("winding up") : TEXT("-"), Pl->Stats->Pool(RPGStat::Mana).Current, Pl->Stats->Health()));
 			Next = T + 0.5f;
 			if (T > 30.f) { Report(TEXT("FAIL: timeout")); Quit(0.5f); }
 		}
@@ -672,7 +674,7 @@ void ARPGSelfTest::Tick(float Dt)
 		}
 		else if (Step == 1)
 		{
-			const float Before = Target->Stats->HP;
+			const float Before = Target->Stats->Health();
 			AimAt(Target->GetActorLocation());
 			Pl->TestPress(TEXT("Secondary"), false);  // release at full draw
 			Report(FString::Printf(TEXT("released full draw at slime (HP %.0f)"), Before));
@@ -680,7 +682,7 @@ void ARPGSelfTest::Tick(float Dt)
 		}
 		else if (Step == 2)
 		{
-			Report(FString::Printf(TEXT("slime HP after arrow: %s"), Target.IsValid() && !Target->IsDead() ? *FString::Printf(TEXT("%.0f"), Target->Stats->HP) : TEXT("dead")));
+			Report(FString::Printf(TEXT("slime HP after arrow: %s"), Target.IsValid() && !Target->IsDead() ? *FString::Printf(TEXT("%.0f"), Target->Stats->Health()) : TEXT("dead")));
 			Target = Find(TEXT("slime"));
 			Target->ResetToHome();
 			Target->SetActorRotation(FRotator(0, 0, 0));
@@ -693,8 +695,8 @@ void ARPGSelfTest::Tick(float Dt)
 		else if (Step == 3)
 		{
 			int32 Backstabs = 0;
-			for (const FRPGFloater& F : S->Floaters) if (F.Text == TEXT("BACKSTAB")) ++Backstabs;
-			Report(FString::Printf(TEXT("dagger from behind: backstab floaters=%d, slime %s"), Backstabs, Target->IsDead() ? TEXT("dead") : *FString::Printf(TEXT("HP %.0f"), Target->Stats->HP)));
+			for (const FTSFloater& F : UTSFeedback::Get(S)->Floaters) if (F.Text == TEXT("BACKSTAB")) ++Backstabs;
+			Report(FString::Printf(TEXT("dagger from behind: backstab floaters=%d, slime %s"), Backstabs, Target->IsDead() ? TEXT("dead") : *FString::Printf(TEXT("HP %.0f"), Target->Stats->Health())));
 			Quit(1.f);
 		}
 	}

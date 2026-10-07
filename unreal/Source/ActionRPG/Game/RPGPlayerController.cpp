@@ -1,4 +1,5 @@
 #include "RPGPlayerController.h"
+#include "TSFeedback.h"
 #include "ActionRPG.h"
 #include "RPGSession.h"
 #include "LMStory.h"
@@ -237,9 +238,9 @@ void ARPGPlayerController::BeginGame(const FString& ClassId, const FString& Sex)
 	EnterGameplay();
 
 	URPGSession* S = URPGSession::Get(this);
-	S->Toast(FString::Printf(TEXT("%s %s — talk to Elder Maren to begin."), Sex == TEXT("female") ? TEXT("Female") : TEXT("Male"),
+	UTSFeedback::Get(S)->Toast(FString::Printf(TEXT("%s %s — talk to Elder Maren to begin."), Sex == TEXT("female") ? TEXT("Female") : TEXT("Male"),
 		*Cast<ARPGPlayerCharacter>(GetPawn())->DisplayName), Cast<ARPGPlayerCharacter>(GetPawn())->NameColor);
-	S->Toast(TEXT("Press H for controls"));
+	UTSFeedback::Get(S)->Toast(TEXT("Press H for controls"));
 }
 
 // ---------------------------------------------------------------------------------------------

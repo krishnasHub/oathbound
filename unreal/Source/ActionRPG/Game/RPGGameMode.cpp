@@ -32,6 +32,8 @@ ARPGGameMode::ARPGGameMode()
 void ARPGGameMode::StartPlay()
 {
 	TSLook::Init(this);   // before anything builds or spawns: it decides how they look
+	// Material names in the data (kit parts, "coin") are Starter Content materials, or their pixel-art versions.
+	TSAssets::SetMaterialResolver([](const FString& Name) { return RPGAssets::StarterMat(Name); });
 	WorldBuilder = GetWorld()->SpawnActor<ARPGWorldBuilder>();
 	WorldBuilder->Build();
 	if (ARPGAmbient* Life = GetWorld()->SpawnActor<ARPGAmbient>()) Life->Init(WorldBuilder);   // birds, geese, prowler, fireflies
@@ -141,7 +143,7 @@ void ARPGGameMode::RunSelfTests()
 		GetWorldTimerManager().SetTimer(H, [this]()
 		{
 			if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
-				if (ARPGPlayerCharacter* P = Cast<ARPGPlayerCharacter>(PC->GetPawn())) P->Stats->HP = P->Stats->MaxHP() * 0.15f;
+				if (ARPGPlayerCharacter* P = Cast<ARPGPlayerCharacter>(PC->GetPawn())) P->Stats->Health() = P->Stats->MaxHealth() * 0.15f;
 		}, 3.f, false);
 	}
 

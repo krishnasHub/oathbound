@@ -1,12 +1,13 @@
 #include "RPGEnemy.h"
+#include "TSFeedback.h"
 #include "ActionRPG.h"
 #include "TSData.h"
 #include "RPGAssets.h"
-#include "RPGCombat.h"
+#include "TSCombat.h"
 #include "RPGSession.h"
 #include "LMStory.h"
 #include "RPGPlayerCharacter.h"
-#include "RPGProjectile.h"
+#include "TSProjectile.h"
 #include "RPGLoot.h"
 
 #include "ProceduralMeshComponent.h"
@@ -38,7 +39,7 @@ namespace
 
 ARPGEnemy::ARPGEnemy()
 {
-	Team = ERPGTeam::Enemy;
+	Team = ETSTeam::Hostile;
 	Telegraph = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("Telegraph"));
 	Telegraph->SetupAttachment(RootComponent);
 	Telegraph->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -77,7 +78,7 @@ void ARPGEnemy::Init(const FString& InType, const FVector& InHome)
 	MaxPoise = Poise = float(TSJson::Num(Def, TEXT("poise"), 30));
 	GetCharacterMovement()->MaxWalkSpeed = D.Px(TSJson::Num(Def, TEXT("speed"), 80));
 
-	TelegraphMat = UMaterialInstanceDynamic::Create(TSAssets::Load<UMaterialInterface>(TEXT("/Game/RPG/Materials/M_RPG_Telegraph.M_RPG_Telegraph")), this);
+	TelegraphMat = UMaterialInstanceDynamic::Create(TSAssets::Material(this, TEXT("telegraph")), this);
 	Telegraph->SetMaterial(0, TelegraphMat);
 	Telegraph->SetRelativeLocation(FVector(0, 0, -GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() + 4.f));
 	Strafe = FMath::RandBool() ? 1.f : -1.f;
@@ -92,17 +93,46 @@ bool ARPGEnemy::IsPassive() const
 }
 
 FString ARPGEnemy::FactionId() const { return TSJson::Str(Def, TEXT("faction")); }
-FString ARPGEnemy::YieldDialogueId() const { return TSJson::Str(Def, TEXT("yieldDialogue")); }
 
-void ARPGEnemy::OnDamaged(ARPGCharacterBase* Src)
+void ARPGEnemy::OnDamaged(ATSCharacter* Src)
 {
 	if (!Cast<ARPGPlayerCharacter>(Src)) return;
 	bProvoked = true;   // fights back across regions
 	if ((State == ERPGEnemyState::Idle || State == ERPGEnemyState::Return) && !IsPassive())
 	{
 		State = ERPGEnemyState::Chase;
-		URPGSession::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("!"), FLinearColor(1.f, 0.88f, 0.3f), 1.4f);
+		UTSFeedback::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("!"), FLinearColor(1.f, 0.88f, 0.3f), 1.4f);
 	}
+}
+
+void ARPGEnemy::OnStruck(ATSCharacter* Src)
+{
+	if (Src->Team != ETSTeam::Player || FactionId().IsEmpty() || !IsPassive()) return;
+	URPGSession* Session = URPGSession::Get(this);
+	Session->SetHostile(FactionId(), Session->Duel.IsValid() ? TEXT("You broke the duel! The Red Hands attack!") : TEXT("You attacked the Red Hands!"));
+}
+
+bool ARPGEnemy::OnHurt(ATSCharacter* Src)
+{
+	URPGSession* Session = URPGSession::Get(this);
+	if (Session->Duel.Get() != this || Stats->Health() > Stats->MaxHealth() * 0.2f) return false;
+	Stats->Health() = FMath::Max(1.f, FMath::RoundToFloat(Stats->Health()));
+	Session->Duel = nullptr;
+	Tags.Clear();
+	Session->OpenDialogue(this, YieldDialogueId());
+	return true;
+}
+
+float ARPGEnemy::HealthFloor() const
+{
+	// In a duel, poison and burns can't finish the opponent off: the duel ends in a yield.
+	const URPGSession* Session = URPGSession::Get(this);
+	return Session && Session->Duel.Get() == this ? Stats->MaxHealth() * 0.2f + 1.f : 0.f;
+}
+
+void ARPGEnemy::LoseTrack()
+{
+	if (State == ERPGEnemyState::Chase || State == ERPGEnemyState::Windup || State == ERPGEnemyState::Recover) State = ERPGEnemyState::Idle;
 }
 
 void ARPGEnemy::OnStaggered()
@@ -144,7 +174,7 @@ void ARPGEnemy::Tick(float Dt)
 	}
 
 	RevealT -= Dt;
-	Stats->TickStats(Dt, [this](float H) { RPGCombat::Heal(this, H); }, [this](float Dmg, AActor* Src) { RPGCombat::Dot(this, Dmg, Src); });
+	Stats->TickStats(Dt, [this](float H) { TSCombat::Heal(this, H); }, [this](float Dmg, AActor* Src) { TSCombat::Dot(this, Dmg, Src); });
 
 	if (State == ERPGEnemyState::Leaving)
 	{
@@ -233,7 +263,7 @@ void ARPGEnemy::RunAI(float Dt)
 		if (CanSeePlayer(Dist))
 		{
 			State = ERPGEnemyState::Chase;
-			Session->Float(Head() + FVector(0, 0, 30), TEXT("!"), FLinearColor(1.f, 0.88f, 0.3f), 1.4f);
+			UTSFeedback::Get(Session)->Float(Head() + FVector(0, 0, 30), TEXT("!"), FLinearColor(1.f, 0.88f, 0.3f), 1.4f);
 			break;
 		}
 		T -= Dt;
@@ -380,7 +410,7 @@ void ARPGEnemy::PerformAttack()
 	Telegraph->SetVisibility(false);
 	const TSJson::FObj A = CurAtk;
 	const FString AType = TSJson::Str(A, TEXT("type"));
-	FRPGHit Hit;
+	FTSHit Hit;
 	Hit.Base = float(TSJson::Num(A, TEXT("damage"), 8));
 	Hit.Poise = float(TSJson::Num(A, TEXT("poise"), 0));
 	Hit.Knockback = float(TSJson::Num(A, TEXT("knockback"), 0));
@@ -393,21 +423,21 @@ void ARPGEnemy::PerformAttack()
 			const FVector To = P->GetActorLocation() - GetActorLocation();
 			const float Angle = FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(Facing(), To.GetSafeNormal2D())));
 			if (To.Size2D() - P->Radius() <= D.Px(TSJson::Num(A, TEXT("range"), 22)) + Radius() * 0.5f && Angle <= TSJson::Num(A, TEXT("arc"), 110) * 0.5)
-				RPGCombat::Deal(this, P, Hit);
+				TSCombat::Deal(this, P, Hit);
 		}
 	}
 	else if (AType == TEXT("slam"))
 	{
-		Session->Shake(6.f);
+		UTSFeedback::Get(Session)->Shake(6.f);
 		if (P && !P->IsDead() && FVector::Dist2D(P->GetActorLocation(), GetActorLocation()) <= D.Px(TSJson::Num(A, TEXT("radius"), 95)) + P->Radius())
-			RPGCombat::Deal(this, P, Hit);
+			TSCombat::Deal(this, P, Hit);
 	}
 	else if (AType == TEXT("ranged") && P)
 	{
 		const TSJson::FObj Pr = TSJson::Obj(A, TEXT("projectile"));
 		const FVector From = Chest() + Facing() * (Radius() + 20.f);
 		// An arrow lobbed at where the player stands now: keep moving and it lands behind you.
-		ARPGProjectile::FireArrow(this, From, P->Chest(), D.Px(TSJson::Num(Pr, TEXT("speed"), 300)),
+		ATSProjectile::FireArrow(this, From, P->Chest(), D.Px(TSJson::Num(Pr, TEXT("speed"), 300)),
 			D.Px(TSJson::Num(Pr, TEXT("radius"), 4)), TSJson::Color(TSJson::Str(Pr, TEXT("fletch"), TEXT("#c83a2a"))), Hit);
 	}
 

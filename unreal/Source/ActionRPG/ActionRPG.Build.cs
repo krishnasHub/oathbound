@@ -24,6 +24,7 @@ public class ActionRPG : ModuleRules
 			"NavigationSystem",         // runtime navmesh for click-to-move
 			"TesseraCore",              // data, looks, assets (Plugins/Tessera)
 			"TesseraWorld",             // world builder base, sky and day/night, navmesh
+			"TesseraGameplay",          // characters, stats, combat, abilities, items, loot, feedback
 			"Loom"                      // story engine (Plugins/Loom)
 		});
 

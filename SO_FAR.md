@@ -265,11 +265,15 @@ dynamic story. So the reusable code is moving into two plugins, each its own rep
   hidden seeded checks (formula in `CheckRules`), flags, disposition, factions, quests, encounter outcomes. Games
   register conditions / actions / placeholders / verb rules and listen to events (`OnQuest`, `OnDialogueOpened`...).
 - **Tessera** (`TS` prefix): `TesseraCore` (`UTSData`, `TSLook`, `TSAssets`, `TSJson`, `TSCmd`, `TSConfig`) and
-  `TesseraWorld` (`ATSWorldBuilder`: helpers, height field, cutaways, flicker, navmesh; `ATSSky`: sky and day/night).
+  `TesseraWorld` (`ATSWorldBuilder`: helpers, height field, cutaways, flicker, navmesh; `ATSSky`: sky and day/night),
+  `TesseraGameplay` (characters, stats, combat, abilities, items, loot, feedback).
 - **Rule:** nothing in either plugin may name a game. File names, sections, map symbols, material paths, switch
   prefixes and wording come from the game's data, `[Tessera]` config or registered hooks.
-- **Phases:** 1 done (Loom; Tessera core + world; all 11 tests pass; screenshots unchanged). 2: characters, stats,
-  combat, abilities, projectiles, loot, sprite component. 3: top-down hero controls, perception (stealth), UI kit,
+- **Phases:** 1 done (Loom; Tessera core + world). 2 done, tested and pushed (TesseraGameplay: `ATSCharacter`,
+  data-defined stats pools in the `stats` section, `TSCombat`, `UTSAbilityComponent` + type registry, projectiles, FX,
+  inventory, loot, `UTSFeedback`, sprite, pose mesh, anim notifies; game keeps looks, class rules, duels, quest drops via
+  hooks; `world3d.assets` / `.text` / `.currencyKey` hold paths and words; the unused mana-shield code was dropped).
+  Each phase: tests + package, the user tests the exe, then commit + push the plugins. 3: top-down hero controls, perception (stealth), UI kit,
   Loom-to-UI dialogue box. 4: tooling (launcher, test harness, import scripts, pixel-art primitives).
 - Backup of everything before the split: `C:\Users\krish\dev\action-rpg-backup-2026-10-06` (full copy incl. `.git`).
 

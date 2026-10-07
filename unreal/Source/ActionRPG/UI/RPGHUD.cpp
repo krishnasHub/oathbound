@@ -1,4 +1,5 @@
 #include "RPGHUD.h"
+#include "TSFeedback.h"
 #include "TSSky.h"
 #include "RPGWorldBuilder.h"
 #include "RPGSession.h"
@@ -58,7 +59,7 @@ void ARPGHUD::DrawHUD()
 		if (S.Z <= 0.f) continue;   // behind the camera
 
 		ARPGEnemy* E = Cast<ARPGEnemy>(C);
-		const bool bTalkable = !C->DialogueRoot.IsEmpty() && (C->Team == ERPGTeam::Villager || C->IsPassive());
+		const bool bTalkable = !C->DialogueRoot.IsEmpty() && (C->Team == ETSTeam::Neutral || C->IsPassive());
 		if (bTalkable && Dist < 2200.f)
 		{
 			Text(C->DisplayName, S.X, S.Y + 10 * UI, C->NameColor, 1.1f * UI);
@@ -69,15 +70,15 @@ void ARPGHUD::DrawHUD()
 				Text(Marker, S.X, S.Y - 22 * UI + Bob, Marker == TEXT("?") ? FLinearColor(0.44f, 0.88f, 0.54f) : FLinearColor(1.f, 0.83f, 0.3f), 3.f * UI);
 			}
 		}
-		if (E && !E->IsBoss() && C->Stats->HP < C->Stats->MaxHP() && Dist < 2500.f)
+		if (E && !E->IsBoss() && C->Stats->Health() < C->Stats->MaxHealth() && Dist < 2500.f)
 		{
 			const float W = 70.f * UI;
-			Bar(S.X - W * 0.5f, S.Y, W, 6.f * UI, C->Stats->HP / C->Stats->MaxHP(), FLinearColor(0.84f, 0.27f, 0.27f));
+			Bar(S.X - W * 0.5f, S.Y, W, 6.f * UI, C->Stats->Health() / C->Stats->MaxHealth(), FLinearColor(0.84f, 0.27f, 0.27f));
 		}
 		if (E && E->Tags.Has(TEXT("Marked")))
 		{
 			const TSJson::FObj Next = E->CurrentAttack() ? E->CurrentAttack() : nullptr;
-			Text(FString::Printf(TEXT("%.0f / %.0f HP%s"), E->Stats->HP, E->Stats->MaxHP(), Next ? *(TEXT("  next: ") + TSJson::Str(Next, TEXT("type"))) : TEXT("")),
+			Text(FString::Printf(TEXT("%.0f / %.0f HP%s"), E->Stats->Health(), E->Stats->MaxHealth(), Next ? *(TEXT("  next: ") + TSJson::Str(Next, TEXT("type"))) : TEXT("")),
 				S.X, S.Y - 16 * UI, FLinearColor(1.f, 0.83f, 0.3f), 0.6f * UI);
 		}
 		if (Session->IsDebug() && E)
@@ -89,7 +90,7 @@ void ARPGHUD::DrawHUD()
 	}
 
 	// Floating combat text.
-	for (const FRPGFloater& F : Session->Floaters)
+	for (const FTSFloater& F : UTSFeedback::Get(Session)->Floaters)
 	{
 		const FVector S = Project(F.World, false);
 		if (S.Z <= 0.f) continue;

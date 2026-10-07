@@ -44,8 +44,18 @@ public:
 	virtual bool IsPassive() const override;
 	virtual bool IsLeaving() const override { return State == ERPGEnemyState::Leaving; }
 	virtual FString FactionId() const override;
-	virtual void OnDamaged(ARPGCharacterBase* Src) override;
-	virtual FString YieldDialogueId() const override;
+	virtual void OnDamaged(ATSCharacter* Src) override;
+	/** Striking a neutral faction member (or a bystander during a duel) turns the whole faction hostile. */
+	virtual void OnStruck(ATSCharacter* Src) override;
+	/** A duel opponent yields (opens its yield dialogue) instead of dying. */
+	virtual bool OnHurt(ATSCharacter* Src) override;
+	virtual float HealthFloor() const override;
+	virtual float KnockbackMul() const override { return float(TSJson::Num(Def, TEXT("knockbackMul"), 1.0)); }
+	virtual void LoseTrack() override;
+	virtual bool IsReasonable() const override { return TSJson::Bool(Def, TEXT("intelligent")); }
+	virtual FString ParleyNode() const override { return TSJson::Str(Def, TEXT("parleyDialogue")); }
+	virtual bool IsWindingUp() const override { return bSpriteHold || State == ERPGEnemyState::Windup; }
+	FString YieldDialogueId() const { return TSJson::Str(Def, TEXT("yieldDialogue")); }
 	virtual void OnStaggered() override;
 	virtual void Die(AActor* Killer) override;
 

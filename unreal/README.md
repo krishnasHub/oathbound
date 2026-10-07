@@ -80,8 +80,8 @@ Useful switches (`-Extra`): `-RPGHour=22` (start at that hour), `-RPGLook=hd2d|f
 | Look | Tessera `TSLook` | HD-2D (default), flat 2D or 3D meshes; card rotation, pixel materials (paths in `world3d.looks2d`) |
 | World | `World/RPGWorldBuilder` on Tessera's `ATSWorldBuilder` + `ATSSky` | Map rows → terrain, river, bridge, cottages (cut away when they hide you), tree cards, ruins, fires; sun + moon day/night cycle, fog, exposure grade; runtime navmesh |
 | Ambient life | `World/RPGAmbient` | Birds and geese by day, a prowler and fireflies by night; they react to the hero |
-| Characters | `Characters/` | `ARPGCharacterBase` (hidden mannequin for animation timing) + `URPGSpriteComponent` (the pixel sprite you see) → player, enemy (AI state machine), NPC |
-| Combat | `Combat/` | Stats, damage pipeline (blocks, barrier), abilities (12 types), arcing arrows, inventory, loot, effects |
+| Characters | `Characters/` on Tessera's `ATSCharacter` | `ARPGCharacterBase` (mannequin / slime looks; hidden mannequin for animation timing) + Tessera's sprite component (the pixel sprite you see) → player, enemy (AI state machine), NPC |
+| Combat | Tessera `TesseraGameplay` + `Combat/RPGLoot` | Stats (pools in the data's `stats` section), damage pipeline (blocks, barrier), abilities (12 types), arcing arrows, inventory, loot, effects; the game adds duel yields, faction anger and quest drops through hooks |
 | Story | Loom `ULMStory` + `Game/RPGSession` | Loom: flags, quests, dialogue engine (seeded hidden rolls), encounters, factions. `URPGSession` registers this game's conditions / actions / placeholders with it, and keeps duels, the bridge rule and the HUD feedback queues |
 | UI | `UI/` | Slate: title, character select (animated backdrops per class), HUD, minimap (class-shaped frame), dialogue, pause menu, game cursor, deep-night darkness |
 | Input | `RPGPlayerCharacter` | Enhanced Input in code; click-to-move / attack / talk |

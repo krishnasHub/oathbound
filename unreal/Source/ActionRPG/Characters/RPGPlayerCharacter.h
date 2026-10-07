@@ -12,9 +12,9 @@ class UInputMappingContext;
 class UAnimMontage;
 class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
-class URPGInventoryComponent;
-class URPGAbilityComponent;
-class URPGPoseMesh;
+class UTSInventoryComponent;
+class UTSAbilityComponent;
+class UTSPoseMesh;
 
 /**
  * The player. Prototype equivalent: `Player`.
@@ -48,16 +48,16 @@ public:
 
 	UPROPERTY(VisibleAnywhere, Category = "Camera") TObjectPtr<USpringArmComponent> CameraBoom;
 	UPROPERTY(VisibleAnywhere, Category = "Camera") TObjectPtr<UCameraComponent> Camera;
-	UPROPERTY(VisibleAnywhere, Category = "RPG") TObjectPtr<URPGInventoryComponent> Inventory;
-	UPROPERTY(VisibleAnywhere, Category = "RPG") TObjectPtr<URPGAbilityComponent> Abilities;
+	UPROPERTY(VisibleAnywhere, Category = "RPG") TObjectPtr<UTSInventoryComponent> Inventory;
+	UPROPERTY(VisibleAnywhere, Category = "RPG") TObjectPtr<UTSAbilityComponent> Abilities;
 	/** What you see: a posed copy of the animated mesh (arm raised to guard, etc.). */
-	UPROPERTY(VisibleAnywhere, Category = "RPG") TObjectPtr<URPGPoseMesh> PoseMesh;
+	UPROPERTY(VisibleAnywhere, Category = "RPG") TObjectPtr<UTSPoseMesh> PoseMesh;
 	virtual USkinnedMeshComponent* BodyMesh() const override;
 
 	// Progression
 	int32 Xp = 0;
 	int32 AttrPoints = 0;
-	int32 Level() const { return FMath::RoundToInt(Stats->Get(TEXT("level"))); }
+	virtual int32 Level() const override { return FMath::RoundToInt(Stats->Get(TEXT("level"))); }
 	static int32 XpToNext(const UObject* Ctx, int32 Level);
 	void GainXp(int32 Amount);
 
@@ -69,13 +69,16 @@ public:
 	float DrawFraction() const;
 	float DeathTimer = 0.f;
 
-	// Damage-pipeline hooks
+	// Damage-pipeline and ability hooks (ATSCharacter)
 	virtual TSJson::FObj GuardStyle() const override;
-	virtual TSJson::FObj PassiveStyle() const override;
 	virtual void OnStaggered() override;
+	virtual bool CanAct() const override { return Super::CanAct() && !IsDodging(); }
+	/** "shield": the current weapon style must block. */
+	virtual bool MeetsRequirement(const FString& Requirement, FString& Why) const override;
+	virtual void OnParley(ATSCharacter* Target, const FString& Node) override;
 	virtual void Die(AActor* Killer) override;
 
-	// IRPGAttacker
+	// ITSAttacker
 	virtual void DoAttackTrace(FName SourceBone) override;
 	virtual void CheckCombo() override;
 
@@ -84,17 +87,17 @@ public:
 	/** Where the crosshair (third person) or the cursor (top-down) points; used to aim projectiles and abilities. */
 	FVector AimPoint(float MaxDistance = 6000.f) const;
 	/** Direction from a point (default: the chest) to what the crosshair is on (with light aim assist). */
-	FVector AimDirection() const { return AimDirection(Chest()); }
-	FVector AimDirection(const FVector& From) const;
+	using ATSCharacter::AimDirection;
+	virtual FVector AimDirection(const FVector& From) const override;
 	/** Where shots leave from: the staff orb (Mage), the bow (Thief, bow out), otherwise the chest. */
-	FVector Muzzle() const;
+	virtual FVector Muzzle() const override;
 	/** Where an arrow from From should land: the foe you're aiming at (chest), else the ground at the cursor,
 	 *  no further than MaxRange. */
-	FVector ArrowTarget(const FVector& From, float MaxRange) const;
+	virtual FVector ArrowTarget(const FVector& From, float MaxRange) const override;
 	/** Called by the ability component after a successful cast, to play the matching pose. */
-	void OnAbilityUsed(const TSJson::FObj& Ability);
+	virtual void OnAbilityUsed(const TSJson::FObj& Ability) override;
 	/** Turn to face the aim (camera direction, or the cursor when top-down; yaw only). */
-	void FaceAim();
+	virtual void FaceAim() override;
 	/** While blocking: turn toward the nearest foe coming at you (else the aim). */
 	void FaceThreat();
 
@@ -106,7 +109,7 @@ public:
 	/** Weapon meshes for the current style (world3d.styleKits). */
 	void RefreshWeapons();
 	/** Invulnerable dash; with a Strike definition it damages everything it passes through (Charge, Shadow Dash). */
-	void StartDash(const FVector& Dir, float Speed, float Duration, const TSJson::FObj& Strike);
+	virtual void StartDash(const FVector& Dir, float Speed, float Duration, const TSJson::FObj& Strike) override;
 	void BindUIHooks(TFunction<void(FName)> Handler) { UIHandler = MoveTemp(Handler); }
 
 	FVector SpawnPoint;
@@ -248,7 +251,7 @@ private:
 	TSet<TWeakObjectPtr<AActor>> DashHit;
 	FVector ShakeOffset = FVector::ZeroVector;
 
-	// Shooting poses / holsters (procedural, see URPGPoseMesh)
+	// Shooting poses / holsters (procedural, see UTSPoseMesh)
 	float CastKick = 0.f, CastHold = 0.f, OrbFlash = 0.f;     // Mage: staff thrust + orb pulse
 	float BowRelease = 0.f, BowOut = 0.f;                      // Thief: string snap, bow kept out after a shot
 	void UpdatePoses(float Dt);

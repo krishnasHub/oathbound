@@ -6,11 +6,10 @@
 #include "RPGSession.generated.h"
 
 class ARPGCharacterBase;
+class ATSCharacter;
 class ARPGPlayerCharacter;
 class ULMStory;
-
-struct FRPGFloater { FVector World; FString Text; FLinearColor Color; float Size = 1.f; float Age = 0.f; float Life = 1.f; };
-struct FRPGToast { FString Text; FLinearColor Color; float Age = 0.f; };
+class UTSFeedback;
 
 /**
  * This game's side of the story and its run-time feedback:
@@ -18,7 +17,7 @@ struct FRPGToast { FString Text; FLinearColor Color; float Age = 0.f; };
  *     recruit...), text placeholders, verb stats and costs; reacts to Loom's events (pause for dialogue, toasts,
  *     quest rewards)
  *   - duels, faction hostility, and the toll bridge's "slipped past without talking" rule
- *   - feedback queues the HUD draws: floating combat text, toasts, camera shake
+ * (Floating text, toasts and shake are Tessera's UTSFeedback.)
  *
  * Unreal: a tickable world subsystem — one per level, reachable from anywhere via URPGSession::Get().
  */
@@ -41,14 +40,9 @@ public:
 
 	ARPGPlayerCharacter* Player() const;
 	ULMStory* Story() const;
+	UTSFeedback* Feedback() const;
 
-	// ---- feedback ----
-	void Float(const FVector& At, const FString& Text, const FLinearColor& Color, float Size = 1.f);
-	void Toast(const FString& Text, const FLinearColor& Color = FLinearColor::White);
-	void Shake(float Amount) { ShakeAmount = FMath::Max(ShakeAmount, Amount); }
-	TArray<FRPGFloater> Floaters;
-	TArray<FRPGToast> Toasts;
-	float ShakeAmount = 0.f;
+	/** The ~ debug view (dialogue odds, AI states, cheats). */
 	bool IsDebug() const { return bDebug; }
 	void SetDebug(bool bOn);
 
@@ -58,9 +52,9 @@ public:
 	void StartDuel(ARPGCharacterBase* Opponent);
 
 	// ---- talking (characters -> Loom) ----
-	void OpenDialogue(ARPGCharacterBase* Npc, const FString& NodeId = FString());
+	void OpenDialogue(ATSCharacter* Npc, const FString& NodeId = FString());
 	/** "!" / "?" over a character's head (their root dialogue), or "". */
-	FString MarkerFor(const ARPGCharacterBase* Npc) const;
+	FString MarkerFor(const ATSCharacter* Npc) const;
 	/** Who the open dialogue is with. */
 	ARPGCharacterBase* DialogueNpc() const;
 

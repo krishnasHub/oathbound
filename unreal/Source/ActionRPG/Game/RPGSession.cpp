@@ -1,13 +1,14 @@
 #include "RPGSession.h"
 #include "ActionRPG.h"
 #include "LMStory.h"
+#include "TSFeedback.h"
 #include "TSData.h"
 #include "RPGCharacterBase.h"
 #include "RPGPlayerCharacter.h"
 #include "RPGEnemy.h"
 #include "RPGNPC.h"
-#include "RPGLoot.h"
-#include "RPGInventoryComponent.h"
+#include "TSLoot.h"
+#include "TSInventory.h"
 #include "RPGPlayerController.h"
 
 #include "EngineUtils.h"
@@ -26,6 +27,7 @@ URPGSession* URPGSession::Get(const UObject* WorldContext)
 }
 
 ULMStory* URPGSession::Story() const { return GetWorld()->GetSubsystem<ULMStory>(); }
+UTSFeedback* URPGSession::Feedback() const { return GetWorld()->GetSubsystem<UTSFeedback>(); }
 
 ARPGPlayerCharacter* URPGSession::Player() const
 {
@@ -51,36 +53,9 @@ void URPGSession::SetDebug(bool bOn)
 	Story()->bShowOdds = bOn;
 }
 
-// ---------------------------------------------------------------------------------------------
-// Feedback
-// ---------------------------------------------------------------------------------------------
-
-void URPGSession::Float(const FVector& At, const FString& Text, const FLinearColor& Color, float Size)
-{
-	FRPGFloater F;
-	F.World = At + FVector(FMath::FRandRange(-20.f, 20.f), FMath::FRandRange(-20.f, 20.f), 0);
-	F.Text = Text; F.Color = Color; F.Size = Size;
-	Floaters.Add(F);
-}
-
-void URPGSession::Toast(const FString& Text, const FLinearColor& Color)
-{
-	Toasts.Add({ Text, Color, 0.f });
-	if (Toasts.Num() > 5) Toasts.RemoveAt(0);
-	UE_LOG(LogRPG, Display, TEXT("[toast] %s"), *Text);
-}
-
 void URPGSession::Tick(float Dt)
 {
-	const bool bPaused = GetWorld()->IsPaused();
-	for (FRPGToast& T : Toasts) T.Age += Dt;
-	Toasts.RemoveAll([](const FRPGToast& T) { return T.Age > 3.4f; });
-	if (bPaused) return;
-
-	for (FRPGFloater& F : Floaters) { F.Age += Dt; F.World.Z += 60.f * Dt; }
-	Floaters.RemoveAll([](const FRPGFloater& F) { return F.Age > F.Life; });
-	ShakeAmount *= FMath::Pow(0.002f, Dt);
-
+	if (GetWorld()->IsPaused()) return;
 	EncounterCooldown -= Dt;
 	UpdateEncounters();
 }
@@ -95,7 +70,7 @@ void URPGSession::SetHostile(const FString& FactionName, const FString& Bark)
 	if (L->Faction(FactionName) == TEXT("hostile")) return;
 	L->Factions.Add(FactionName, TEXT("hostile"));
 	Duel = nullptr;
-	Toast(Bark.IsEmpty() ? FString(TEXT("They attack!")) : Bark, ToastRed);
+	Feedback()->Toast(Bark.IsEmpty() ? FString(TEXT("They attack!")) : Bark, ToastRed);
 	L->CloseDialogue();
 }
 
@@ -103,7 +78,7 @@ void URPGSession::StartDuel(ARPGCharacterBase* Opponent)
 {
 	Duel = Opponent;
 	if (ARPGEnemy* E = Cast<ARPGEnemy>(Opponent)) E->State = ERPGEnemyState::Chase;
-	Toast(FString::Printf(TEXT("Duel! Bring %s to his knees (below 20%% health). His men won't interfere."), *Opponent->DisplayName), ToastGold);
+	Feedback()->Toast(FString::Printf(TEXT("Duel! Bring %s to his knees (below 20%% health). His men won't interfere."), *Opponent->DisplayName), ToastGold);
 }
 
 void URPGSession::UpdateEncounters()
@@ -136,13 +111,13 @@ void URPGSession::UpdateEncounters()
 // Talking
 // ---------------------------------------------------------------------------------------------
 
-void URPGSession::OpenDialogue(ARPGCharacterBase* Npc, const FString& NodeId)
+void URPGSession::OpenDialogue(ATSCharacter* Npc, const FString& NodeId)
 {
 	if (!Npc) return;
 	Story()->OpenDialogue(Npc, FLMSpeaker{ Npc->DisplayName, Npc->NameColor, Npc->TalkKey, Npc->DialogueRoot }, NodeId);
 }
 
-FString URPGSession::MarkerFor(const ARPGCharacterBase* Npc) const
+FString URPGSession::MarkerFor(const ATSCharacter* Npc) const
 {
 	return Npc ? Story()->MarkerFor(Npc->DialogueRoot) : FString();
 }
@@ -170,10 +145,10 @@ void URPGSession::Bind(ULMStory* L)
 	};
 	L->AddCondition(TEXT("class"), [this, OneOf](const TSJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && OneOf(C, TEXT("class"), P->ClassId); });
 	L->AddCondition(TEXT("sex"), [this](const TSJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && TSJson::Str(C, TEXT("sex")) == P->Sex; });
-	L->AddCondition(TEXT("gold"), [this](const TSJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && P->Inventory->Gold >= TSJson::Num(C, TEXT("gold")); });
+	L->AddCondition(TEXT("gold"), [this](const TSJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && P->Inventory->Currency >= TSJson::Num(C, TEXT("gold")); });
 	L->AddCondition(TEXT("hasItem"), [this](const TSJson::FObj& C) { const ARPGPlayerCharacter* P = Player(); return P && P->Inventory->Count(TSJson::Str(C, TEXT("hasItem"))) > 0; });
 
-	L->AddPlaceholder(TEXT("gold"), [this]() { const ARPGPlayerCharacter* P = Player(); return P ? FString::FromInt(P->Inventory->Gold) : FString(TEXT("0")); });
+	L->AddPlaceholder(TEXT("gold"), [this]() { const ARPGPlayerCharacter* P = Player(); return P ? FString::FromInt(P->Inventory->Currency) : FString(TEXT("0")); });
 	L->AddPlaceholder(TEXT("title"), [this]()
 	{
 		const ARPGPlayerCharacter* P = Player();
@@ -195,26 +170,26 @@ void URPGSession::Bind(ULMStory* L)
 		if (!Mana) return;
 		View.Verb += FString::Printf(TEXT(" · %d mana"), Mana);
 		const ARPGPlayerCharacter* P = Player();
-		if (P && P->Stats->Mana < Mana) View.bEnabled = false;
+		if (P && P->Stats->Pool(RPGStat::Mana).Current < Mana) View.bEnabled = false;
 	};
-	L->PayVerb = [this](const TSJson::FObj& V) { if (ARPGPlayerCharacter* P = Player()) P->Stats->Mana -= float(TSJson::Num(V, TEXT("mana"), 0)); };
+	L->PayVerb = [this](const TSJson::FObj& V) { if (ARPGPlayerCharacter* P = Player()) P->Stats->Pool(RPGStat::Mana).Current -= float(TSJson::Num(V, TEXT("mana"), 0)); };
 
 	// Actions.
 	auto GiveItem = [this](const FString& Id, const TSJson::FObj& Weights)
 	{
 		ARPGPlayerCharacter* P = Player();
 		if (!P) return;
-		const FRPGItem It = URPGInventoryComponent::MakeItem(this, Id, Weights);
-		if (P->Inventory->Add(It)) Toast(TEXT("Received ") + It.Name, URPGInventoryComponent::RarityColor(this, It.Rarity));
-		else RPGLoot::Spawn(GetWorld(), P->GetActorLocation(), &It, 0);
+		const FTSItem It = UTSInventoryComponent::MakeItem(this, Id, Weights);
+		if (P->Inventory->Add(It)) Feedback()->Toast(TEXT("Received ") + It.Name, UTSInventoryComponent::RarityColor(this, It.Rarity));
+		else TSLoot::Spawn(GetWorld(), P->GetActorLocation(), &It, 0);
 		P->Inventory->OnChanged.Broadcast();
 	};
 	auto AddGold = [this](int32 Amount)
 	{
 		ARPGPlayerCharacter* P = Player();
 		if (!P) return;
-		P->Inventory->Gold += Amount;
-		Toast(FString::Printf(TEXT("%+d gold"), Amount), ToastGold);
+		P->Inventory->Currency += Amount;
+		Feedback()->Toast(FString::Printf(TEXT("%+d gold"), Amount), ToastGold);
 		P->Inventory->OnChanged.Broadcast();
 	};
 	L->AddAction(TEXT("restore"), [this](const TSJson::FObj& A) { if (ARPGPlayerCharacter* P = Player(); P && TSJson::Bool(A, TEXT("restore"))) P->Restore(); });
@@ -226,10 +201,10 @@ void URPGSession::Bind(ULMStory* L)
 		ARPGPlayerCharacter* P = Player();
 		const TSJson::FObj Buy = TSJson::Obj(A, TEXT("buy"));
 		const int32 Cost = int32(TSJson::Num(Buy, TEXT("cost"), 0));
-		if (!P || P->Inventory->Gold < Cost) return;
-		const FRPGItem It = URPGInventoryComponent::MakeItem(this, TSJson::Str(Buy, TEXT("item")));
-		if (P->Inventory->Add(It)) { P->Inventory->Gold -= Cost; Toast(TEXT("Bought ") + It.Name, URPGInventoryComponent::RarityColor(this, It.Rarity)); }
-		else Toast(TEXT("Bag is full"));
+		if (!P || P->Inventory->Currency < Cost) return;
+		const FTSItem It = UTSInventoryComponent::MakeItem(this, TSJson::Str(Buy, TEXT("item")));
+		if (P->Inventory->Add(It)) { P->Inventory->Currency -= Cost; Feedback()->Toast(TEXT("Bought ") + It.Name, UTSInventoryComponent::RarityColor(this, It.Rarity)); }
+		else Feedback()->Toast(TEXT("Bag is full"));
 		P->Inventory->OnChanged.Broadcast();
 	});
 	L->AddAction(TEXT("hostile"), [this](const TSJson::FObj& A) { SetHostile(TSJson::Str(A, TEXT("hostile"))); });
@@ -253,7 +228,7 @@ void URPGSession::Bind(ULMStory* L)
 	});
 	L->AddAction(TEXT("dropStash"), [this](const TSJson::FObj& A)
 	{
-		if (ARPGCharacterBase* N = DialogueNpc(); N && TSJson::Bool(A, TEXT("dropStash"))) RPGLoot::DropTable(GetWorld(), N->GetActorLocation(), TEXT("stash"));
+		if (ARPGCharacterBase* N = DialogueNpc(); N && TSJson::Bool(A, TEXT("dropStash"))) TSLoot::DropTable(GetWorld(), N->GetActorLocation(), TEXT("stash"));
 	});
 
 	// Events.
@@ -262,16 +237,16 @@ void URPGSession::Bind(ULMStory* L)
 	{
 		const TSJson::FObj Def = Story()->Entry(TEXT("quests"), Id);
 		const FString Name = TSJson::Str(Def, TEXT("name"));
-		if (What == TEXT("started")) { Toast(TEXT("Quest started: ") + Name, ToastGold); return; }
-		if (What == TEXT("complete")) { Toast(FString::Printf(TEXT("%s: complete — return to %s"), *Name, *TSJson::Str(Def, TEXT("giver"))), ToastGreen); return; }
+		if (What == TEXT("started")) { Feedback()->Toast(TEXT("Quest started: ") + Name, ToastGold); return; }
+		if (What == TEXT("complete")) { Feedback()->Toast(FString::Printf(TEXT("%s: complete — return to %s"), *Name, *TSJson::Str(Def, TEXT("giver"))), ToastGreen); return; }
 		if (What != TEXT("turnedIn")) return;
-		Toast(TEXT("Quest complete: ") + Name, ToastGreen);
+		Feedback()->Toast(TEXT("Quest complete: ") + Name, ToastGreen);
 		ARPGPlayerCharacter* P = Player();
 		if (!P) return;
 		const TSJson::FObj O = TSJson::Obj(Def, TEXT("objective"));
 		if (TSJson::Str(O, TEXT("type")) == TEXT("collect")) P->Inventory->Remove(TSJson::Str(O, TEXT("item")), int32(TSJson::Num(O, TEXT("count"), 1)));
 		const TSJson::FObj R = TSJson::Obj(Def, TEXT("reward"));
-		if (const int32 G = int32(TSJson::Num(R, TEXT("gold"), 0))) { P->Inventory->Gold += G; Toast(FString::Printf(TEXT("+%d gold"), G), ToastGold); }
+		if (const int32 G = int32(TSJson::Num(R, TEXT("gold"), 0))) { P->Inventory->Currency += G; Feedback()->Toast(FString::Printf(TEXT("+%d gold"), G), ToastGold); }
 		if (TSJson::Has(R, TEXT("item")))
 		{
 			TSJson::FObj Weights;
@@ -284,7 +259,7 @@ void URPGSession::Bind(ULMStory* L)
 	L->OnResolved.AddLambda([this](const FString& Encounter, const FString&)
 	{
 		Story()->SetFlag(Encounter + TEXT("_passable"));
-		Toast(TEXT("The bridge is open."), ToastGreen);
+		Feedback()->Toast(TEXT("The bridge is open."), ToastGreen);
 	});
 	L->OnDialogueOpened.AddLambda([this]()
 	{

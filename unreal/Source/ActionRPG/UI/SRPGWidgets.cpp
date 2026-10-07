@@ -1,6 +1,7 @@
 #include "SRPGWidgets.h"
+#include "TSFeedback.h"
 #include "TSSky.h"
-#include "RPGSprite.h"
+#include "TSSprite.h"
 #include "Widgets/Layout/SScaleBox.h"
 #include "RPGPlayerController.h"
 #include "RPGWorldBuilder.h"
@@ -13,9 +14,9 @@
 #include "TSData.h"
 #include "RPGPlayerCharacter.h"
 #include "RPGEnemy.h"
-#include "RPGInventoryComponent.h"
-#include "RPGAbilityComponent.h"
-#include "RPGCombat.h"
+#include "TSInventory.h"
+#include "TSAbilities.h"
+#include "TSCombat.h"
 
 #include "Widgets/SOverlay.h"
 #include "Widgets/SBoxPanel.h"
@@ -119,19 +120,19 @@ void SRPGHud::Construct(const FArguments& Args)
 					P->AttrPoints ? *FString::Printf(TEXT("   (+%d points — C)"), P->AttrPoints) : TEXT(""))); })
 		]
 		+ SVerticalBox::Slot().AutoHeight().Padding(0, 2)
-		[ Bar(320, 22, FLinearColor(0.78f, 0.2f, 0.2f), [W]() { const ARPGPlayerCharacter* P = PlayerOf(W); return P ? P->Stats->HP / FMath::Max(1.f, P->Stats->MaxHP()) : 0.f; },
-			[W]() { const ARPGPlayerCharacter* P = PlayerOf(W); return P ? FString::Printf(TEXT("HP %.0f / %.0f"), FMath::CeilToFloat(P->Stats->HP), P->Stats->MaxHP()) : FString(); }) ]
+		[ Bar(320, 22, FLinearColor(0.78f, 0.2f, 0.2f), [W]() { const ARPGPlayerCharacter* P = PlayerOf(W); return P ? P->Stats->Health() / FMath::Max(1.f, P->Stats->MaxHealth()) : 0.f; },
+			[W]() { const ARPGPlayerCharacter* P = PlayerOf(W); return P ? FString::Printf(TEXT("HP %.0f / %.0f"), FMath::CeilToFloat(P->Stats->Health()), P->Stats->MaxHealth()) : FString(); }) ]
 		+ SVerticalBox::Slot().AutoHeight().Padding(0, 2)
-		[ Bar(320, 10, TAttribute<FSlateColor>::CreateLambda([W]() { const ARPGPlayerCharacter* P = PlayerOf(W); return FSlateColor(P && P->Stats->StaminaDelay > 0 ? FLinearColor(0.33f, 0.6f, 0.3f) : FLinearColor(0.5f, 0.82f, 0.45f)); }),
-			[W]() { const ARPGPlayerCharacter* P = PlayerOf(W); return P ? P->Stats->Stamina / FMath::Max(1.f, P->Stats->MaxStamina()) : 0.f; }) ]
+		[ Bar(320, 10, TAttribute<FSlateColor>::CreateLambda([W]() { const ARPGPlayerCharacter* P = PlayerOf(W); return FSlateColor(P && P->Stats->Pool(RPGStat::Stamina).Delay > 0 ? FLinearColor(0.33f, 0.6f, 0.3f) : FLinearColor(0.5f, 0.82f, 0.45f)); }),
+			[W]() { const ARPGPlayerCharacter* P = PlayerOf(W); return P ? P->Stats->Pool(RPGStat::Stamina).Current / FMath::Max(1.f, P->Stats->Max(RPGStat::Stamina)) : 0.f; }) ]
 		+ SVerticalBox::Slot().AutoHeight().Padding(0, 2)
-		[ Bar(320, 10, FLinearColor(0.3f, 0.48f, 0.9f), [W]() { const ARPGPlayerCharacter* P = PlayerOf(W); return P ? P->Stats->Mana / FMath::Max(1.f, P->Stats->MaxMana()) : 0.f; }) ]
+		[ Bar(320, 10, FLinearColor(0.3f, 0.48f, 0.9f), [W]() { const ARPGPlayerCharacter* P = PlayerOf(W); return P ? P->Stats->Pool(RPGStat::Mana).Current / FMath::Max(1.f, P->Stats->Max(RPGStat::Mana)) : 0.f; }) ]
 		+ SVerticalBox::Slot().AutoHeight().Padding(0, 6)
 		[
 			SNew(STextBlock).Font(Font(11)).ColorAndOpacity(FLinearColor(0.37f, 0.88f, 0.54f)).ShadowOffset(FVector2D(1, 1))
 			.Text_Lambda([W]() { const ARPGPlayerCharacter* P = PlayerOf(W); if (!P) return FText::GetEmpty();
 				FString S;
-				for (const FRPGEffect& E : P->Stats->Effects) S += FString::Printf(TEXT("%s%s  %.1fs\n"), *E.Name, E.Absorb > 0 ? *FString::Printf(TEXT(" (%.0f)"), E.Absorb) : TEXT(""), E.Remaining);
+				for (const FTSEffect& E : P->Stats->Effects) S += FString::Printf(TEXT("%s%s  %.1fs\n"), *E.Name, E.Absorb > 0 ? *FString::Printf(TEXT(" (%.0f)"), E.Absorb) : TEXT(""), E.Remaining);
 				if (P->Tags.Has(TEXT("Hidden"))) S += TEXT("Hidden\n");
 				if (P->Tags.Has(TEXT("Staggered"))) S += TEXT("Staggered\n");
 				return T(S); })
@@ -141,7 +142,7 @@ void SRPGHud::Construct(const FArguments& Args)
 		+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right)
 		[
 			SNew(STextBlock).Font(Font(15, TEXT("Bold"))).ColorAndOpacity(Gold).ShadowOffset(FVector2D(1, 1))
-			.Text_Lambda([W]() { const ARPGPlayerCharacter* P = PlayerOf(W); return P ? T(FString::Printf(TEXT("%d gold"), P->Inventory->Gold)) : FText::GetEmpty(); })
+			.Text_Lambda([W]() { const ARPGPlayerCharacter* P = PlayerOf(W); return P ? T(FString::Printf(TEXT("%d gold"), P->Inventory->Currency)) : FText::GetEmpty(); })
 		]
 		+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right).Padding(0, 10)
 		[
@@ -163,12 +164,12 @@ void SRPGHud::Construct(const FArguments& Args)
 		Toasts->AddSlot().AutoHeight().HAlign(HAlign_Center).Padding(0, 3)
 		[
 			SNew(SBorder).BorderImage(White()).BorderBackgroundColor(FLinearColor(0, 0, 0, 0.6f)).Padding(FMargin(14, 5))
-			.Visibility_Lambda([W, I]() { const URPGSession* S = SessionOf(W); return S && S->Toasts.IsValidIndex(I) ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+			.Visibility_Lambda([W, I]() { const URPGSession* S = SessionOf(W); return S && UTSFeedback::Get(S)->Toasts.IsValidIndex(I) ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
 			[
 				SNew(STextBlock).Font(Font(13))
-				.Text_Lambda([W, I]() { const URPGSession* S = SessionOf(W); return S && S->Toasts.IsValidIndex(I) ? T(S->Toasts[I].Text) : FText::GetEmpty(); })
-				.ColorAndOpacity_Lambda([W, I]() { const URPGSession* S = SessionOf(W); if (!S || !S->Toasts.IsValidIndex(I)) return FSlateColor(FLinearColor::White);
-					FLinearColor C = S->Toasts[I].Color; C.A = FMath::Clamp((3.4f - S->Toasts[I].Age) * 2.f, 0.f, 1.f); return FSlateColor(C); })
+				.Text_Lambda([W, I]() { const URPGSession* S = SessionOf(W); return S && UTSFeedback::Get(S)->Toasts.IsValidIndex(I) ? T(UTSFeedback::Get(S)->Toasts[I].Text) : FText::GetEmpty(); })
+				.ColorAndOpacity_Lambda([W, I]() { const URPGSession* S = SessionOf(W); if (!S || !UTSFeedback::Get(S)->Toasts.IsValidIndex(I)) return FSlateColor(FLinearColor::White);
+					FLinearColor C = UTSFeedback::Get(S)->Toasts[I].Color; C.A = FMath::Clamp((3.4f - UTSFeedback::Get(S)->Toasts[I].Age) * 2.f, 0.f, 1.f); return FSlateColor(C); })
 			]
 		];
 	}
@@ -187,7 +188,7 @@ void SRPGHud::Construct(const FArguments& Args)
 		+ SVerticalBox::Slot().AutoHeight().Padding(0, 4)
 		[
 			Bar(560, 14, FLinearColor(0.7f, 0.17f, 0.17f), [W]() {
-				for (TActorIterator<ARPGEnemy> It(W.Get()); It; ++It) if (It->IsBoss() && !It->IsDead() && !It->IsPassive() && It->State != ERPGEnemyState::Idle) return It->Stats->HP / It->Stats->MaxHP();
+				for (TActorIterator<ARPGEnemy> It(W.Get()); It; ++It) if (It->IsBoss() && !It->IsDead() && !It->IsPassive() && It->State != ERPGEnemyState::Idle) return It->Stats->Health() / It->Stats->MaxHealth();
 				return 0.f; })
 		];
 
@@ -266,7 +267,7 @@ void SRPGHud::Construct(const FArguments& Args)
 		.ColorAndOpacity_Lambda([W]() {
 			const ARPGPlayerCharacter* P = PlayerOf(W);
 			if (!P || P->IsDead()) return FSlateColor(FLinearColor(0.7f, 0.02f, 0.02f, 0.f));
-			const float Frac = P->Stats->HP / FMath::Max(1.f, P->Stats->MaxHP());
+			const float Frac = P->Stats->Health() / FMath::Max(1.f, P->Stats->MaxHealth());
 			const float K = FMath::Clamp((0.4f - Frac) / 0.4f, 0.f, 1.f);
 			if (K <= 0.f) return FSlateColor(FLinearColor(0.7f, 0.02f, 0.02f, 0.f));
 			const float T = W.IsValid() ? W->GetRealTimeSeconds() : 0.f;
@@ -557,9 +558,9 @@ int32 SRPGMinimap::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSl
 		{
 			const ARPGCharacterBase* C = *It;
 			if (C == Player || C->IsDead() || C->IsHidden()) continue;
-			if (C->Team == ERPGTeam::Enemy && !ATSSky::IsLit(C->GetActorLocation(), PlayerAt)) continue;   // foes hide in the dark
+			if (C->Team == ETSTeam::Hostile && !ATSSky::IsLit(C->GetActorLocation(), PlayerAt)) continue;   // foes hide in the dark
 			const bool bMarker = Session && !Session->MarkerFor(C).IsEmpty();
-			const FLinearColor Col = bMarker ? Gold : C->Team == ERPGTeam::Villager ? FLinearColor(0.95f, 0.85f, 0.35f)
+			const FLinearColor Col = bMarker ? Gold : C->Team == ETSTeam::Neutral ? FLinearColor(0.95f, 0.85f, 0.35f)
 				: C->IsPassive() ? FLinearColor(1.f, 0.55f, 0.15f) : FLinearColor(0.95f, 0.18f, 0.15f);
 			Dot(C->GetActorLocation(), bMarker ? 9.f : 6.f, Col, Layer + 1);
 		}
@@ -1023,7 +1024,7 @@ void SRPGCharSelect::SetBrush(FSlateBrush& B, const FString& Texture, const FVec
 
 void SRPGCharSelect::SetFrame(FSlateBrush& B, int32 Row, int32 Col)
 {
-	B.SetUVRegion(FBox2f(FVector2f(float(Col) / RPGSpriteSheet::Cols, float(Row) / RPGSpriteSheet::Rows), FVector2f(float(Col + 1) / RPGSpriteSheet::Cols, float(Row + 1) / RPGSpriteSheet::Rows)));
+	B.SetUVRegion(FBox2f(FVector2f(float(Col) / TSSpriteSheet::Cols, float(Row) / TSSpriteSheet::Rows), FVector2f(float(Col + 1) / TSSpriteSheet::Cols, float(Row + 1) / TSSpriteSheet::Rows)));
 }
 
 void SRPGCharSelect::Construct(const FArguments& Args)
@@ -1643,7 +1644,7 @@ void SRPGPanel::Rebuild()
 						{
 							PP->Stats->Base.FindOrAdd(Stat) += 1.f;
 							--PP->AttrPoints;
-							if (Stat == TEXT("vitality")) PP->Stats->HP += float(UTSData::Get(W.Get()).Tuning(TEXT("hpPerVitality"), 10));
+							if (Stat == TEXT("vitality")) PP->Stats->Health() += float(UTSData::Get(W.Get()).Tuning(TEXT("hpPerVitality"), 10));
 						}
 						Rebuild();
 						return FReply::Handled(); })
@@ -1652,19 +1653,19 @@ void SRPGPanel::Rebuild()
 				+ SHorizontalBox::Slot().AutoWidth().Padding(10, 0)[ SNew(STextBlock).Font(Font(11)).ColorAndOpacity(Muted).Text(T(Bonus != 0 ? FString::Printf(TEXT("(%+.0f gear)"), Bonus) : FString())) ]
 			];
 		}
-		const URPGStatsComponent* St = P->Stats;
+		const UTSStatsComponent* St = P->Stats;
 		const float K = float(D.Tuning(TEXT("armorConstant"), 100));
 		Line(TEXT(""));
 		Line(FString::Printf(TEXT("Level %d   ·   XP %d / %d"), P->Level(), P->Xp, ARPGPlayerCharacter::XpToNext(P, P->Level())));
-		Line(FString::Printf(TEXT("Max HP %.0f   ·   Stamina %.0f   ·   Mana %.0f"), St->MaxHP(), St->MaxStamina(), St->MaxMana()));
+		Line(FString::Printf(TEXT("Max HP %.0f   ·   Stamina %.0f   ·   Mana %.0f"), St->MaxHealth(), St->Max(RPGStat::Stamina), St->Max(RPGStat::Mana)));
 		Line(FString::Printf(TEXT("Crit %.0f%%   ·   Armor %.0f (-%.0f%% damage)   ·   Weapon damage %.0f"), St->CritChance() * 100, St->Armor(), (1 - K / (K + St->Armor())) * 100, St->Get(TEXT("weaponDamage"))));
 		Line(FString::Printf(TEXT("Weapon style: %s"), *TSJson::Str(P->Style(), TEXT("name"))), Muted, 11);
 	}
 	else if (Mode == TEXT("Inventory"))
 	{
-		Head(TEXT("Inventory"), FString::Printf(TEXT("%d gold"), P->Inventory->Gold));
+		Head(TEXT("Inventory"), FString::Printf(TEXT("%d gold"), P->Inventory->Currency));
 		TWeakObjectPtr<UWorld> W = World;
-		auto ItemTip = [&](const FRPGItem& It)
+		auto ItemTip = [&](const FTSItem& It)
 		{
 			FString Tip = It.Name + TEXT(" (") + It.Rarity + TEXT(")");
 			for (const auto& M : It.Mods) Tip += FString::Printf(TEXT("\n%+.0f %s"), M.Value, *M.Key.ToString());
@@ -1675,7 +1676,7 @@ void SRPGPanel::Rebuild()
 		auto Eq = SNew(SHorizontalBox);
 		for (const TCHAR* Slot : { TEXT("weapon"), TEXT("armor"), TEXT("trinket") })
 		{
-			const FRPGItem* It = P->Inventory->Equipment.Find(Slot);
+			const FTSItem* It = P->Inventory->Equipment.Find(Slot);
 			const FString SlotName = Slot;
 			Eq->AddSlot().FillWidth(1).Padding(3)
 			[
@@ -1684,14 +1685,14 @@ void SRPGPanel::Rebuild()
 				[
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight()[ SNew(STextBlock).Font(Font(9)).ColorAndOpacity(Muted).Text(T(SlotName.ToUpper())) ]
-					+ SVerticalBox::Slot().AutoHeight()[ SNew(STextBlock).Font(Font(12)).ColorAndOpacity(It ? URPGInventoryComponent::RarityColor(P, It->Rarity) : Muted).Text(T(It ? It->Name : TEXT("—"))) ]
+					+ SVerticalBox::Slot().AutoHeight()[ SNew(STextBlock).Font(Font(12)).ColorAndOpacity(It ? UTSInventoryComponent::RarityColor(P, It->Rarity) : Muted).Text(T(It ? It->Name : TEXT("—"))) ]
 				]
 			];
 		}
 		V->AddSlot().AutoHeight()[ Eq ];
 		Line(TEXT("BAG"), Muted, 10);
 		auto Bag = SNew(SWrapBox).PreferredSize(820);
-		for (const FRPGItem& It : P->Inventory->Items)
+		for (const FTSItem& It : P->Inventory->Items)
 		{
 			const int32 Uid = It.Uid;
 			Bag->AddSlot().Padding(3)
@@ -1707,7 +1708,7 @@ void SRPGPanel::Rebuild()
 						}
 						Rebuild();
 						return FReply::Handled(); })
-					[ SNew(STextBlock).Font(Font(11)).AutoWrapText(true).ColorAndOpacity(URPGInventoryComponent::RarityColor(P, It.Rarity))
+					[ SNew(STextBlock).Font(Font(11)).AutoWrapText(true).ColorAndOpacity(UTSInventoryComponent::RarityColor(P, It.Rarity))
 						.Text(T(It.Qty > 1 ? FString::Printf(TEXT("%s  x%d"), *It.Name, It.Qty) : It.Name)) ]
 				]
 			];
