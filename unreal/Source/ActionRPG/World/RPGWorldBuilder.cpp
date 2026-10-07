@@ -378,7 +378,7 @@ void ARPGWorldBuilder::BuildHouses(const UTSData& D)
 
 			AddBox(FVector(Ctr, Ground - 40.f + 32.5f), FVector(Size.X + 24.f, Size.Y + 24.f, 65.f + 40.f), Footing);
 
-			// Everything above the footing can be cut away (see UpdateCutaways).
+			// Everything above the footing can be cut away (Tessera: ATSWorldBuilder cutaways).
 			FTSCutaway& House = Cutaways.AddDefaulted_GetRef();
 			Collect = &House.Full;
 			AddBox(FVector(Ctr, FootTop + WallH * 0.5f), FVector(Size.X, Size.Y, WallH), Plaster);
