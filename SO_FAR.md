@@ -418,6 +418,9 @@ dynamic story. So the reusable code is moving into two plugins, each its own rep
 - **Shifts**: a trader sleeps only when his routine brings him to `trade.sleepAt` at bedtime (held otherwise);
   `ARPGEnemy::Wander / RoamRadius` (`wander` px or { day, night }) also run for passive foes nobody's watching;
   Guard Brask keeps day hours (`npcs.brask_guard.sleeps: day`).
+- **Lingering and the tail**: `ARPGEnemy::Wander` walks, lingers (`wanderDwell`, held while tagged "PickedAt" by a
+  lift), moves on; a lift follows its mark (`UTSChannel::FollowActor`, slack = reach x 1.3) and the hero keeps step
+  a pace behind a moving mark (never behind a standing one: being caught must stay possible).
 - **Routes**: Brask's toll purse -> `toll_bridge:robbed`, the Red Hands scatter; Ossric's badge -> the Bonewardens
   drift apart; archers' grave coins and the Ferryman's Coin (pays a toll-wanting skeleton); Maren / Tobin / Guard Brask
   robbed in their beds; the relic lifted from the sleeping brute, which then prowls the village at night.

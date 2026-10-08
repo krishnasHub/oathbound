@@ -1438,7 +1438,14 @@ void ARPGPlayerCharacter::Tick(float Dt)
 
 	// Movement: WASD / stick (cancels any click-to-move), or the click-to-move path.
 	if (!MoveInput.IsNearlyZero()) Control->ClearGoal();
-	const FVector ClickDir = Control->Update(Dt);
+	FVector ClickDir = Control->Update(Dt);
+	// Lifting from a walking mark: keep step a pace behind it (its back to you), at sneaking pace.
+	if (const ATSCharacter* Mark = Cast<ATSCharacter>(Channel->GetFollowed()); Mark && Mark->GetVelocity().Size2D() > 30.f)
+	{
+		const FVector Behind = Mark->GetActorLocation() - Mark->Facing() * (RPGTheft::Reach(this, Mark) * 0.55f);
+		const FVector To = (Behind - GetActorLocation()) * FVector(1, 1, 0);
+		ClickDir = To.Size() > 25.f ? To.GetSafeNormal() : FVector::ZeroVector;
+	}
 	if (Controller && (!MoveInput.IsNearlyZero() || !ClickDir.IsNearlyZero()))
 	{
 		float Mul = 1.f;

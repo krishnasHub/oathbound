@@ -16,7 +16,7 @@
     "interactRange": 48, "peaceXpMul": 1.2, "moodKill": 5, "moodPeace": 3, "moodBetray": 10, "moodQuest": 2, "moodPrices": [1.4, 1.25, 1.1, 1, 0.95, 0.9, 0.85], "respawnMinDistance": 420, "deathGoldPenalty": 0.1,
     "sleep": { "_doc": "Keeping hours (Tessera UTSSleep): a sleeper only hears, hearRadius x hearMul; a hit on a sleeper does x hitMul and wakes it; woken, it stays up wakeFor seconds; at the end of their night sleepers get up within staggerUp seconds of each other (not a crowd in one doorway). wokenBarks: what a sleeper mumbles when you wake it to talk.", "hearMul": 0.35, "hitMul": 2, "wakeFor": 30, "staggerUp": 6, "wokenBarks": ["Mm? ...What is it?", "Hrm. Do you know what hour it is?", "...Yes, yes. I'm up."] },
     "sneak": { "_doc": "The Thief crouched (Space, tag Sneaking): foes hear it only within hearRadius x hearMul. Its speed: classes.thief.sneak.speed.", "hearMul": 0.25 },
-    "stealReach": 26, "moodTheftVillager": 1, "moodCaughtVillager": 3, "moodCaught": 2, "thiefPriceMul": 1.3
+    "stealReach": 26, "wanderDwell": [3, 7], "moodTheftVillager": 1, "moodCaughtVillager": 3, "moodCaught": 2, "thiefPriceMul": 1.3
   },
 
   "mood": {

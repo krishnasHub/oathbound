@@ -123,6 +123,7 @@ private:
 	TSJson::FObj CurAtk;
 	FVector WanderTarget;
 	bool bHasWander = false;
+	bool bLingering = false;   // wandering: arrived, and lingering a while before moving on
 	float Strafe = 1.f;
 	float SwingDelay = -1.f;       // seconds until the swing montage starts (timed to land at windup end)
 	float SwingRate = 1.f;

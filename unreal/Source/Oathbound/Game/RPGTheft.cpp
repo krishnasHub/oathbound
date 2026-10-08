@@ -106,7 +106,11 @@ namespace RPGTheft
 		TWeakObjectPtr<ATSCharacter> WC = C;
 		auto StillGood = [WP, WC]() { return WP.IsValid() && WC.IsValid() && !WC->IsDead() && !WC->IsLeaving() && FVector::Dist2D(WC->GetActorLocation(), WP->GetActorLocation()) <= Reach(WP.Get(), WC.Get()) * 1.3f; };
 		P->Channel->Start(TEXT("Stealing..."), Time,
-			[WP, WC, StillGood]() { return StillGood() && !Notices(WC.Get(), WP.Get()); },
+			[WP, WC, StillGood]()
+			{
+				if (WC.IsValid()) WC->Tags.Add(TEXT("PickedAt"), 0.3f);   // a hand in its purse: it lingers where it stands
+				return StillGood() && !Notices(WC.Get(), WP.Get());
+			},
 			[WP, WC]()
 			{
 				ARPGPlayerCharacter* Pl = WP.Get(); ATSCharacter* Mark = WC.Get();
@@ -143,9 +147,13 @@ namespace RPGTheft
 			[WP, WC, StillGood]()
 			{
 				if (!WP.IsValid()) return;
+				UE_LOG(LogRPG, Display, TEXT("Lift broken: mark %s, in reach %d, noticed %d, %.0fuu apart"), WC.IsValid() ? *WC->DisplayName : TEXT("-"),
+					StillGood(), WC.IsValid() && Notices(WC.Get(), WP.Get()), WC.IsValid() ? FVector::Dist2D(WC->GetActorLocation(), WP->GetActorLocation()) : -1.f);
 				if (WC.IsValid() && StillGood() && Notices(WC.Get(), WP.Get())) Caught(WP.Get(), WC.Get());
 				else UTSFeedback::Get(WP.Get())->Float(WP->Head() + FVector(0, 0, 30), TEXT("You back off."), TheftGrey, 0.7f);
 			});
+		// A mark on the move: the Thief keeps step behind it while he works (the Assassin's Creed / Thief tail).
+		P->Channel->FollowActor(C, Reach(P, C) * 1.3f);
 	}
 
 	void Caught(ARPGPlayerCharacter* P, ATSCharacter* C)

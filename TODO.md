@@ -113,6 +113,10 @@ noticed), sleep schedules (a perception state + day/night events). **Loom** = th
       lurks wide round the mine at night (`wander` { day, night }); Guard Brask (recruited) stands his post all night
       and sleeps by day in his cottage. Waiting creatures now amble round their posts when nobody's watching (they
       used to stand frozen). Test `shifts`.
+- [x] Wanderers linger: they walk to a spot, linger 3-7 s (`tuning.wanderDwell`), then move on (and linger on while
+      someone's lifting their purse). Lifting from a walking mark: the Thief keeps step behind it (the Assassin's
+      Creed / Thief tail; Tessera `UTSChannel::FollowActor`), breaking only if it sees him or he's shaken off.
+      Test `linger` (a real, unfrozen Red Hand: robbed lingering, then another robbed on the move).
 
 ### Phase T6 — Proof runs
 - [x] `heist` (Thief, night): crouch, quiet steps, a lift from behind, caught mid-lift, Brask's purse (band

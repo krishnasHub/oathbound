@@ -486,18 +486,30 @@ double ARPGEnemy::RoamRadius() const
 
 void ARPGEnemy::Wander(float Dt)
 {
+	// Amble to a spot, linger there a while (tuning.wanderDwell [min, max] s), then on to the next: still long enough
+	// for a thief to work. While someone is lifting its purse (tag "PickedAt") it lingers on: it's already standing.
 	const UTSData& D = UTSData::Get(this);
-	T -= Dt;
-	if (!bHasWander || T <= 0.f)
+	GetCharacterMovement()->bOrientRotationToMovement = true;
+	if (!bHasWander)
 	{
-		T = FMath::FRandRange(1.5f, 4.f);
 		const double Roam = RoamRadius();
 		const float A = FMath::FRandRange(0.f, UE_TWO_PI), R = FMath::FRandRange(Roam > 100.0 ? D.Px(Roam * 0.4) : 0.f, D.Px(Roam));
 		WanderTarget = Home + FVector(FMath::Cos(A) * R, FMath::Sin(A) * R, 0);
 		bHasWander = true;
+		bLingering = false;
+		T = 8.f;   // (give up walking there after this long: something's in the way)
 	}
-	GetCharacterMovement()->bOrientRotationToMovement = true;
-	if (FVector::Dist2D(WanderTarget, GetActorLocation()) > 15.f) MoveToward(WanderTarget, 0.35f);
+	if (!bLingering)
+	{
+		T -= Dt;
+		if (FVector::Dist2D(WanderTarget, GetActorLocation()) > 20.f && T > 0.f) { MoveToward(WanderTarget, 0.35f); return; }
+		const TArray<TSharedPtr<FJsonValue>> Dwell = TSJson::Arr(D.Section(TEXT("tuning")), TEXT("wanderDwell"));
+		T = Dwell.Num() == 2 ? FMath::FRandRange(float(Dwell[0]->AsNumber()), float(Dwell[1]->AsNumber())) : FMath::FRandRange(3.f, 7.f);
+		bLingering = true;
+		return;
+	}
+	if (!Tags.Has(TEXT("PickedAt"))) T -= Dt;
+	if (T <= 0.f) bHasWander = false;
 }
 
 void ARPGEnemy::BeginWindup(const TSJson::FObj& Atk)

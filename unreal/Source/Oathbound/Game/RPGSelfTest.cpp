@@ -1973,6 +1973,81 @@ void ARPGSelfTest::RunStep()
 			Quit(0.5f);
 		}
 	}
+	else if (Scenario == TEXT("linger"))
+	{
+		// A wandering mark (a Red Hand by day, not frozen): it ambles, lingers a few seconds, ambles on. On the move it
+		// can't be robbed; once it stops, the Thief creeps up behind and lifts, and it lingers until he's done.
+		ARPGEnemy* Mark = Cast<ARPGEnemy>(Target.Get());
+		if (Step == 0)
+		{
+			for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->Type == TEXT("bandit")) { Target = *It; break; }
+			if (!Target.IsValid()) { Report(TEXT("FAIL: no bandit")); Quit(0.5f); return; }
+			Place(S->GroundAt(20, 4) + FVector(0, 0, 120), 0.f);   // out of the way while we watch it
+			Pl->SetSneaking(true);
+			Swings = 0; Undrawn = 0;
+			Step = 1; Next = T + 0.5f;
+			return;
+		}
+		if (!Mark) { Report(TEXT("FAIL: lost the bandit")); Quit(0.5f); return; }
+		const bool bMoving = Mark->GetVelocity().Size2D() > 40.f;
+		if (Step == 1)
+		{
+			// Wait to see it walk (and check it can't be robbed then), then for it to stop.
+			if (bMoving && !Undrawn)
+			{
+				Undrawn = 1;
+				Report(TEXT("PASS: it ambles about (seen walking)"));
+			}
+			if (Undrawn && !bMoving && ++Swings > 3)
+			{
+				// Stopped (for a few looks in a row): creep up behind it and lift.
+				Place(Mark->GetActorLocation() - Mark->Facing() * D.Px(30) + FVector(0, 0, 60), Mark->GetActorRotation().Yaw);
+				Started = float(Pl->Inventory->Currency);
+				Pl->ActionClick(Mark);
+				Step = 10; Next = T + 0.3f;
+				return;
+			}
+			if (!bMoving && !Undrawn) Swings = 0;
+			if (T > 40.f) { Report(TEXT("FAIL: the bandit never walked and stopped")); Quit(0.5f); return; }
+			Next = T + 0.2f;
+		}
+		else if (Step == 10)
+		{
+			Report(FString::Printf(TEXT("%s: it stops and lingers: the Thief starts the lift ('%s')"), Pl->Channel->IsActive() ? TEXT("PASS") : TEXT("FAIL"), *Pl->Channel->Label));
+			Step = 2; Next = T + 2.f;
+		}
+		else if (Step == 2)
+		{
+			Report(FString::Printf(TEXT("%s: it lingered till he was done: +%d gold, pockets empty %d"),
+				S->Story()->HasFlag(RPGTheft::PocketKey(Mark)) ? TEXT("PASS") : TEXT("FAIL"), Pl->Inventory->Currency - int32(Started), S->Story()->HasFlag(RPGTheft::PocketKey(Mark))));
+			// The tail: another Red Hand, robbed while it walks.
+			Target = nullptr;
+			for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It)
+				if (It->Type == TEXT("bandit") && *It != Mark && !S->Story()->HasFlag(RPGTheft::PocketKey(*It))) { Target = *It; break; }
+			if (!Target.IsValid()) { Report(TEXT("FAIL: no second bandit")); Quit(0.5f); return; }
+			Swings = 0;
+			Place(S->GroundAt(20, 4) + FVector(0, 0, 120), 0.f);   // out of sight again (a bandit watching you doesn't wander)
+			Step = 3; Next = T + 0.5f;
+		}
+		else if (Step == 3)
+		{
+			// Wait for it to set off, then fall in behind and lift on the move.
+			if (!bMoving) { if (T > 70.f) { Report(TEXT("FAIL: the second bandit never walked")); Quit(0.5f); } else Next = T + 0.1f; return; }
+			Place(Mark->GetActorLocation() - Mark->GetVelocity().GetSafeNormal2D() * D.Px(35) + FVector(0, 0, 60), Mark->GetVelocity().Rotation().Yaw);
+			Started = float(Pl->Inventory->Currency);
+			HeldAt = Mark->GetActorLocation();
+			RPGTheft::Begin(Pl, Mark);
+			Report(FString::Printf(TEXT("%s: falling in behind a walking Red Hand, the Thief starts lifting on the move (%s)"), Pl->Channel->IsActive() ? TEXT("PASS") : TEXT("FAIL"), *Pl->Channel->Label));
+			Step = 4; Next = T + 2.2f;
+		}
+		else if (Step == 4)
+		{
+			const float Walked = FVector::Dist2D(HeldAt, Mark->GetActorLocation());
+			Report(FString::Printf(TEXT("%s: he kept step behind it and lifted the purse (+%d gold; it walked %.0fuu meanwhile)"),
+				S->Story()->HasFlag(RPGTheft::PocketKey(Mark)) ? TEXT("PASS") : TEXT("FAIL"), Pl->Inventory->Currency - int32(Started), Walked));
+			Quit(0.5f);
+		}
+	}
 	else if (Scenario == TEXT("night"))
 	{
 		// Run with -RPGHour=23: the mage's staff orb glows faintly and widens what the dark lets the hero see.
