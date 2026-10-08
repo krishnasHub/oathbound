@@ -25,3 +25,7 @@ __pycache__/
 
 # Look-dev comparisons (3D vs HD-2D vs flat, fog vs tilt-shift): decisions made, kept locally only
 lookdev/
+
+# Puddle art (replaced by road cracks): kept locally only
+unreal/Content/RPG/Pixel/PR_Puddle.uasset
+unreal/ImportSource/Pixel/PR_Puddle.png

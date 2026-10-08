@@ -34,10 +34,11 @@ These commands are Tessera's (`Plugins/Tessera/Tools/Tessera.ps1`), configured b
 | Left click on the ground | Walk there (hold to follow the cursor). Pathfinds around houses and the river |
 | Left click on an enemy | Walk into range and attack (hold to keep attacking) |
 | Left click on a villager | Walk up and talk |
-| E, then click someone | Talk to them (foes too, while they're not hostile). The cursor shows a speech bubble, greyed when nobody there will talk |
+| E (action mode), then click | The click does the dedicated thing. Cursor: speech bubble = talk (standing; the Scholar talks to all but slimes); turning gears = something to do (a crouched Thief stealing from someone who can't see him, the Thief picking a lock, using a thing); grey = nothing / can't. E again or RMB cancels |
+| Locks | Cottage doors and the graveyard gate: only the Thief, only in action mode (stand still while the bar fills). Each lock has a level (`pickLevel`) and time (`pickTime`); a plain click just tries it |
 | Shift + left click | Attack in place, toward the cursor |
 | Right click (hold) | Knight: shield block (100%, front; perfect block staggers). Scholar: buckler (50%). Mage: barrier all around (80%). All drain stamina while held. Thief: draw the bow, release to fire (arrows arc onto the target) |
-| Space | Dodge (toward the cursor) |
+| Space | Dodge (toward the cursor). The Thief crouches instead (toggle: slow and quiet) |
 | 1–4 / Shift + wheel | Abilities; Shift + wheel opens a picker in slow motion, release Shift to cast |
 | Mouse wheel | Zoom (limited) |
 | WASD | Optional screen-relative movement |

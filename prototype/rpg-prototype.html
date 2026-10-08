@@ -178,7 +178,10 @@
     "vision": { "nearRadius": 60, "coneRange": 360, "coneAngle": 80, "edgeBlur": 14, "falloffStart": 0.45, "edgeFog": 0.65 },
     "enemyVision": { "coneAngle": 120, "hearRadius": 70 },
     "threatSense": { "range": 450, "revealAfterAttack": 1.5, "revealAlpha": 0.55 },
-    "interactRange": 48, "peaceXpMul": 1.2, "moodKill": 5, "moodPeace": 3, "moodBetray": 10, "moodQuest": 2, "moodPrices": [1.4, 1.25, 1.1, 1, 0.95, 0.9, 0.85], "respawnMinDistance": 420, "deathGoldPenalty": 0.1
+    "interactRange": 48, "peaceXpMul": 1.2, "moodKill": 5, "moodPeace": 3, "moodBetray": 10, "moodQuest": 2, "moodPrices": [1.4, 1.25, 1.1, 1, 0.95, 0.9, 0.85], "respawnMinDistance": 420, "deathGoldPenalty": 0.1,
+    "sleep": { "_doc": "Keeping hours (Tessera UTSSleep): a sleeper only hears, hearRadius x hearMul; a hit on a sleeper does x hitMul and wakes it; woken, it stays up wakeFor seconds. wokenBarks: what a sleeper mumbles when you wake it to talk.", "hearMul": 0.35, "hitMul": 2, "wakeFor": 30, "wokenBarks": ["Mm? ...What is it?", "Hrm. Do you know what hour it is?", "...Yes, yes. I'm up."] },
+    "sneak": { "_doc": "The Thief crouched (Space, tag Sneaking): foes hear it only within hearRadius x hearMul. Its speed: classes.thief.sneak.speed.", "hearMul": 0.25 },
+    "stealReach": 26, "moodTheftVillager": 1, "moodCaughtVillager": 3, "moodCaught": 2, "thiefPriceMul": 1.3
   },
 
   "mood": {
@@ -259,7 +262,7 @@
         "snake":       { "sheet": "SPR_Snake", "size": 78, "aspect": 2, "fps": 6, "move": "slither", "speed": 60, "flee": 300, "vanish": true, "when": "night", "area": "grass", "count": 2 }
       }
     },
-    "statusTints": { "_doc": "Characters (and ambient animals) tinted while they carry a tag.", "Frozen": "#bfe2ff" },
+    "statusTints": { "_doc": "Characters (and ambient animals) tinted while they carry a tag (the first listed wins). Sneaking: the Thief's shadow cloak while crouched.", "Frozen": "#bfe2ff", "Sneaking": "#7c89a8" },
     "assets": {
       "_doc": "Assets Tessera loads by name. '/...' = object path; otherwise a Starter Content material name (RPGAssets::StarterMat).",
       "sprite": "/Game/RPG/Materials/M_RPG_Sprite.M_RPG_Sprite", "pixelWorld": "/Game/RPG/Materials/M_RPG_PixelWorld.M_RPG_PixelWorld",
@@ -398,7 +401,7 @@
       "languages": ["common"], "name": "Thief", "color": "#3fc28f", "title": "stranger",
       "tagline": "Fragile but fast. Avoids damage instead of absorbing it.",
       "attributes": { "might": 4, "agility": 9, "focus": 2, "vitality": 4, "presence": 6 },
-      "hpBase": 40, "manaBase": 30, "moveSpeed": 200, "critPct": 10,
+      "hpBase": 40, "manaBase": 30, "moveSpeed": 270, "critPct": 10, "sneak": { "speed": 0.5 }, "nightEyes": 0.55,
       "styles": ["daggers_bow"],
       "abilities": ["volley", "smoke_bomb", "shadow_dash", "poison_blade"],
       "dodge": { "cost": 14, "speed": 470, "duration": 0.36, "iframes": 0.32 },
@@ -536,7 +539,7 @@
         { "type": "melee", "range": 22, "arc": 100, "windup": 0.5, "recover": 0.7, "cooldown": 0.3,
           "damage": 8, "poise": 20, "knockback": 200, "lunge": 180 }
       ] },
-    "archer": { "speaks": "grave", "wants": ["toll", "riddle", "song"], "dialogue": "skeleton_root", "parleyDialogue": "skeleton_root", "name": "Skeleton Archer", "hp": 26, "armor": 5, "speed": 82, "radius": 11, "color": "#ddd6c4", "poise": 20,
+    "archer": { "speaks": "grave", "sleeps": "day", "rest": "graveyard", "pockets": { "gold": [3, 8], "hint": "grave coins", "items": [ { "item": "ferryman_coin", "chance": 0.4 } ] }, "wants": ["toll", "riddle", "song"], "dialogue": "skeleton_root", "parleyDialogue": "skeleton_root", "name": "Skeleton Archer", "hp": 26, "armor": 5, "speed": 82, "radius": 11, "color": "#ddd6c4", "poise": 20,
       "xp": 18, "gold": [3, 8], "loot": "archer", "aggro": 260, "leash": 480, "respawn": 50, "preferredDist": 190,
       "attacks": [
         { "type": "ranged", "range": 260, "windup": 0.75, "recover": 0.4, "cooldown": 1.3,
@@ -544,20 +547,20 @@
           "projectile": { "speed": 310, "radius": 4, "color": "#f0e6c8", "range": 420 } }
       ] },
     "skeleton_watcher": {"_doc":"A variant of the archer ('base'). Hand-written: wants its grave marked.","base":"archer","look":"archer","name":"Grave-Watcher","dialogue":"watcher_root","parleyDialogue":"watcher_root","wants":[],"respawn":-1,"xp":24},
-    "skeleton_captain": {"_doc":"Leads the Bonewardens band; wants his lost signet.","base":"archer","look":"archer","name":"Captain Ossric","faction":"bonewardens","dialogue":"captain_root","parleyDialogue":"captain_root","wants":[],"respawn":-1,"hp":40,"xp":30,"scale":1.15,"struckBark":"You struck the Bonewardens! They raise their bows!"},
+    "skeleton_captain": {"_doc":"Leads the Bonewardens band; wants his lost signet. Robbed of his badge, his band drifts apart.","pockets":{"gold":[5,10],"hint":"a captain's badge","time":1.5,"level":{"min":2},"items":[{"item":"rank_badge"}],"bark":"His badge!","do":[{"setFlag":"badge_stolen"},{"scatter":"bonewardens"}]},"base":"archer","look":"archer","name":"Captain Ossric","faction":"bonewardens","dialogue":"captain_root","parleyDialogue":"captain_root","wants":[],"respawn":-1,"hp":40,"xp":30,"scale":1.15,"struckBark":"You struck the Bonewardens! They raise their bows!"},
     "skeleton_band": {"base":"archer","look":"archer","name":"Boneward","faction":"bonewardens","dialogue":"band_root","parleyDialogue":"band_root","wants":[],"respawn":-1,"struckBark":"You struck the Bonewardens! They raise their bows!"},
-    "bandit": { "speaks": "common", "name": "Red Hand Bandit", "faction": "bandits", "intelligent": true, "hp": 45, "armor": 8, "speed": 88, "radius": 12, "color": "#b0563a", "poise": 30,
+    "bandit": { "speaks": "common", "sleeps": "night", "rest": "camp", "pockets": { "gold": [4, 10], "hint": "a few coins" }, "name": "Red Hand Bandit", "faction": "bandits", "intelligent": true, "hp": 45, "armor": 8, "speed": 88, "radius": 12, "color": "#b0563a", "poise": 30,
       "xp": 5, "gold": [4, 10], "loot": "trash", "aggro": 260, "leash": 520, "respawn": -1,
       "attacks": [
         { "type": "melee", "range": 26, "arc": 110, "windup": 0.45, "recover": 0.6, "cooldown": 0.4, "damage": 11, "poise": 25, "knockback": 200, "lunge": 160 }
       ] },
-    "bandit_lt": { "speaks": "common", "name": "Wren", "faction": "bandits", "intelligent": true, "dialogue": "wren_root", "parleyDialogue": "wren_parley", "hp": 50, "armor": 5, "speed": 84, "radius": 11, "color": "#d08a6a", "poise": 25,
+    "bandit_lt": { "speaks": "common", "pockets": { "gold": [8, 14], "hint": "a fat coin pouch", "time": 1.3 }, "name": "Wren", "faction": "bandits", "intelligent": true, "dialogue": "wren_root", "parleyDialogue": "wren_parley", "hp": 50, "armor": 5, "speed": 84, "radius": 11, "color": "#d08a6a", "poise": 25,
       "xp": 5, "gold": [6, 12], "loot": "archer", "aggro": 270, "leash": 520, "respawn": -1, "preferredDist": 190,
       "attacks": [
         { "type": "ranged", "range": 270, "windup": 0.8, "recover": 0.5, "cooldown": 1.4, "damage": 13, "poise": 20, "knockback": 100,
           "projectile": { "speed": 360, "radius": 4, "color": "#e0b090", "range": 440 } }
       ] },
-    "bandit_captain": { "speaks": "common", "name": "Captain Brask", "boss": true, "faction": "bandits", "intelligent": true, "dialogue": "brask_root", "parleyDialogue": "brask_parley", "hp": 140, "armor": 15, "speed": 92,
+    "bandit_captain": { "speaks": "common", "sleeps": "night", "rest": "camp", "pockets": { "gold": [30, 45], "hint": "the toll purse", "time": 1.6, "level": { "min": 3, "asleep": 1 }, "bark": "The toll purse!", "do": [ { "resolve": "toll_bridge:robbed" }, { "setFlag": "brask_fear" }, { "scatter": "bandits" } ] }, "name": "Captain Brask", "boss": true, "faction": "bandits", "intelligent": true, "dialogue": "brask_root", "parleyDialogue": "brask_parley", "hp": 140, "armor": 15, "speed": 92,
       "radius": 15, "color": "#8a2e1e", "poise": 70, "xp": 10, "gold": [20, 30], "loot": "stash", "aggro": 280, "leash": 520, "respawn": -1,
       "knockbackMul": 0.5, "resolveOnDeath": "toll_bridge:killed", "yieldDialogue": "brask_yield",
       "attacks": [
@@ -565,10 +568,10 @@
         { "type": "melee", "range": 34, "arc": 120, "windup": 0.45, "recover": 0.9, "cooldown": 0.25, "damage": 16, "poise": 35, "knockback": 240, "lunge": 120 },
         { "type": "melee", "range": 46, "arc": 160, "windup": 0.9, "recover": 1.0, "cooldown": 0.4, "damage": 26, "poise": 60, "knockback": 400, "lunge": 260 }
       ] },
-    "brute": { "speaks": "old", "dialogue": "brute_root", "parleyDialogue": "brute_root",
+    "brute": { "speaks": "old", "sleeps": "day", "rest": "hay", "pockets": { "gold": [10, 20], "hint": "the relic", "time": 2.0, "level": { "min": 4, "asleep": 1 }, "items": [ { "item": "relic" } ], "bark": "The relic!", "do": [ { "setFlag": "relic_stolen" } ] }, "prowl": { "_doc": "Robbed of its relic (flag relic_stolen) it leaves the mine at night and prowls the village looking for it, until the relic is back on its hay (relic_returned), it is paid off (relic_paid), or it dies. Stops: tiles; when: night / day.", "stops": [ { "at": [73, 21], "wait": 4, "when": "day", "tag": "hay" }, { "at": [13, 9], "wait": 5, "when": "night", "tag": "village" }, { "at": [7, 6], "wait": 5, "when": "night", "tag": "village" }, { "at": [10, 10], "wait": 5, "when": "night", "tag": "village" } ], "bark": "Shiny... where... SHINY?", "speed": 70 }, "dialogue": "brute_root", "parleyDialogue": "brute_root",
                "trade": {"become":{"name":"Grot the Miner","dialogue":"grot_root","speaks":"common","boss":false},"stops":[{"at":[75,22],"wait":8,"tag":"mine"},{"at":[13,9],"wait":6,"when":"day","tag":"village"}],"carryTo":"village","deliveredBark":"Gold for bread!","sack":"PR_GoldSack","speed":60}, "name": "Ruin Brute", "boss": true, "hp": 260, "armor": 30, "speed": 68, "radius": 20, "color": "#a0522d", "poise": 110,
       "xp": 150, "gold": [30, 50], "loot": "boss", "aggro": 230, "leash": 420, "respawn": 90, "knockbackMul": 0.25,
-      "questDrop": { "quest": "lost_relic", "item": "relic" },
+      "questDrop": { "quest": "lost_relic", "item": "relic", "if": { "not": [ { "flag": "relic_stolen" }, { "not": { "flag": "relic_returned" } } ] } },
       "attacks": [
         { "type": "melee", "range": 40, "arc": 130, "windup": 0.8,  "recover": 0.8, "cooldown": 0.2, "damage": 22, "poise": 55, "knockback": 320 },
         { "type": "melee", "range": 40, "arc": 130, "windup": 0.65, "recover": 0.9, "cooldown": 0.2, "damage": 22, "poise": 55, "knockback": 320 },
@@ -589,6 +592,8 @@
     "signet":       { "name": "Captain's Signet", "type": "quest" },
     "bread":        { "name": "Loaf of Village Bread", "type": "quest" },
     "relic":        { "name": "Ashford Relic","type": "quest" },
+    "ferryman_coin": { "name": "Ferryman's Coin", "type": "quest", "desc": "An old silver coin, cold as a grave. Some of the dead still owe the ferryman." },
+    "rank_badge":   { "name": "Bonewarden Captain's Badge", "type": "quest", "desc": "A tarnished badge of rank. Without it, who would follow Ossric?" },
     "bridge_charter": { "name": "Bridge Charter", "type": "quest" },
     "brask_sabre":  { "name": "Brask's Sabre", "type": "equipment", "slot": "weapon", "rarity": "rare", "mods": { "weaponDamage": 14, "might": 2 } }
   },
@@ -625,12 +630,30 @@
                              { "item": "ring", "weight": 25 }, { "item": "potion", "weight": 15 } ] }
   },
 
+  "restPlaces": {
+    "_doc": "Where foes sleep (enemies.<id>.rest; their hours: sleeps). spots: [tileX, tileY] beds, each one taken by the nearest sleeper; prop: the card drawn at each spot (an ATSInteractable look); entry: walled off, the sleepers go in by this tile; enclosure: [x0, y0, x1, y1] its walls, with a gate (map '+') the Thief can pick (gate: the lock at the entry); fire: a camp fire.",
+    "graveyard": { "name": "The graveyard", "entry": [18, 23], "enclosure": [14, 24, 22, 30],
+                   "spots": [[15, 25], [17, 25], [19, 25], [21, 25], [15, 27], [17, 27], [19, 27], [21, 27], [15, 29], [17, 29], [19, 29], [21, 29]],
+                   "prop": { "sheet": "PR_GraveMound", "size": 110, "aspect": 1.6 },
+                   "gate": { "sheet": "PR_Gate", "size": 320, "aspect": 1.2, "name": "The graveyard gate", "use": "lock", "bark": "Locked. Only the dead pass here.", "pickTime": 3.0, "pickLevel": 2, "radius": 110 } },
+    "camp":      { "name": "The Red Hands' camp", "fire": [36, 10],
+                   "spots": [[34, 10], [35, 11], [37, 11], [38, 10]],
+                   "prop": { "sheet": "PR_Bedroll", "size": 90, "aspect": 1.8, "flat": true } },
+    "hay":       { "name": "A heap of hay", "spots": [[73, 21]],
+                   "prop": { "sheet": "PR_Haystack", "size": 300, "aspect": 1.5, "flat": true } }
+  },
+  "houses": {
+    "_doc": "Every cottage's front door (an ATSInteractable on the door the world builder made). use: house_door. lockedBark: anyone but the Thief; pickTime: seconds the Thief takes to open it.",
+    "door": { "name": "A cottage door", "use": "lock", "radius": 90 },
+    "lockedBark": "Locked.", "pickHint": "Locked. (E, then click: pick the lock)", "pickTime": 1.4, "pickedBark": "Click."
+  },
   "interactables": {
     "_doc": "Things in the world the hero can use (Tessera ATSInteractable): sheet, size (uu tall), aspect, flat, name, color, dialogue, radius, usable, at [tileX, tileY], showIf (a story condition).",
     "unmarked_grave": {"sheet":"PR_GraveMound","size":110,"aspect":1.6,"name":"An unmarked grave","dialogue":"grave_root","at":[8,20],"radius":70},
     "grave_marker": {"sheet":"PR_GraveMarker","size":150,"aspect":0.75,"name":"A grave marker","usable":false,"at":[8,19],"showIf":{"flag":"grave_marked"}},
     "cave_mouth": {"sheet":"PR_Cave","size":380,"aspect":1.25,"name":"The old mine","door":"cave_exit","exit":[0,1],"radius":120,"at":[38,25]},
     "cave_exit": {"sheet":"PR_Sunray","size":420,"aspect":0.25,"name":"Daylight: the way out","door":"cave_mouth","exit":[0,-1],"radius":120,"at":[71,27]},
+    "hay_return": {"name":"The brute's hay","dialogue":"hay_root","at":[73,21],"radius":120,"showIf":[{"flag":"relic_stolen"},{"hasItem":"relic"},{"not":{"flag":"relic_returned"}},{"not":{"flag":"relic_paid"}}]},
     "lost_signet": {"sheet":"PR_Signet","size":70,"aspect":1,"name":"Something glinting","dialogue":"signet_root","at":[4,28],"radius":50,"showIf":{"not":{"flag":"signet_taken"}}}
   },
 
@@ -654,9 +677,10 @@
   },
 
   "npcs": {
-    "elder":       { "name": "Elder Maren",      "color": "#e8c860", "dialogue": "elder_root" },
-    "merchant":    { "name": "Tobin the Trader", "color": "#d09050", "dialogue": "merchant_root" },
-    "brask_guard": { "name": "Guard Brask",      "color": "#a04030", "dialogue": "brask_guard_root", "spawnAt": [14, 8] }
+    "_doc": "Villagers. sleeps: night | day (Tessera UTSSleep); house: [tileX, tileY], any tile of the cottage they sleep in (they go in by its door, and only the Thief can follow).",
+    "elder":       { "name": "Elder Maren",      "color": "#e8c860", "dialogue": "elder_root", "sleeps": "night", "house": [5, 2], "pockets": { "gold": [6, 12], "hint": "a coin pouch", "villager": true } },
+    "merchant":    { "name": "Tobin the Trader", "color": "#d09050", "dialogue": "merchant_root", "sleeps": "night", "house": [7, 7], "pockets": { "gold": [25, 40], "hint": "the day's takings", "time": 1.4, "villager": true } },
+    "brask_guard": { "name": "Guard Brask",      "color": "#a04030", "dialogue": "brask_guard_root", "spawnAt": [14, 8], "sleeps": "night", "house": [10, 2], "pockets": { "gold": [5, 10], "hint": "a guard's purse", "villager": true } }
   },
 
   "dialogueVerbs": {
@@ -675,7 +699,7 @@
   },
 
   "dialogue": {
-    "elder_root": {"text":[{"if":[{"flag":"met_elder"},{"mood":{"gte":25}}],"text":"Ah, {title}! The children were singing your name this morning. What can Ashford do for you?"},{"if":[{"flag":"met_elder"},{"mood":{"lte":-25}}],"text":"...Oh. It's you. Folk are frightened, {title}. They say blood follows you. What do you want?"},{"if":{"flag":"met_elder"},"text":"What do you need, {title}?"},{"if":{"class":"knight"},"text":"A knight! The crown hasn't sent one of yours to Ashford in years. Please — we need help."},{"if":{"class":"mage"},"text":"A mage... Folk here don't trust spellcraft. But Ashford can't afford to be choosy right now."},{"if":{"class":"thief"},"text":"Keep your hands where I can see them, stranger. ...Still. You look like someone who gets things done."},{"if":{"class":"scholar"},"text":"A scholar! Gods be thanked — someone who can actually read. You may be exactly who we need."}],"do":[{"setFlag":"met_elder"}],"choices":[{"text":"Could you spare some food? Something big and hungry is sitting on the relic.","if":[{"quest":"brute_food","is":"active"},{"quest":"maren_slimes","is":"none"},{"not":{"hasItem":"bread"}}],"next":"elder_food_ask","marker":"!"},{"text":"The slimes are culled.","if":{"quest":"maren_slimes","is":"complete"},"do":[{"turnIn":"maren_slimes"},{"giveItem":"bread"}],"next":"elder_food_given","marker":"?"},{"text":"What's troubling the village?","if":{"quest":"toll_bridge","is":"none"},"next":"elder_bridge_offer","marker":"!"},{"verb":"honor","text":"By my oath, Ashford is under my protection.","if":{"not":{"flag":"sworn_elder"}},"next":"elder_sworn"},{"verb":"hypnotize","text":"(Slip into her thoughts) What are you not telling me?","if":{"not":{"flag":"elder_read"}},"check":{"resolve":6,"success":"elder_hypno_ok","fail":"elder_hypno_fail"}},{"verb":"intimidate","text":"Before I risk my neck for your bridge, let's talk about my fee.","if":{"quest":"toll_bridge","is":"active"},"check":{"resolve":5,"success":"elder_extort_ok","fail":"elder_extort_fail"}},{"verb":"negotiate","text":"Does Ashford keep any old records about that bridge?","if":{"quest":"toll_bridge","is":"active"},"check":{"resolve":4,"success":"elder_charter_ok","fail":"elder_charter_fail"}},{"text":"About the bridge...","if":{"quest":"toll_bridge","is":"active"},"next":"elder_bridge_progress"},{"text":"The bridge is open.","if":{"quest":"toll_bridge","is":"complete"},"do":[{"turnIn":"toll_bridge"},{"if":{"flag":"double_reward"},"gold":40}],"next":"elder_bridge_done","marker":"?"},{"text":"Is there anything else I can do?","if":[{"quest":"toll_bridge","is":"turnedIn"},{"quest":"lost_relic","is":"none"}],"next":"elder_relic_offer","marker":"!"},{"text":"About the relic...","if":{"quest":"lost_relic","is":"active"},"next":"elder_relic_progress"},{"text":"I recovered the relic.","if":{"quest":"lost_relic","is":"complete"},"do":[{"turnIn":"lost_relic"}],"next":"elder_relic_done","marker":"?"},{"text":"I need to rest.","do":[{"restore":true}],"next":"elder_rest"},{"text":"Farewell."}]},
+    "elder_root": {"text":[{"if":[{"flag":"met_elder"},{"flag":"thief_known"}],"text":"(Maren folds her arms) Folk saw you creeping where you shouldn't, {title}. Ashford still needs help... but we're watching you."},{"if":[{"flag":"met_elder"},{"mood":{"gte":25}}],"text":"Ah, {title}! The children were singing your name this morning. What can Ashford do for you?"},{"if":[{"flag":"met_elder"},{"mood":{"lte":-25}}],"text":"...Oh. It's you. Folk are frightened, {title}. They say blood follows you. What do you want?"},{"if":{"flag":"met_elder"},"text":"What do you need, {title}?"},{"if":{"class":"knight"},"text":"A knight! The crown hasn't sent one of yours to Ashford in years. Please — we need help."},{"if":{"class":"mage"},"text":"A mage... Folk here don't trust spellcraft. But Ashford can't afford to be choosy right now."},{"if":{"class":"thief"},"text":"Keep your hands where I can see them, stranger. ...Still. You look like someone who gets things done."},{"if":{"class":"scholar"},"text":"A scholar! Gods be thanked — someone who can actually read. You may be exactly who we need."}],"do":[{"setFlag":"met_elder"}],"choices":[{"text":"Could you spare some food? Something big and hungry is sitting on the relic.","if":[{"quest":"brute_food","is":"active"},{"quest":"maren_slimes","is":"none"},{"not":{"hasItem":"bread"}}],"next":"elder_food_ask","marker":"!"},{"text":"The slimes are culled.","if":{"quest":"maren_slimes","is":"complete"},"do":[{"turnIn":"maren_slimes"},{"giveItem":"bread"}],"next":"elder_food_given","marker":"?"},{"text":"What's troubling the village?","if":{"quest":"toll_bridge","is":"none"},"next":"elder_bridge_offer","marker":"!"},{"verb":"honor","text":"By my oath, Ashford is under my protection.","if":{"not":{"flag":"sworn_elder"}},"next":"elder_sworn"},{"verb":"hypnotize","text":"(Slip into her thoughts) What are you not telling me?","if":{"not":{"flag":"elder_read"}},"check":{"resolve":6,"success":"elder_hypno_ok","fail":"elder_hypno_fail"}},{"verb":"intimidate","text":"Before I risk my neck for your bridge, let's talk about my fee.","if":{"quest":"toll_bridge","is":"active"},"check":{"resolve":5,"success":"elder_extort_ok","fail":"elder_extort_fail"}},{"verb":"negotiate","text":"Does Ashford keep any old records about that bridge?","if":{"quest":"toll_bridge","is":"active"},"check":{"resolve":4,"success":"elder_charter_ok","fail":"elder_charter_fail"}},{"text":"About the bridge...","if":{"quest":"toll_bridge","is":"active"},"next":"elder_bridge_progress"},{"text":"The bridge is open.","if":{"quest":"toll_bridge","is":"complete"},"do":[{"turnIn":"toll_bridge"},{"if":{"flag":"double_reward"},"gold":40}],"next":"elder_bridge_done","marker":"?"},{"text":"Is there anything else I can do?","if":[{"quest":"toll_bridge","is":"turnedIn"},{"quest":"lost_relic","is":"none"}],"next":"elder_relic_offer","marker":"!"},{"text":"About the relic...","if":{"quest":"lost_relic","is":"active"},"next":"elder_relic_progress"},{"text":"I recovered the relic.","if":{"quest":"lost_relic","is":"complete"},"do":[{"turnIn":"lost_relic"}],"next":"elder_relic_done","marker":"?"},{"text":"I need to rest.","do":[{"restore":true}],"next":"elder_rest"},{"text":"Farewell."}]},
 
     "elder_bridge_offer": {
       "text": [
@@ -723,6 +747,7 @@
         { "if": { "flag": "toll_outcome", "is": "blackmail" },  "text": "Gone, just like that. Whatever you said to Brask, it worked." },
         { "if": { "flag": "toll_outcome", "is": "paid" },       "text": "You paid them? Well... the road is open for you, at least. They're still there for the rest of us." },
         { "if": { "flag": "toll_outcome", "is": "persuaded" },  "text": "They let you pass, but they still hold the bridge. It's a start, I suppose." },
+        { "if": { "flag": "toll_outcome", "is": "robbed" },     "text": "The Red Hands woke to an empty purse, blamed each other, and scattered by morning. Brask ran too, they say, jumping at shadows. ...I won't ask where the money went." },
         { "text": "The bandits are dead. Harsh — but the road is open." }
       ],
       "choices": [ { "text": "Glad to help.", "next": "elder_root" } ] },
@@ -735,7 +760,7 @@
       "choices": [ { "text": "I'll get it back.", "do": [ { "startQuest": "lost_relic" } ] }, { "text": "Not yet.", "next": "elder_root" } ] },
     "elder_relic_progress": { "text": "The ruins lie to the south-east, past the archers' woods. The brute hits hard — watch its wind-up and roll away.",
       "choices": [ { "text": "I'll be careful." } ] },
-    "elder_relic_done": { "text": "The relic! Ashford owes you a great debt. (End of prototype content — thanks for testing!)",
+    "elder_relic_done": { "text": [ { "if": [ { "flag": "relic_stolen" }, { "not": { "flag": "relic_returned" } }, { "not": { "flag": "relic_paid" } } ], "text": "You... took it from under the brute's nose? And it's still alive down there. Gods. It will come looking for this, you know. (End of prototype content — thanks for testing!)" }, { "text": "The relic! Ashford owes you a great debt. (End of prototype content — thanks for testing!)" } ],
       "choices": [ { "text": "Farewell." } ] },
     "elder_rest": { "text": "Sit by the fire a while... You feel fully restored.",
       "choices": [ { "text": "Thanks.", "next": "elder_root" } ] },
@@ -775,7 +800,7 @@
         { "text": "You? Come back when you've bled a bit." } ],
       "choices": [ { "text": "...", "next": "brask_root" } ] },
     "skeleton_root": {"text":"(A dry voice rattles out of the skull) Living one... you hear me? Few do. Fewer answer.","choices":[{"text":"What keeps you here?","if":{"want":"toll"},"next":"skel_toll"},{"text":"What keeps you here?","if":{"want":"riddle"},"next":"skel_riddle"},{"text":"What keeps you here?","if":{"want":"song"},"next":"skel_song"},{"text":"(Step back)"}]},
-    "skel_toll": {"text":"The ferryman. I never paid him, and he never forgets. Ten coins, and I cross the river for good.","choices":[{"text":"[Pay 10 gold] Here. Cross in peace.","if":{"gold":10},"do":[{"takeGold":10},{"leaveSelf":true}],"next":"skel_bye"},{"text":"I'm short. Another time."}]},
+    "skel_toll": {"text":"The ferryman. I never paid him, and he never forgets. Ten coins, and I cross the river for good.","choices":[{"text":"[Pay 10 gold] Here. Cross in peace.","if":{"gold":10},"do":[{"takeGold":10},{"leaveSelf":true}],"next":"skel_bye"},{"text":"[Give the ferryman's coin] He'll take this one. It's his own.","if":{"hasItem":"ferryman_coin"},"do":[{"takeItem":"ferryman_coin"},{"leaveSelf":true}],"next":"skel_bye"},{"text":"I'm short. Another time."}]},
     "skel_riddle": {"text":"Answer my riddle and I'll go. What walks with you all day, yet never touches the ground?","choices":[{"text":"Your shadow.","do":[{"leaveSelf":true}],"next":"skel_riddle_right"},{"text":"A ghost.","next":"skel_riddle_wrong"},{"text":"A bird.","next":"skel_riddle_wrong"},{"text":"(Leave it be)"}]},
     "skel_riddle_right": {"text":"(The jaw clacks, delighted) Ha! Three hundred years and nobody got it. I can go now. Mind your shadow, living one.","choices":[{"text":"(Watch it go)"}]},
     "skel_riddle_wrong": {"text":"(It shakes its skull slowly) No. Think harder, living one.","choices":[{"text":"Let me try again.","next":"skel_riddle"},{"text":"(Leave it be)"}]},
@@ -793,7 +818,11 @@
     "captain_thanks": {"text":"(He turns the ring in his finger-bones) ...Bonewardens! Stand down. We are relieved. (The band lowers its bows and files away, one by one.)","choices":[{"text":"(Watch them go)"}]},
     "band_root": {"text":"(The skeleton points a bony finger at its captain) ...Ask him. He gives the orders.","choices":[{"text":"(Leave)"}]},
     "signet_root": {"text":"Something glints in the long grass: a heavy ring, its crest worn almost smooth.","choices":[{"text":"Take it.","do":[{"giveItem":"signet"},{"setFlag":"signet_taken"}]},{"text":"(Leave it)"}]},
-    "brute_root": {"text":[{"if":{"flag":"brute_hungry"},"text":"(The brute sniffs the air hard) ...You. Food? You bring FOOD?"},{"text":"(The brute's eyes narrow) Small one speaks Old Tongue? ...Hrm. Shiny is MINE. Go away."}],"choices":[{"text":"[Give the bread] Here. Village bread.","if":{"hasItem":"bread"},"do":[{"takeItem":"bread"},{"setFlag":"brute_fed"},{"turnIn":"brute_food"},{"giveItem":"relic"},{"pacify":{"dialogue":"brute_calm_root","boss":false}}],"next":"brute_fed","marker":"?"},{"text":"What would you take for the shiny thing?","if":{"not":{"flag":"brute_hungry"}},"next":"brute_wants","marker":"!"},{"verb":"hypnotize","text":"(Reach into its slow, heavy mind) Give me the shiny thing. Then sleep.","check":{"resolve":7,"success":"brute_hypno_ok","fail":"brute_hypno_fail","level":{"min":3,"per":6},"tooLow":"brute_too_strong"}},{"verb":"negotiate","text":"There's gold in the old mine. Dig it, carry it to the village, and they'll feed you every day. I'll teach you how.","check":{"resolve":5,"success":"brute_trade_ok","fail":"brute_trade_fail","level":{"min":4,"per":8},"tooLow":"brute_too_simple"}},{"text":"(Back away slowly)"}]},
+    "brute_relic_back": {"text":"(It snatches the relic and cradles it like a baby bird) ...Shiny. MINE. (It shuffles back toward its hay, calmer.)","choices":[{"text":"(Leave it be)"}]},
+    "brute_relic_paid": {"text":"(It bites a coin, then another) ...Hrm. Many shiny. Good. (It stops sniffing at you.)","choices":[{"text":"(Leave it be)"}]},
+    "hay_root": {"text":"(The straw still holds the shape of the relic. The brute will be back by daybreak.)","choices":[{"text":"[Leave the relic on the hay]","if":{"hasItem":"relic"},"do":[{"takeItem":"relic"},{"setFlag":"relic_returned"}],"next":"hay_done"},{"text":"(Keep it)"}]},
+    "hay_done": {"text":"(You tuck the relic into the straw. Somewhere in the dark, something big stops hunting.)","choices":[{"text":"(Go)"}]},
+    "brute_root": {"text":[{"if":[{"flag":"relic_stolen"},{"not":{"flag":"relic_returned"}},{"not":{"flag":"relic_paid"}}],"text":"(The brute's nostrils flare) SHINY GONE. Small ones took it. ...You. You smell like shiny."},{"if":{"flag":"brute_hungry"},"text":"(The brute sniffs the air hard) ...You. Food? You bring FOOD?"},{"text":"(The brute's eyes narrow) Small one speaks Old Tongue? ...Hrm. Shiny is MINE. Go away."}],"choices":[{"text":"[Give the bread] Here. Village bread.","if":[{"hasItem":"bread"},{"not":{"flag":"relic_stolen"}}],"do":[{"takeItem":"bread"},{"setFlag":"brute_fed"},{"turnIn":"brute_food"},{"giveItem":"relic"},{"pacify":{"dialogue":"brute_calm_root","boss":false}}],"next":"brute_fed","marker":"?"},{"text":"[Give back the relic] Here. Your shiny thing.","if":[{"flag":"relic_stolen"},{"hasItem":"relic"},{"not":{"flag":"relic_returned"}}],"do":[{"takeItem":"relic"},{"setFlag":"relic_returned"}],"next":"brute_relic_back"},{"text":"[Pay 60 gold] For your trouble. Buy yourself something shinier.","if":[{"flag":"relic_stolen"},{"gold":60},{"not":{"flag":"relic_returned"}},{"not":{"flag":"relic_paid"}}],"do":[{"takeGold":60},{"setFlag":"relic_paid"}],"next":"brute_relic_paid"},{"text":"What would you take for the shiny thing?","if":[{"not":{"flag":"brute_hungry"}},{"not":{"flag":"relic_stolen"}}],"next":"brute_wants","marker":"!"},{"verb":"hypnotize","text":"(Reach into its slow, heavy mind) Give me the shiny thing. Then sleep.","if":{"not":{"flag":"relic_stolen"}},"check":{"resolve":7,"success":"brute_hypno_ok","fail":"brute_hypno_fail","level":{"min":3,"per":6},"tooLow":"brute_too_strong"}},{"verb":"negotiate","if":{"not":{"flag":"relic_stolen"}},"text":"There's gold in the old mine. Dig it, carry it to the village, and they'll feed you every day. I'll teach you how.","check":{"resolve":5,"success":"brute_trade_ok","fail":"brute_trade_fail","level":{"min":4,"per":8},"tooLow":"brute_too_simple"}},{"text":"(Back away slowly)"}]},
     "brute_wants": {"text":"Hungry. ALWAYS hungry. Ruins have rocks, and rocks are bad food. Bring FOOD, village food, and Shiny is yours.","do":[{"setFlag":"brute_hungry"},{"startQuest":"brute_food"}],"choices":[{"text":"I'll find you food."},{"text":"(Back away)"}]},
     "brute_fed": {"text":"(It tears the loaf in two and crams both halves in at once) ...GOOD. Good food. Shiny is yours. Brute sleeps now.","choices":[{"text":"(Take the relic)"}]},
     "brute_hypno_ok": {"text":"(Its eyes go glassy. It sets the relic down at your feet, sits, and starts humming to itself.)","do":[{"giveItem":"relic"},{"pacify":{"dialogue":"brute_calm_root","boss":false}}],"choices":[{"text":"(Take the relic)"}]},
@@ -896,7 +925,7 @@
       ],
       "choices": [ { "text": "Keep the village safe, Brask." } ] },
 
-    "merchant_root": {"text":[{"if":{"mood":{"lte":-25}},"text":"(Tobin keeps one hand on the counter) Prices are up. Roads aren't safe, folk are scared. Coin up front. (You have {gold} gold.)"},{"if":{"mood":{"gte":25}},"text":"Good times in Ashford! Everything's a bit cheaper this week, for you especially. (You have {gold} gold.)"},{"text":"Potions, blades, armor! Coin up front, no refunds. (You have {gold} gold.)"}],"choices":[{"text":"Buy Health Potion ({price:15}g)","if":{"afford":15},"do":[{"buy":{"item":"potion","cost":15}}],"next":"merchant_root"},{"text":"Buy Iron Sword ({price:60}g)","if":{"afford":60},"do":[{"buy":{"item":"iron_sword","cost":60}}],"next":"merchant_root"},{"text":"Buy Leather Vest ({price:40}g)","if":{"afford":40},"do":[{"buy":{"item":"leather_vest","cost":40}}],"next":"merchant_root"},{"text":"Need any help around here?","if":{"quest":"slime_cull","is":"none"},"next":"tobin_slime_offer","marker":"!"},{"text":"About those slimes...","if":{"quest":"slime_cull","is":"active"},"next":"tobin_slime_progress"},{"text":"The slimes are dealt with.","if":{"quest":"slime_cull","is":"complete"},"do":[{"turnIn":"slime_cull"}],"next":"tobin_slime_done","marker":"?"},{"text":"Just looking."}]},
+    "merchant_root": {"text":[{"if":{"flag":"thief_known"},"text":"(Tobin moves the cash box out of your reach) I know what you are. Thief's prices, then, and I count the change twice. (You have {gold} gold.)"},{"if":{"mood":{"lte":-25}},"text":"(Tobin keeps one hand on the counter) Prices are up. Roads aren't safe, folk are scared. Coin up front. (You have {gold} gold.)"},{"if":{"mood":{"gte":25}},"text":"Good times in Ashford! Everything's a bit cheaper this week, for you especially. (You have {gold} gold.)"},{"text":"Potions, blades, armor! Coin up front, no refunds. (You have {gold} gold.)"}],"choices":[{"text":"Buy Health Potion ({price:15}g)","if":{"afford":15},"do":[{"buy":{"item":"potion","cost":15}}],"next":"merchant_root"},{"text":"Buy Iron Sword ({price:60}g)","if":{"afford":60},"do":[{"buy":{"item":"iron_sword","cost":60}}],"next":"merchant_root"},{"text":"Buy Leather Vest ({price:40}g)","if":{"afford":40},"do":[{"buy":{"item":"leather_vest","cost":40}}],"next":"merchant_root"},{"text":"Need any help around here?","if":{"quest":"slime_cull","is":"none"},"next":"tobin_slime_offer","marker":"!"},{"text":"About those slimes...","if":{"quest":"slime_cull","is":"active"},"next":"tobin_slime_progress"},{"text":"The slimes are dealt with.","if":{"quest":"slime_cull","is":"complete"},"do":[{"turnIn":"slime_cull"}],"next":"tobin_slime_done","marker":"?"},{"text":"Just looking."}]},
     "tobin_slime_offer": { "text": "Slimes keep oozing into my storehouse and eating the stock. Cull five of them in the meadow and I'll give you a proper blade.",
       "choices": [ { "text": "Deal.", "do": [ { "startQuest": "slime_cull" } ] }, { "text": "Not now.", "next": "merchant_root" } ] },
     "tobin_slime_progress": { "text": "Five slimes. So far you've squashed {quest:slime_cull}.", "choices": [ { "text": "Back to it." } ] },
@@ -914,7 +943,7 @@
     "main": { "name": "Ashford Vale" },
     "areas": {
       "_doc": "Small separate maps built off to the side of the main one (Tessera FTSArea), reached through doors (interactables with door). at = top-left in world tiles, clear of the main map and its hills.",
-      "cave": {"name":"The Old Mine","at":[64,17],"look":{"exposure":-2.2,"vignette":0.85},"lightIntensity":1200,"lights":[[4,2],[11,2],[3,7],[12,7]],"rows":["################","######....######","####........####","###..........###","##......r.....##","##...........B##","##..r.........##","###..........###","####........####","######....######","######....######","################"]}
+      "cave": {"name":"The Old Mine","at":[64,17],"look":{"exposure":-2.2,"vignette":0.85},"lightIntensity":1200,"lights":[[4,2],[11,2],[3,7],[12,7],[9,6]],"rows":["################","######....######","####........####","###..........###","##......r.....##","##...........B##","##..r.........##","###..........###","####........####","######....######","######....######","################"]}
     },
     "rows": [
       "################################################",
@@ -941,13 +970,13 @@
       "#......T..............L.o......................#",
       "#.........T...............####..################",
       "#.........................#rrrrrrrrrrrrrrrrrrrr#",
-      "#....T....................#rrrrrr#rrrrrrr#rrrrr#",
-      "#.........................#rrsrrrrrrrrrrrrrrarr#",
-      "#..........T..............#rrrrrr#rrrrrrr#rrrrr#",
-      "#..............s..........#rrrrrrrrrrrrrrrrrrrr#",
-      "#....T....................#rrarrrrrrrrrrrrrrrrr#",
-      "#.........................#rrrrrrrrrrrrrrrrrrrr#",
-      "#.......T.................#rrrrrrrrrrrrrrrrrrrr#",
+      "#....T........####+####...#rrrrrr#rrrrrrr#rrrrr#",
+      "#.............#.......#...#rrsrrrrrrrrrrrrrrarr#",
+      "#..........T..#.......#...#rrrrrr#rrrrrrr#rrrrr#",
+      "#.............#.......#...#rrrrrrrrrrrrrrrrrrrr#",
+      "#....T.....s..#.......#...#rrarrrrrrrrrrrrrrrrr#",
+      "#.............#.......#...#rrrrrrrrrrrrrrrrrrrr#",
+      "#.......T.....#########...#rrrrrrrrrrrrrrrrrrrr#",
       "################################################"
     ]
   }

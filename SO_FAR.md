@@ -362,7 +362,69 @@ dynamic story. So the reusable code is moving into two plugins, each its own rep
 - README gallery: 16 screenshots (new: 12 bright village, 13 dark mood, 14 the old mine, 15 Aldric at rest, 16 Grot
   the Miner), retaken with `tools/screenshots.ps1`; the new ones reuse the images their test scenarios take (`png`).
 
+## 7j. Keeping hours: who sleeps where (2026-10-07, Thief plan phase T0; built, waiting for the user to play it)
+
+- **Tessera `UTSSleep`** (TesseraGameplay): `"sleeps": "night" | "day"` from `UTSDayNight` phases (night sleepers turn
+  in at dusk and get up at dawn; day sleepers the other way round). At bedtime it walks the navmesh to its bed (stuck
+  short of it for 2.5 s: lies down where it stopped); a bed behind an entry (a house, the graveyard) means walk to the
+  entry, step through (collision off) and lie down; at the end of its night it steps back out and the game walks it
+  home. Asleep = tag "Asleep": sprite lies on its side, no shadow, a "z" drifts up; `TSPerception` gives it no sight
+  cone and hearing x `tuning.sleep.hearMul`; `TSCombat` hits it x `hitMul` ("AMBUSH") and wakes it; woken it stays up
+  `wakeFor` s. On the first tick the clock is known, anyone whose hours they are starts in bed.
+- **Tessera cutaways**: `CutawayAt`, `SetCutawayPeek` (cut away whenever the hero is within `CutawayPeekRange`: a
+  house with a sleeper inside, at night), `SetCutawayOpen` (shell stops colliding, cut walls with their door gap
+  start; navmesh updated). `ATSCharacter::CanBeTargeted`: someone asleep behind a door can only be picked out from
+  inside the same open building. `ATSInteractable`: `"use"` (a game action) and card-less spots (a house door).
+  `ATSSky::SetHour` (tests).
+- **Oathbound**: `restPlaces` (graveyard: 12 grave mounds behind a sealed gate; the Red Hands' camp: bedrolls round a
+  fire, Wren keeps watch; hay: the brute's straw bed in the mine with a torch beside it), `npcs.<id>.sleeps / house`
+  (Maren, Tobin, Guard Brask sleep in the three cottages), `houses.door` (`house_door`: the Thief picks the lock in
+  `pickTime`, everyone else "Locked."). Houses now have a bed and a door gap. The graveyard sits south of the
+  Bonewardens (map rows 24-30, cols 14-22). Talking to a sleeper wakes it with a grumble (`wokenBarks`).
+- **Test** `sleep` (Knight, then Thief): who sleeps by day / night, the camp, Maren indoors, hearing, AMBUSH, peeking,
+  locked vs picked door, walking in, morning, the brute on its hay. Screenshots `sleep_*`.
+- **Lessons**: a big lying sprite hides a standing prop behind it (the hay is a flat card under the brute); cards
+  need roomier bounds (`BoundsScale 2`) like sprites; the cave and graveyard are south of the river, so a test hero
+  there trips the bridge's "slipped past" rule.
+
+## 7k. The Thief's sticky fingers (2026-10-07, Thief plan T1-T6; built, `heist` test passes, waiting for the user to play it)
+
+- **Controls**: E is the action key (talk, use, pick a lock, steal). Space: the Thief crouches (tag "Sneaking",
+  `classes.thief.sneak.speed`), every other hero dodges. Thief standing speed 270.
+- **Tessera**: `UTSChannel` (standing-still work with a progress bar: lock picking, lifting); `TSPerception` hears a
+  sneaking target only within hearing x `tuning.sneak.hearMul`; the sprite crouches. **Loom**: `RunActions` public.
+- **Oathbound** `Game/RPGTheft` (pockets, who notices, reach, why-not, the lift, getting caught) driven by
+  `pockets` data on enemies and villagers; `scatter` action (a band walks off with no peace reward); cottage doors
+  open only by E (`UseHouseDoor(Door, bByKey)`); `thief_known` raises prices (`tuning.thiefPriceMul`) and cools
+  Maren and Tobin; the brute's `prowl` routine while its relic is away (`IsProwling`: relic_stolen and not
+  relic_returned / relic_paid / relic_brute_slain), the hay takes the relic back (`hay_return`), its other routes
+  and kill drop wait for the relic. Interactables re-check their `showIf` every second.
+- **Action mode** (after the first play): E toggles it; `ARPGPlayerCharacter::ActionIcon / ActionLabel` pick the cursor
+  (`talk`, `talk_off`, `gear_a`/`gear_b` turning, `gear_off`) and the hover words; a click in action mode by a
+  crouched Thief steals (`IsStealing`, Tessera `UTSHeroControl::Interesting` lets pocket-only foes be picked).
+  Locks are generic (`URPGSession::Locks`: interactable id -> cutaway; `UseLock`, `pickLevel`, `pickTime`); the
+  graveyard is an enclosure cutaway (footprint far below ground, its gate's wall blocks as "full" parts,
+  `ARPGWorldBuilder::OpenLock`). A lock above the Thief's level can still be tried: `UTSChannel::FailAt` (0.55-0.65)
+  and the HUD draws the bar breaking (`IsSnapped / SnappedAt / SnapAge`). NPCs / idle foes face the hero only when
+  they notice him.
+- **Night eyes and the crouch** (after the second play): `ATSSky::SetNightEyes` / `ShadeStrength` (the night shade
+  drawn lighter for the Thief: dim grey, not black); the crouch is its own sprite sheet (`characters.py` crouch
+  parameters `_crouch / _crouchFront / _wide / _lean / _reach`, `SNEAK_POSE`, SPR_<id>_sneak; standard sheets are
+  pixel-identical) that `UTSSpriteComponent` swaps to while "Sneaking", plus a shadow tint (`statusTints`).
+- **Routes**: Brask's toll purse -> `toll_bridge:robbed`, the Red Hands scatter; Ossric's badge -> the Bonewardens
+  drift apart; archers' grave coins and the Ferryman's Coin (pays a toll-wanting skeleton); Maren / Tobin / Guard Brask
+  robbed in their beds; the relic lifted from the sleeping brute, which then prowls the village at night.
+
 ## 8. Next steps / open threads
+
+**The current plan (2026-10-07): the Thief's sticky fingers** (T0-T6 built, see §7j / §7k; waiting for the user to play). Checklist by phase: `TODO.md` (T1-T6). The Thief
+steals the way the Scholar talks: anything with pockets (not slimes), including villagers. Sneak (toggle, slower,
+quieter) -> reach the target unseen (behind / beside it, in Smoke Bomb, or while it sleeps) -> click and hold still
+while a ring fills. Caught = "Thief!" and the target turns hostile with its allies. Mood: unseen 0 / caught -2;
+villagers -1 / -3 plus Tobin's prices rise. Brask's toll purse breaks up the band (`robbed`); Ossric's badge scatters
+the Bonewardens; everyone keeps hours (villagers and bandits sleep at night; the Brute and skeletons by day: Phase T0), and once the Brute's relic is stolen it prowls the village at night until paid off,
+given the relic back, or killed. Tessera = sneak + timed action on a character + sleep; Loom = steal checks + flags;
+Oathbound = pockets, routes, art.
 
 **The agreed plan (2026-10-07): talking foes, the Scholar's routes, and world mood.** Checklist by phase: `TODO.md`.
 Built one phase at a time; after each, tests + a package for the user; nothing is committed until all phases are done

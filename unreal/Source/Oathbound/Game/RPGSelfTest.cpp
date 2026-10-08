@@ -26,10 +26,16 @@
 #include "TSCharacterEvents.h"
 #include "TSInteractable.h"
 #include "TSRoutine.h"
+#include "TSSleep.h"
+#include "RPGWorldBuilder.h"
+#include "TSCombat.h"
+#include "TSChannel.h"
+#include "RPGTheft.h"
 #include "TSSprite.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
 #include "Components/CapsuleComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "EngineUtils.h"
 #include "HAL/PlatformMisc.h"
@@ -1330,6 +1336,516 @@ void ARPGSelfTest::RunStep()
 			Report(FString::Printf(TEXT("%s: [%s] and back out to the ruins (\"%s\")"), Pl->AreaId.IsEmpty() ? TEXT("PASS") : TEXT("FAIL"), *Cls, *Pl->AreaId));
 			Snap(TEXT("7_out"));
 			Quit(1.f);
+		}
+	}
+	else if (Scenario == TEXT("sleep"))
+	{
+		// Keeping hours (TODO.md T0): skeletons and the brute sleep by day (the graveyard, the hay), bandits and villagers
+		// by night (the camp, their houses). A sleeper only hears a hero right beside it; a hit wakes it, harder. Only
+		// the Thief opens a house door; a sleeper indoors can only be reached from inside.
+		auto Asleep = [](const ATSCharacter* C) { return UTSSleep::IsAsleep(C); };
+		auto Indoors = [](const AActor* A) { const UTSSleep* Z = UTSSleep::Of(A); return Z && Z->IsIndoors(); };
+		auto Npc = [this](const FString& Id) -> ARPGNPC* { for (TActorIterator<ARPGNPC> It(GetWorld()); It; ++It) if (It->NpcId == Id) return *It; return nullptr; };
+		// Sleepers by rest place: how many there are, and how many are asleep.
+		auto Count = [this](const FString& Rest, int32& Total)
+		{
+			int32 N = 0; Total = 0;
+			for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It)
+			{
+				if (It->IsDead() || !UTSSleep::Of(*It) || TSJson::Str(It->Def, TEXT("rest")) != Rest) continue;
+				++Total; N += UTSSleep::IsAsleep(*It) ? 1 : 0;
+			}
+			return N;
+		};
+		ARPGWorldBuilder* B = S->Builder();
+		ARPGNPC* Elder = Npc(TEXT("elder"));
+		if (!B || !Elder) { Report(TEXT("FAIL: no world builder or no Elder Maren")); Quit(0.5f); return; }
+		if (Step == 0) { Step = 1; Next = T + 2.f; return; }   // the first tick puts the day sleepers to bed
+		if (Step == 1)
+		{
+			int32 SkTotal = 0, CampTotal = 0;
+			const int32 SkAsleep = Count(TEXT("graveyard"), SkTotal), CampAsleep = Count(TEXT("camp"), CampTotal);
+			ARPGEnemy* Sk = Find(TEXT("archer"));
+			ARPGEnemy* Brute = Find(TEXT("brute"));
+			ARPGEnemy* Brask = Find(TEXT("bandit_captain"));
+			Report(FString::Printf(TEXT("%s: by day (%.1fh) %d / %d skeletons sleep in the graveyard (an archer indoors: %s), the brute on its hay (%s)"),
+				SkTotal > 0 && SkAsleep == SkTotal && Sk && Indoors(Sk) && Brute && Asleep(Brute) ? TEXT("PASS") : TEXT("FAIL"), ATSSky::Hour(), SkAsleep, SkTotal,
+				Sk && Indoors(Sk) ? TEXT("yes") : TEXT("no"), Brute && Asleep(Brute) ? TEXT("yes") : TEXT("no")));
+			Report(FString::Printf(TEXT("%s: by day the camp is up (%d / %d asleep) and Elder Maren is about (asleep: %s)"),
+				CampAsleep == 0 && Brask && !Asleep(Brask) && !Asleep(Elder) && !Indoors(Elder) ? TEXT("PASS") : TEXT("FAIL"), CampAsleep, CampTotal, Asleep(Elder) ? TEXT("yes") : TEXT("no")));
+			if (Sk) Report(FString::Printf(TEXT("%s: a skeleton in the graveyard can't be picked out from outside it"), !Sk->CanBeTargeted(Pl) ? TEXT("PASS") : TEXT("FAIL")));
+			ATSSky::SetHour(23.f);
+			Step = 2; Next = T + 14.f;   // night falls at once: everyone turns in (the camp is a walk away) or gets up
+		}
+		else if (Step == 2)
+		{
+			int32 SkTotal = 0, CampTotal = 0;
+			const int32 SkAsleep = Count(TEXT("graveyard"), SkTotal), CampAsleep = Count(TEXT("camp"), CampTotal);
+			ARPGEnemy* Brute = Find(TEXT("brute"));
+			ARPGEnemy* Wren = Find(TEXT("bandit_lt"));
+			ARPGEnemy* Sk = Find(TEXT("archer"));
+			Report(FString::Printf(TEXT("%s: at night (%.1fh, phase %d) the skeletons are up (%d asleep, archer outside: %s) and the brute too (%s)"),
+				SkAsleep == 0 && Sk && !Indoors(Sk) && Brute && !Asleep(Brute) ? TEXT("PASS") : TEXT("FAIL"), ATSSky::Hour(), int32(UTSDayNight::Get(this)->Phase()),
+				SkAsleep, Sk && !Indoors(Sk) ? TEXT("yes") : TEXT("no"), Brute && Asleep(Brute) ? TEXT("asleep") : TEXT("awake")));
+			Report(FString::Printf(TEXT("%s: the camp sleeps on its bedrolls (%d / %d) while Wren keeps watch (%s)"),
+				CampTotal > 0 && CampAsleep == CampTotal && Wren && !Asleep(Wren) ? TEXT("PASS") : TEXT("FAIL"), CampAsleep, CampTotal, Wren && !Asleep(Wren) ? TEXT("awake") : TEXT("asleep")));
+			Report(FString::Printf(TEXT("%s: Elder Maren has gone in to bed (asleep %s, indoors %s)"),
+				Asleep(Elder) && Indoors(Elder) ? TEXT("PASS") : TEXT("FAIL"), Asleep(Elder) ? TEXT("yes") : TEXT("no"), Indoors(Elder) ? TEXT("yes") : TEXT("no")));
+			// A bandit asleep: walk up quietly to within normal hearing (but not right beside it).
+			Target = nullptr;
+			for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->Type == TEXT("bandit") && Asleep(*It)) { Target = *It; break; }
+			if (!Target.IsValid()) { Report(TEXT("FAIL: no sleeping bandit")); Quit(0.5f); return; }
+			Place(Target->GetActorLocation() + FVector(0, -D.Px(55), 0), 90.f);
+			Step = 3; Next = T + 1.2f;
+		}
+		else if (Step == 3)
+		{
+			Shot(TEXT("sleep_camp"));
+			const bool bStill = Target.IsValid() && Asleep(Target.Get());
+			Report(FString::Printf(TEXT("%s: a hero 55px from a sleeping bandit isn't heard (still asleep: %s)"), bStill ? TEXT("PASS") : TEXT("FAIL"), bStill ? TEXT("yes") : TEXT("no")));
+			if (Target.IsValid()) Place(Target->GetActorLocation() + FVector(0, -D.Px(18), 0), 90.f);
+			Step = 4; Next = T + 0.8f;
+		}
+		else if (Step == 4)
+		{
+			Report(FString::Printf(TEXT("%s: right beside it, the bandit wakes"), Target.IsValid() && !Asleep(Target.Get()) ? TEXT("PASS") : TEXT("FAIL")));
+			// Another sleeper, struck: a heavier blow, and it wakes.
+			ARPGEnemy* Struck = nullptr;
+			for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->Type == TEXT("bandit") && Asleep(*It) && *It != Target.Get()) { Struck = *It; break; }
+			if (Struck)
+			{
+				FTSHit Hit; Hit.Base = 6.f;
+				const float K = float(Struck->Stats->Rule(TEXT("armorConstant"), 100));
+				const float Plain = Hit.Base * K / (K + Struck->Stats->Armor());
+				const float Before = Struck->Stats->Health();
+				TSCombat::Deal(Pl, Struck, Hit);
+				const float Took = Before - Struck->Stats->Health();
+				Report(FString::Printf(TEXT("%s: a sleeping bandit struck takes %.0f (awake: ~%.0f) and wakes"), Took >= Plain * 1.6f && !Asleep(Struck) ? TEXT("PASS") : TEXT("FAIL"), Took, Plain));
+			}
+			else Report(TEXT("FAIL: no second sleeping bandit"));
+			// Elder Maren's house: walk by and it opens up to show her asleep.
+			const ARPGWorldBuilder::FHouse* House = B->HouseAt(Elder->GetActorLocation());
+			if (!House) { Report(TEXT("FAIL: Maren isn't in a house")); Quit(0.5f); return; }
+			Place(House->Door + FVector(0, 150, 100), 90.f);
+			Step = 5; Next = T + 0.8f;
+		}
+		else if (Step == 5)
+		{
+			const ARPGWorldBuilder::FHouse* House = B->HouseAt(Elder->GetActorLocation());
+			const bool bCut = B->IsCutawayCut(House->Cutaway);
+			Report(FString::Printf(TEXT("%s: passing Maren's house at night shows her asleep inside (cut away: %s)"), bCut ? TEXT("PASS") : TEXT("FAIL"), bCut ? TEXT("yes") : TEXT("no")));
+			Shot(TEXT("sleep_house"));
+			ATSInteractable* Door = ATSInteractable::Nearest(GetWorld(), House->Door, 200.f);
+			Report(FString::Printf(TEXT("%s: her door is there to use (%s)"), Door && S->IsLock(Door) ? TEXT("PASS") : TEXT("FAIL"), Door ? *Door->Id : TEXT("none")));
+			if (Door) S->UseLock(Door, true);   // the Knight tries it (E)
+			Step = 6; Next = T + 1.6f;
+		}
+		else if (Step == 6)
+		{
+			const ARPGWorldBuilder::FHouse* House = B->HouseAt(Elder->GetActorLocation());
+			Report(FString::Printf(TEXT("%s: the Knight finds the door locked"), !B->IsCutawayOpen(House->Cutaway) ? TEXT("PASS") : TEXT("FAIL")));
+			Pl->ApplyClass(TEXT("thief"), TEXT("male"));
+			if (ATSInteractable* Door = ATSInteractable::Nearest(GetWorld(), House->Door, 200.f))
+			{
+				S->UseLock(Door, false);   // a click only tries it
+				Report(FString::Printf(TEXT("%s: a click on the door doesn't open it, even for the Thief"), S->IsLocked(Door) && !Pl->Channel->IsActive() ? TEXT("PASS") : TEXT("FAIL")));
+				S->UseLock(Door, true);    // E picks the lock
+				Report(FString::Printf(TEXT("%s: E starts picking the lock (%s)"), Pl->Channel->IsActive() ? TEXT("PASS") : TEXT("FAIL"), *Pl->Channel->Label));
+			}
+			Step = 7; Next = T + 1.8f;
+		}
+		else if (Step == 7)
+		{
+			const ARPGWorldBuilder::FHouse* House = B->HouseAt(Elder->GetActorLocation());
+			const bool bFromOutside = Elder->CanBeTargeted(Pl);
+			Report(FString::Printf(TEXT("%s: the Thief picks the lock and the house opens (she still can't be reached from outside: %s)"),
+				B->IsCutawayOpen(House->Cutaway) && !bFromOutside ? TEXT("PASS") : TEXT("FAIL"), bFromOutside ? TEXT("no") : TEXT("yes")));
+			// Walk in through the door gap, to the foot of the bed.
+			Pl->Control->TestClick(House->Bed + FVector(160.f, 40.f, -40.f));
+			Step = 8; Next = T + 4.f;
+		}
+		else if (Step == 8)
+		{
+			const ARPGWorldBuilder::FHouse* House = B->HouseAt(Elder->GetActorLocation());
+			const bool bInside = B->CutawayAt(Pl->GetActorLocation()) == House->Cutaway;
+			Report(FString::Printf(TEXT("%s: the Thief walks in (inside: %s, at %s) and can reach her by the bed (%s); she sleeps on"),
+				bInside && Elder->CanBeTargeted(Pl) && Asleep(Elder) ? TEXT("PASS") : TEXT("FAIL"), bInside ? TEXT("yes") : TEXT("no"), *Pl->GetActorLocation().ToCompactString(),
+				Elder->CanBeTargeted(Pl) ? TEXT("yes") : TEXT("no")));
+			Shot(TEXT("sleep_inside"));
+			ATSSky::SetHour(7.5f);
+			Step = 9; Next = T + 4.f;
+		}
+		else if (Step == 9)
+		{
+			ARPGEnemy* Brask = Find(TEXT("bandit_captain"));
+			Report(FString::Printf(TEXT("%s: morning (%.1fh): Maren is up and out of the house (%s), Brask is up (%s)"),
+				!Asleep(Elder) && !Indoors(Elder) && Brask && !Asleep(Brask) ? TEXT("PASS") : TEXT("FAIL"), ATSSky::Hour(),
+				Indoors(Elder) ? TEXT("still in") : TEXT("out"), Brask && Asleep(Brask) ? TEXT("asleep") : TEXT("awake")));
+			// Pictures of the day sleepers' beds (south of the river: last, as crossing turns the bandits hostile).
+			if (ATSInteractable* Gate = ATSInteractable::Find(GetWorld(), TEXT("graveyard_gate"))) Place(Gate->GetActorLocation() + FVector(0, -250, 120), 90.f);
+			Step = 11; Next = T + 6.f;   // the skeletons file back in
+		}
+		else if (Step == 11) { Shot(TEXT("sleep_graveyard")); Step = 12; Next = T + 0.5f; }
+		else if (Step == 12)
+		{
+			if (ARPGEnemy* Brute = Find(TEXT("brute"))) Place(Brute->GetActorLocation() + FVector(-260, 160, 0), 0.f);
+			Step = 13; Next = T + 1.5f;
+		}
+		else if (Step == 13)
+		{
+			ARPGEnemy* Brute = Find(TEXT("brute"));
+			Report(FString::Printf(TEXT("%s: by day again the brute sleeps on its hay"), Brute && Asleep(Brute) ? TEXT("PASS") : TEXT("FAIL")));
+			Shot(TEXT("sleep_hay"));
+			Quit(1.f);
+		}
+	}
+	else if (Scenario == TEXT("heist"))
+	{
+		// The Thief's whole plan (TODO.md T1-T6), run with -RPGHour=23: crouch (Space), quiet steps, lifting from behind,
+		// getting caught, Brask's toll purse (the band scatters), Ossric's badge (the Bonewardens drift apart), a
+		// villager robbed in her bed (E picks her lock), Tobin catching you (prices rise), the brute's relic lifted
+		// while it sleeps by day, the robbed brute prowling the village at night, and the relic put back on its hay.
+		ULMStory* L = S->Story();
+		auto Asleep = [](const ATSCharacter* C) { return UTSSleep::IsAsleep(C); };
+		auto Npc = [this](const FString& Id) -> ARPGNPC* { for (TActorIterator<ARPGNPC> It(GetWorld()); It; ++It) if (It->NpcId == Id) return *It; return nullptr; };
+		auto Behind = [this, &D](ATSCharacter* C, float Px) { Place(C->GetActorLocation() - C->Facing() * D.Px(Px) + FVector(0, 0, 60), C->GetActorRotation().Yaw); };
+		auto ArcherAt = [this](int32 Skip) -> ARPGEnemy* { int32 N = 0; for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->Type == TEXT("archer") && !It->IsDead() && !It->IsLeaving() && N++ == Skip) return *It; return nullptr; };
+		ARPGWorldBuilder* B = S->Builder();
+		if (Step == 0)
+		{
+			Pl->GainXp(3000);   // level for the well-guarded prizes
+			Report(FString::Printf(TEXT("thief at level %d, %.0f uu/s standing"), Pl->Level(), Pl->GetCharacterMovement()->MaxWalkSpeed));
+			const float Standing = Pl->GetCharacterMovement()->MaxWalkSpeed;
+			Pl->TestPress(TEXT("Dodge"), true); Pl->TestPress(TEXT("Dodge"), false);   // Space
+			Report(FString::Printf(TEXT("%s: Space crouches the Thief (sneaking %d, no dash %d, %.0f -> %.0f uu/s)"),
+				Pl->IsSneaking() && !Pl->IsDodging() && Pl->GetCharacterMovement()->MaxWalkSpeed < Standing * 0.6f ? TEXT("PASS") : TEXT("FAIL"),
+				Pl->IsSneaking(), !Pl->IsDodging(), Standing, Pl->GetCharacterMovement()->MaxWalkSpeed));
+			Step = 1; Next = T + 2.f;
+		}
+		else if (Step == 1)
+		{
+			// An archer up for the night, held still (frozen) so "behind" stays behind.
+			ARPGEnemy* A = ArcherAt(0);
+			if (!A) { Report(TEXT("FAIL: no archer")); Quit(0.5f); return; }
+			A->Tags.Add(TEXT("Frozen"), 8.f);
+			Target = A;
+			Behind(A, 30.f);
+			const bool bQuiet = !RPGTheft::Notices(A, Pl);
+			Pl->SetSneaking(false);
+			const bool bLoud = RPGTheft::Notices(A, Pl);
+			Pl->SetSneaking(true);
+			Report(FString::Printf(TEXT("%s: 30px behind an archer: crouched it doesn't hear you (%s), standing it does (%s)"), bQuiet && bLoud ? TEXT("PASS") : TEXT("FAIL"), bQuiet ? TEXT("quiet") : TEXT("heard"), bLoud ? TEXT("heard") : TEXT("quiet")));
+			Report(FString::Printf(TEXT("%s: the archer is within reach, nothing stops the lift ('%s', %s)"), RPGTheft::Target(Pl) == A && RPGTheft::Why(Pl, A).IsEmpty() ? TEXT("PASS") : TEXT("FAIL"), *RPGTheft::Why(Pl, A), *RPGTheft::Hint(A)));
+			Started = float(Pl->Inventory->Currency);
+			Pl->TestPress(TEXT("Interact"), true); Pl->TestPress(TEXT("Interact"), false);   // E: action mode
+			Report(FString::Printf(TEXT("%s: E turns on action mode; over the archer the cursor is turning gears ('%s')"),
+				Pl->Control->IsTalkMode() && Pl->ActionIcon(A, nullptr) == TEXT("gear") ? TEXT("PASS") : TEXT("FAIL"), *Pl->ActionLabel(A, nullptr)));
+			// ...and a click on it from further back: the Thief creeps the rest of the way, then lifts.
+			Behind(A, 110.f);
+			Pl->ActionClick(A);
+			Step = 101; Next = T + 1.2f;
+		}
+		else if (Step == 101)
+		{
+			Report(FString::Printf(TEXT("%s: clicked from 110px back, the Thief creeps up and starts the lift (%s, %.0fuu away)"),
+				Pl->Channel->IsActive() ? TEXT("PASS") : TEXT("FAIL"), *Pl->Channel->Label, Target.IsValid() ? FVector::Dist2D(Target->GetActorLocation(), Pl->GetActorLocation()) : -1.f));
+			// Standing, the same archer would be a conversation (grey: it speaks Grave-speech); never a theft.
+			Pl->SetSneaking(false);
+			const FName Standing = Pl->ActionIcon(Target.Get(), nullptr);
+			Pl->SetSneaking(true);
+			Report(FString::Printf(TEXT("%s: standing, the cursor over it offers talk, not theft (%s)"), Standing == TEXT("talk") || Standing == TEXT("talk_off") ? TEXT("PASS") : TEXT("FAIL"), *Standing.ToString()));
+			Step = 2; Next = T + 2.f;
+		}
+		else if (Step == 2)
+		{
+			ARPGEnemy* A = Cast<ARPGEnemy>(Target.Get());
+			Report(FString::Printf(TEXT("%s: lifted unseen: +%d gold, pockets now empty (%s), the archer none the wiser (provoked %d)"),
+				A && L->HasFlag(RPGTheft::PocketKey(A)) && Pl->Inventory->Currency > int32(Started) && !A->bProvoked ? TEXT("PASS") : TEXT("FAIL"),
+				Pl->Inventory->Currency - int32(Started), A && L->HasFlag(RPGTheft::PocketKey(A)) ? TEXT("yes") : TEXT("no"), A ? A->bProvoked : -1));
+			Shot(TEXT("heist_sneak"));
+			// A second archer: it turns round mid-lift.
+			ARPGEnemy* A2 = ArcherAt(1);
+			if (!A2) { Report(TEXT("FAIL: no second archer")); Quit(0.5f); return; }
+			A2->Tags.Add(TEXT("Frozen"), 8.f);
+			Target = A2;
+			Behind(A2, 30.f);
+			MinDist = L->Mood;
+			RPGTheft::Begin(Pl, A2);
+			Step = 3; Next = T + 0.4f;
+		}
+		else if (Step == 3)
+		{
+			if (ARPGEnemy* A2 = Cast<ARPGEnemy>(Target.Get())) A2->SetActorRotation(FRotator(0, (Pl->GetActorLocation() - A2->GetActorLocation()).GetSafeNormal2D().Rotation().Yaw, 0));
+			Step = 4; Next = T + 0.4f;
+		}
+		else if (Step == 4)
+		{
+			ARPGEnemy* A2 = Cast<ARPGEnemy>(Target.Get());
+			Report(FString::Printf(TEXT("%s: it turns round mid-lift: caught! (provoked %d, mood %.0f -> %.0f, lift stopped %d)"),
+				A2 && A2->bProvoked && L->Mood < MinDist && !Pl->Channel->IsActive() ? TEXT("PASS") : TEXT("FAIL"), A2 ? A2->bProvoked : -1, MinDist, L->Mood, !Pl->Channel->IsActive()));
+			// (Regression: a crouched action-mode click on a foe that's on to you is refused, and the moves after it
+			// mustn't trip over the refused steal: this crashed in play on 2026-10-08.)
+			if (A2)
+			{
+				A2->Tags.Remove(TEXT("Frozen"));
+				Pl->Control->SetTalkMode(true);
+				Pl->ActionClick(A2);
+				Pl->Control->TestClick(Pl->GetActorLocation() + FVector(300, 0, 0));
+				for (int32 I = 0; I < 5; ++I) Pl->Control->Update(0.05f);
+				Report(FString::Printf(TEXT("%s: a crouched action click on a foe aiming at you is refused, and walking on afterwards is fine (stealing %d)"),
+					!Pl->Channel->IsActive() && !Pl->IsStealing() ? TEXT("PASS") : TEXT("FAIL"), Pl->IsStealing()));
+				Pl->Control->ClearGoal();
+				A2->Die(nullptr);   // out of the way
+			}
+			// Brask's toll purse, at the sleeping camp.
+			ARPGEnemy* Brask = Find(TEXT("bandit_captain"));
+			if (!Brask || !Asleep(Brask)) { Report(FString::Printf(TEXT("FAIL: Brask %s"), Brask ? TEXT("awake") : TEXT("missing"))); Quit(0.5f); return; }
+			Target = Brask;
+			Place(Brask->GetActorLocation() + FVector(0, -D.Px(85), 60), 90.f);
+			Report(FString::Printf(TEXT("%s: Brask sleeps; his purse is there for the taking (the cursor: %s)"), Pl->ActionIcon(Brask, nullptr) == TEXT("gear") ? TEXT("PASS") : TEXT("FAIL"), *Pl->ActionLabel(Brask, nullptr)));
+			Pl->ActionClick(Brask);   // from a few steps off: creep up, then lift
+			Step = 5; Next = T + 1.6f;
+		}
+		else if (Step == 5)
+		{
+			Report(FString::Printf(TEXT("%s: the Thief crept up to sleeping Brask and is lifting (%s)"), Pl->Channel->IsActive() ? TEXT("PASS") : TEXT("FAIL"), *Pl->Channel->Label));
+			Shot(TEXT("heist_purse"));
+			Step = 6; Next = T + 2.2f;
+		}
+		else if (Step == 6)
+		{
+			int32 Leaving = 0, Total = 0;
+			for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->FactionId() == TEXT("bandits")) { ++Total; Leaving += It->IsLeaving() ? 1 : 0; }
+			Report(FString::Printf(TEXT("%s: the toll purse is gone: the bridge is resolved '%s', Brask is afraid (%d), the Red Hands scatter (%d / %d leaving)"),
+				L->Flags.FindRef(TEXT("toll_outcome")) == TEXT("robbed") && L->HasFlag(TEXT("brask_fear")) && Leaving == Total && Total > 0 ? TEXT("PASS") : TEXT("FAIL"),
+				*L->Flags.FindRef(TEXT("toll_outcome")), L->HasFlag(TEXT("brask_fear")), Leaving, Total));
+			// Captain Ossric's badge (up for the night with his band).
+			ARPGEnemy* Cap = Find(TEXT("skeleton_captain"));
+			if (!Cap) { Report(TEXT("FAIL: no Ossric")); Quit(0.5f); return; }
+			for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->FactionId() == TEXT("bonewardens")) It->Tags.Add(TEXT("Frozen"), 6.f);
+			Target = Cap;
+			Behind(Cap, 28.f);
+			RPGTheft::Begin(Pl, Cap);
+			Step = 7; Next = T + 2.2f;
+		}
+		else if (Step == 7)
+		{
+			int32 Leaving = 0, Total = 0;
+			for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->FactionId() == TEXT("bonewardens")) { ++Total; Leaving += It->IsLeaving() ? 1 : 0; }
+			Report(FString::Printf(TEXT("%s: Ossric's badge lifted (have it %d): the Bonewardens drift apart (%d / %d leaving)"),
+				Pl->Inventory->Count(TEXT("rank_badge")) > 0 && Leaving == Total && Total > 0 ? TEXT("PASS") : TEXT("FAIL"), Pl->Inventory->Count(TEXT("rank_badge")), Leaving, Total));
+			// The graveyard gate is a lock like any other: the Thief picks it.
+			if (ATSInteractable* Gate = ATSInteractable::Find(GetWorld(), TEXT("graveyard_gate")))
+			{
+				Report(FString::Printf(TEXT("%s: the graveyard gate is a lock, still shut, and the Thief's cursor turns gears at it (%s)"),
+					S->IsLock(Gate) && S->IsLocked(Gate) && Pl->ActionIcon(nullptr, Gate) == TEXT("gear") ? TEXT("PASS") : TEXT("FAIL"), *Pl->ActionLabel(nullptr, Gate)));
+				Place(Gate->GetActorLocation() + FVector(0, -120, 100), 90.f);
+				S->UseLock(Gate, true);
+			}
+			Step = 70; Next = T + 3.5f;
+		}
+		else if (Step == 70)
+		{
+			ATSInteractable* Gate = ATSInteractable::Find(GetWorld(), TEXT("graveyard_gate"));
+			Report(FString::Printf(TEXT("%s: after a long pick the graveyard gate opens"), Gate && !S->IsLocked(Gate) ? TEXT("PASS") : TEXT("FAIL")));
+			Shot(TEXT("heist_gate"));
+			Step = 71; Next = T + 0.3f;
+		}
+		else if (Step == 71)
+		{
+			// Maren, asleep in her cottage: pick the lock (E), walk in, lift her purse.
+			ARPGNPC* Elder = Npc(TEXT("elder"));
+			const ARPGWorldBuilder::FHouse* House = Elder ? B->HouseAt(Elder->GetActorLocation()) : nullptr;
+			if (!House || !Asleep(Elder)) { Report(TEXT("FAIL: Maren isn't asleep at home")); Quit(0.5f); return; }
+			Pl->SetSneaking(false);
+			Place(House->Door + FVector(0, 60, 100), -90.f);
+			if (ATSInteractable* Door = ATSInteractable::Nearest(GetWorld(), House->Door, 200.f)) S->UseLock(Door, true);
+			Step = 8; Next = T + 2.f;
+		}
+		else if (Step == 8)
+		{
+			ARPGNPC* Elder = Npc(TEXT("elder"));
+			const ARPGWorldBuilder::FHouse* House = B->HouseAt(Elder->GetActorLocation());
+			Report(FString::Printf(TEXT("%s: Maren's door picked open"), B->IsCutawayOpen(House->Cutaway) ? TEXT("PASS") : TEXT("FAIL")));
+			Pl->Control->TestClick(House->Bed + FVector(140.f, 60.f, -40.f));
+			Step = 9; Next = T + 3.5f;
+		}
+		else if (Step == 9)
+		{
+			ARPGNPC* Elder = Npc(TEXT("elder"));
+			Pl->SetSneaking(true);
+			MinDist = L->Mood;
+			Started = float(Pl->Inventory->Currency);
+			Report(FString::Printf(TEXT("%s: by Maren's bed she can be robbed ('%s')"), RPGTheft::Target(Pl) == Elder && RPGTheft::Why(Pl, Elder).IsEmpty() ? TEXT("PASS") : TEXT("FAIL"), *RPGTheft::Why(Pl, Elder)));
+			Pl->SetSneaking(false);
+			const FName Standing = Pl->ActionIcon(Elder, nullptr);
+			Pl->SetSneaking(true);
+			Report(FString::Printf(TEXT("%s: asleep: crouched the cursor steals (%s), standing it talks (%s)"),
+				Pl->ActionIcon(Elder, nullptr) == TEXT("gear") && Standing == TEXT("talk") ? TEXT("PASS") : TEXT("FAIL"), *Pl->ActionIcon(Elder, nullptr).ToString(), *Standing.ToString()));
+			Pl->ActionClick(Elder);
+			Step = 10; Next = T + 0.6f;
+		}
+		else if (Step == 10) { Shot(TEXT("heist_house")); Step = 11; Next = T + 1.4f; }
+		else if (Step == 11)
+		{
+			ARPGNPC* Elder = Npc(TEXT("elder"));
+			Report(FString::Printf(TEXT("%s: Maren's purse lifted in her sleep (+%d gold, still asleep %d, mood %.0f -> %.0f: a small wrong)"),
+				L->HasFlag(RPGTheft::PocketKey(Elder)) && Asleep(Elder) && L->Mood < MinDist && L->Mood > MinDist - 2.f ? TEXT("PASS") : TEXT("FAIL"),
+				Pl->Inventory->Currency - int32(Started), Asleep(Elder), MinDist, L->Mood));
+			// Tobin: woken mid-lift, he catches you.
+			ARPGNPC* Tobin = Npc(TEXT("merchant"));
+			const ARPGWorldBuilder::FHouse* House = Tobin ? B->HouseAt(Tobin->GetActorLocation()) : nullptr;
+			if (!House) { Report(TEXT("FAIL: Tobin isn't at home")); Quit(0.5f); return; }
+			B->SetCutawayOpen(House->Cutaway, true);
+			Place(Tobin->GetActorLocation() + FVector(D.Px(16), 0, 20), 180.f);
+			Started = float(S->PriceOf(100));
+			MinDist = L->Mood;
+			RPGTheft::Begin(Pl, Tobin);
+			Step = 12; Next = T + 0.4f;
+		}
+		else if (Step == 12)
+		{
+			if (UTSSleep* Z = UTSSleep::Of(Npc(TEXT("merchant")))) Z->Wake();
+			Step = 13; Next = T + 0.6f;
+		}
+		else if (Step == 13)
+		{
+			Report(FString::Printf(TEXT("%s: Tobin wakes mid-lift and catches you: word gets round (thief_known %d), prices %d -> %d, mood %.0f -> %.0f"),
+				L->HasFlag(TEXT("thief_known")) && S->PriceOf(100) > int32(Started) && L->Mood <= MinDist - 3.f ? TEXT("PASS") : TEXT("FAIL"),
+				L->HasFlag(TEXT("thief_known")), int32(Started), S->PriceOf(100), MinDist, L->Mood));
+			// The brute's relic: by day, while it sleeps on its hay.
+			ATSSky::SetHour(13.f);
+			Place(S->GroundAt(44, 3) + FVector(0, 0, 120), 180.f);   // out of the way while the brute goes to bed
+			Step = 14; Next = T + 8.f;
+		}
+		else if (Step == 14)
+		{
+			ARPGEnemy* Brute = Find(TEXT("brute"));
+			if (!Brute) { Report(TEXT("FAIL: no brute")); Quit(0.5f); return; }
+			Target = Brute;
+			Place(Brute->GetActorLocation() + FVector(0, D.Px(26), 60), -90.f);
+			Report(FString::Printf(TEXT("%s: by day the brute sleeps on its hay (%d) and the relic can be lifted ('%s')"), Asleep(Brute) && RPGTheft::Why(Pl, Brute).IsEmpty() ? TEXT("PASS") : TEXT("FAIL"), Asleep(Brute), *RPGTheft::Why(Pl, Brute)));
+			RPGTheft::Begin(Pl, Brute);
+			Step = 15; Next = T + 2.8f;
+		}
+		else if (Step == 15)
+		{
+			ARPGEnemy* Brute = Cast<ARPGEnemy>(Target.Get());
+			Report(FString::Printf(TEXT("%s: the relic lifted from under the sleeping brute (have it %d, still asleep %d)"),
+				Pl->Inventory->Count(TEXT("relic")) > 0 && L->HasFlag(TEXT("relic_stolen")) && Brute && Asleep(Brute) ? TEXT("PASS") : TEXT("FAIL"), Pl->Inventory->Count(TEXT("relic")), Brute && Asleep(Brute)));
+			// Out of the mine, far off in the village's north-east; then night falls.
+			Place(S->GroundAt(44, 3) + FVector(0, 0, 120), 180.f);
+			ATSSky::SetHour(23.f);
+			Step = 16; Next = T + 30.f;
+		}
+		else if (Step == 16)
+		{
+			ARPGEnemy* Brute = Cast<ARPGEnemy>(Target.Get());
+			const bool bOut = Brute && !D.AreaAt(Brute->GetActorLocation());
+			Report(FString::Printf(TEXT("%s: at night the robbed brute leaves the mine and prowls the village (prowling %d, out of the mine %d, at tile %.0f,%.0f)"),
+				Brute && Brute->IsProwling() && bOut ? TEXT("PASS") : TEXT("FAIL"), Brute ? Brute->IsProwling() : -1, bOut,
+				Brute ? Brute->GetActorLocation().X / D.TileSize : 0.f, Brute ? Brute->GetActorLocation().Y / D.TileSize : 0.f));
+			if (Brute) Place(Brute->GetActorLocation() + FVector(0, 900, 300), -90.f);
+			Step = 17; Next = T + 0.4f;
+		}
+		else if (Step == 17)
+		{
+			Shot(TEXT("heist_prowl"));
+			// Put the relic back on its hay: the hunt ends.
+			ATSInteractable* Hay = ATSInteractable::Find(GetWorld(), TEXT("hay_return"));
+			Report(FString::Printf(TEXT("%s: the hay offers to take the relic back"), Hay && Hay->IsShown() && Hay->CanUse() ? TEXT("PASS") : TEXT("FAIL")));
+			if (Hay) S->UseInteractable(Hay);
+			const int32 Leave = L->FindChoice(TEXT("[Leave the relic"));
+			if (Leave != INDEX_NONE) L->Choose(Leave);
+			L->CloseDialogue();
+			Step = 18; Next = T + 0.5f;
+		}
+		else if (Step == 18)
+		{
+			ARPGEnemy* Brute = Cast<ARPGEnemy>(Target.Get());
+			Report(FString::Printf(TEXT("%s: the relic is back on its hay: the brute stops prowling (relic_returned %d, prowling %d)"),
+				L->HasFlag(TEXT("relic_returned")) && Brute && !Brute->IsProwling() && Pl->Inventory->Count(TEXT("relic")) == 0 ? TEXT("PASS") : TEXT("FAIL"),
+				L->HasFlag(TEXT("relic_returned")), Brute ? Brute->IsProwling() : -1));
+			Report(FString::Printf(TEXT("world mood at the end: %.0f"), L->Mood));
+			Quit(1.f);
+		}
+	}
+	else if (Scenario == TEXT("lockpick"))
+	{
+		// A lock beyond the Thief's level: he can try, the bar gets a little over halfway, turns red and snaps. A level
+		// later the same lock gives.
+		ATSInteractable* Gate = ATSInteractable::Find(GetWorld(), TEXT("graveyard_gate"));
+		if (!Gate) { Report(TEXT("FAIL: no graveyard gate")); Quit(0.5f); return; }
+		if (Step == 0)
+		{
+			Place(Gate->GetActorLocation() + FVector(0, -120, 100), 90.f);
+			Report(FString::Printf(TEXT("%s: a level-%d Thief still gets turning gears at the level-2 gate ('%s')"),
+				Pl->ActionIcon(nullptr, Gate) == TEXT("gear") ? TEXT("PASS") : TEXT("FAIL"), Pl->Level(), *Pl->ActionLabel(nullptr, Gate)));
+			S->UseLock(Gate, true);
+			Report(FString::Printf(TEXT("%s: he starts picking it"), Pl->Channel->IsActive() ? TEXT("PASS") : TEXT("FAIL")));
+			Step = 1; Next = T + 0.2f;
+		}
+		else if (Step == 1)
+		{
+			if (Pl->Channel->IsSnapped())
+			{
+				Report(FString::Printf(TEXT("%s: the pick snaps at %.0f%% (a little over halfway)"), Pl->Channel->SnappedAt() > 0.5f && Pl->Channel->SnappedAt() < 0.7f ? TEXT("PASS") : TEXT("FAIL"), Pl->Channel->SnappedAt() * 100.f));
+				Step = 2; Next = T + 0.15f;
+			}
+			else if (!Pl->Channel->IsActive()) { Report(TEXT("FAIL: the attempt ended without snapping")); Quit(0.5f); }
+			else Next = T + 0.05f;
+		}
+		else if (Step == 2) { Shot(TEXT("lockpick_snap")); Step = 3; Next = T + 1.2f; }
+		else if (Step == 3)
+		{
+			Report(FString::Printf(TEXT("%s: the gate is still locked"), S->IsLocked(Gate) ? TEXT("PASS") : TEXT("FAIL")));
+			while (Pl->Level() < 2) Pl->GainXp(ARPGPlayerCharacter::XpToNext(Pl, Pl->Level()) - Pl->Xp);
+			S->UseLock(Gate, true);
+			Step = 4; Next = T + 3.6f;
+		}
+		else if (Step == 4)
+		{
+			Report(FString::Printf(TEXT("%s: at level %d the same gate gives"), !S->IsLocked(Gate) ? TEXT("PASS") : TEXT("FAIL"), Pl->Level()));
+			Quit(0.5f);
+		}
+	}
+	else if (Scenario == TEXT("nighteyes"))
+	{
+		// Run with -RPGHour=23: the Thief's night eyes draw the dark beyond his sight as a dim grey; the Knight's is black.
+		if (Step == 0) { Place(S->GroundAt(24, 7) + FVector(0, 0, 120), 90.f); Step = 1; Next = T + 2.f; return; }
+		if (Step == 1)
+		{
+			Report(FString::Printf(TEXT("%s: the Thief's night shade is lighter (%.2f of the dark %.2f)"), ATSSky::ShadeStrength() < ATSSky::Darkness() * 0.7f && ATSSky::Darkness() > 0.5f ? TEXT("PASS") : TEXT("FAIL"), ATSSky::ShadeStrength(), ATSSky::Darkness()));
+			Shot(TEXT("nighteyes_thief"));
+			Step = 2; Next = T + 0.5f;
+		}
+		else if (Step == 2) { Pl->ApplyClass(TEXT("knight"), TEXT("male")); Step = 3; Next = T + 1.f; }
+		else if (Step == 3)
+		{
+			Report(FString::Printf(TEXT("%s: the Knight's is full dark (%.2f)"), FMath::IsNearlyEqual(ATSSky::ShadeStrength(), ATSSky::Darkness()) ? TEXT("PASS") : TEXT("FAIL"), ATSSky::ShadeStrength()));
+			Shot(TEXT("nighteyes_knight"));
+			Quit(0.8f);
+		}
+	}
+	else if (Scenario == TEXT("crouch"))
+	{
+		// The Thief's sneak look (run by day): the ninja-creep sheet and the shadow cloak while crouched, walking.
+		if (Step == 0)
+		{
+			Place(S->GroundAt(20, 6) + FVector(0, 0, 120), 0.f);
+			Pl->SetSneaking(true);
+			Pl->Control->TestClick(S->GroundAt(26, 6));   // creep east (side view)
+			Step = 1; Next = T + 1.2f;
+		}
+		else if (Step == 1) { Shot(TEXT("crouch_side")); Pl->Control->TestClick(S->GroundAt(24, 9)); Step = 2; Next = T + 0.9f; }
+		else if (Step == 2) { Shot(TEXT("crouch_front")); Step = 20; Next = T + 0.3f; }   // (shots land a frame late: stand up after)
+		else if (Step == 20) { Pl->SetSneaking(false); Pl->Control->TestClick(S->GroundAt(30, 9)); Step = 3; Next = T + 0.7f; }
+		else if (Step == 3)
+		{
+			Shot(TEXT("crouch_standing"));
+			FLinearColor Tint;
+			Report(FString::Printf(TEXT("%s: the shadow cloak is a status tint for Sneaking"), ATSCharacter::TintForTag(Pl, TEXT("Sneaking"), Tint) ? TEXT("PASS") : TEXT("FAIL")));
+			Quit(0.5f);
 		}
 	}
 	else if (Scenario == TEXT("night"))

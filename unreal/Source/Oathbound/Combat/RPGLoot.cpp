@@ -17,7 +17,9 @@ void RPGLoot::Drop(ARPGEnemy* E)
 	const TSJson::FObj Q = TSJson::Obj(E->Def, TEXT("questDrop"));
 	URPGSession* Session = URPGSession::Get(E);
 	const ARPGPlayerCharacter* P = Session->Player();
-	if (Q && P && Session->Story()->QuestStatus(TSJson::Str(Q, TEXT("quest"))) != TEXT("turnedIn") && P->Inventory->Count(TSJson::Str(Q, TEXT("item"))) == 0)
+	// (and its "if", e.g. not while the relic is away: stolen and never given back).
+	const TSharedPtr<FJsonValue> If = Q ? Q->TryGetField(TEXT("if")) : nullptr;
+	if (Q && P && (!If || Session->Story()->CheckCond(If)) && Session->Story()->QuestStatus(TSJson::Str(Q, TEXT("quest"))) != TEXT("turnedIn") && P->Inventory->Count(TSJson::Str(Q, TEXT("item"))) == 0)
 	{
 		const FTSItem It = UTSInventoryComponent::MakeItem(W, TSJson::Str(Q, TEXT("item")));
 		TSLoot::Spawn(W, At, &It, 0);

@@ -15,6 +15,10 @@ Pixel art for the world's mood and the Scholar's quests (TODO.md phases 2-5). Al
     PR_Puddle 64x32 (lies flat on a road), PR_WallCrack 48x48 and PR_Moss 48x32 (overlays for house walls),
     PR_Vines 48x48 and PR_VinesCorner 48x64 (good-mood wall accents), PR_Sunray 32x128 (a soft light shaft),
     PR_RoadCrack / PR_RoadCrackB 64x32 (cracks in an unkept road; lie flat)
+
+  Rest places (where foes sleep; TODO.md phase T0):
+    PR_Haystack 64x44 (the cave brute's bed), PR_Bedroll 64x36 (lies flat: a bandit's bed by the camp fire),
+    PR_Gate 64x56 (the graveyard's iron gate between two stone posts)
 """
 import math
 
@@ -550,6 +554,59 @@ def pr_road_crack_b():
     return _road_crack(82, (4, 25), -0.35, [(3, -1.3, 4), (7, 1.2, 4), (11, -1.1, 5)])
 
 
+# --- rest places ----------------------------------------------------------------------------------------
+
+def pr_haystack():
+    a = blank(64, 44)
+    r = rng(91)
+    straw, straw2, straw3 = C("#d8b450"), C("#b8923a"), C("#f0d478")
+    m = ellipse_mask(64, 44, 32, 40, 29, 26) & (np.mgrid[0:44, 0:64][0] < 43)
+    _fill(a, m, straw)
+    ys, xs = np.nonzero(m)
+    for _ in range(140):                                           # loose straws, light and dark
+        k = r.integers(0, len(xs))
+        y, x = ys[k], xs[k]
+        dx = int(r.integers(-2, 3))
+        line(a, x, y, min(63, max(0, x + dx)), min(42, y + 2), straw2 if r.random() < 0.55 else straw3)
+    a[~m] = 0
+    for x in range(6, 58, 3):                                      # a few stalks sticking out of the top
+        top = 40 - int(math.sqrt(max(0.0, 1 - ((x - 32) / 29.0) ** 2)) * 26)
+        if r.random() < 0.5:
+            line(a, x, top, x + int(r.integers(-2, 3)), top - int(r.integers(2, 4)), straw3)
+    return outline(a)
+
+
+def pr_bedroll():
+    a = blank(64, 36)
+    wool, roll = C("#7a4a3a"), C("#9a6a4a")
+    m = poly_mask([(6, 8), (54, 6), (58, 28), (8, 30)], 64, 36)
+    _fill(a, m, wool)
+    for x in range(10, 54, 8):                                     # a stripe pattern woven in
+        line(a, x, 9, x + 2, 28, mix(wool, C("#c8a060"), 0.5))
+    rm = ellipse_mask(64, 36, 54, 17, 7, 12)                       # rolled-up head end
+    _fill(a, rm, roll)
+    line(a, 52, 7, 52, 27, shadow_of(roll))
+    disc(a, 12, 18, 4, C("#d8cfb8"))                               # a folded cloth for a pillow
+    return outline(a)
+
+
+def pr_gate():
+    a = blank(64, 56)
+    stone, iron = C("#8a8478"), C("#3a3640")
+    for x0 in (2, 50):                                             # two stone posts with caps
+        _fill(a, poly_mask([(x0, 55), (x0, 12), (x0 + 12, 12), (x0 + 12, 55)], 64, 56), stone)
+        _fill(a, poly_mask([(x0 - 1, 13), (x0 + 6, 6), (x0 + 13, 13)], 64, 56), shadow_of(stone))
+    for x in range(17, 49, 5):                                     # iron bars with spear tips
+        line(a, x, 54, x, 18, iron)
+        a[16, x] = light_of(iron); a[17, x - 1] = iron; a[17, x + 1] = iron
+    for y in (24, 46):
+        line(a, 14, y, 50, y, iron)
+    for t in range(0, 360, 30):                                    # a ring in the middle: the seal
+        a[int(35 + 5 * math.sin(math.radians(t))), int(32 + 5 * math.cos(math.radians(t)))] = C("#b0a070")
+    line(a, 27, 30, 37, 40, C("#8a2a2a")); line(a, 37, 30, 27, 40, C("#8a2a2a"))   # sealed: a red cross
+    return outline(a)
+
+
 SHEETS = {
     "SPR_ChildA": spr_child_a, "SPR_ChildB": spr_child_b, "SPR_Grumpy": spr_grumpy, "SPR_Puppy": spr_puppy,
     "SPR_ButterflyA": spr_butterfly_a, "SPR_ButterflyB": spr_butterfly_b, "SPR_Wolf": spr_wolf, "SPR_Bat": spr_bat,
@@ -558,4 +615,5 @@ SHEETS = {
     "PR_Signet": pr_signet, "PR_Bread": pr_bread, "PR_Puddle": pr_puddle, "PR_WallCrack": pr_wall_crack, "PR_Moss": pr_moss,
     "PR_Vines": pr_vines, "PR_VinesCorner": pr_vines_corner, "PR_Sunray": pr_sunray,
     "PR_RoadCrack": pr_road_crack, "PR_RoadCrackB": pr_road_crack_b,
+    "PR_Haystack": pr_haystack, "PR_Bedroll": pr_bedroll, "PR_Gate": pr_gate,
 }

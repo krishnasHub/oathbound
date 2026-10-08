@@ -17,6 +17,7 @@ class UTSAbilityComponent;
 class UTSPoseMesh;
 class UTSCameraRig;
 class UTSHeroControl;
+class UTSChannel;
 
 /**
  * The player. Prototype equivalent: `Player`.
@@ -60,6 +61,32 @@ public:
 	void UpdateArea();
 	UPROPERTY(VisibleAnywhere, Category = "RPG") TObjectPtr<UTSHeroControl> Control;
 	UPROPERTY(VisibleAnywhere, Category = "RPG") TObjectPtr<UTSInventoryComponent> Inventory;
+	/** A moment's work done standing still (picking a lock, lifting a purse): Tessera's channel. */
+	UPROPERTY(VisibleAnywhere, Category = "RPG") TObjectPtr<UTSChannel> Channel;
+
+	// The Thief's crouch (classes.<id>.sneak { speed }: Space toggles it instead of the dodge; tag "Sneaking").
+	bool CanSneak() const;
+	bool IsSneaking() const { return Tags.Has(TEXT("Sneaking")); }
+	void SetSneaking(bool bOn);
+	/** Walk speed from the class, crouched or not. */
+	void UpdateSpeed();
+	/** The next use of a thing came from E (picking a lock), not a click. */
+	bool bUseByKey = false;
+
+	// Action mode (E, then click): the click does the dedicated thing for what it's on.
+	//   standing: talk to whoever will talk (a sleeper is woken); crouched Thief: steal from whoever can't see you;
+	//   a lock: the Thief picks it; anything else usable: use it. Without E, clicks move / attack / talk as ever.
+	/** The click in progress was made in action mode. */
+	bool bActionClick = false;
+	/** In action mode, the cursor for On (a character) or It (a thing), or nothing under the cursor:
+	 *  "talk" / "talk_off" / "gear" (something to do) / "gear_off" (nothing). */
+	FName ActionIcon(const ATSCharacter* On, const class ATSInteractable* It) const;
+	/** The HUD's words for it ("Steal: Captain Brask (the toll purse)", "Pick the lock", or why not). */
+	FString ActionLabel(const ATSCharacter* On, const class ATSInteractable* It) const;
+	/** Steal from On right now (crouched Thief in action mode), as opposed to talking. */
+	bool IsStealing() const;
+	/** Self-test hook: an action-mode click on On. */
+	void ActionClick(ATSCharacter* On);
 	UPROPERTY(VisibleAnywhere, Category = "RPG") TObjectPtr<UTSAbilityComponent> Abilities;
 	/** What you see: a posed copy of the animated mesh (arm raised to guard, etc.). */
 	UPROPERTY(VisibleAnywhere, Category = "RPG") TObjectPtr<UTSPoseMesh> PoseMesh;

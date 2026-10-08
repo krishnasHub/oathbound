@@ -119,8 +119,40 @@ def cur_talk(enabled=True):
     return a
 
 
+def _gear(a, cx, cy, r_out, r_in, teeth, turn, body, hub):
+    """A cog: a ring with square-ish teeth, turned by `turn` radians, a hole in the middle."""
+    h, w = a.shape[:2]
+    yy, xx = np.mgrid[0:h, 0:w]
+    dx, dy = xx - cx, yy - cy
+    rr = np.hypot(dx, dy)
+    ang = (np.arctan2(dy, dx) - turn) % (2 * np.pi / teeth)
+    tooth = ang < (np.pi / teeth)
+    m = (rr <= r_in) | ((rr <= r_out) & tooth)
+    a[m] = body
+    a[rr <= r_in * 0.42] = 0
+    ring = (rr <= r_in * 0.62) & (rr > r_in * 0.42)
+    a[ring] = hub
+
+
+def cur_gear(state="a"):
+    """The action cursor: two meshing cogs. 'a' / 'b' are two frames of them turning (something to do here); 'off' is
+    greyed and still (nothing to do)."""
+    a = blank(40, 40)
+    on = state != "off"
+    big, small = (C("#e8c860"), C("#c8d0d8")) if on else (C("#8a8a8e"), C("#76767a"))
+    hub = C("#5a4a2a") if on else C("#55555a")
+    t = 0.0 if state != "b" else np.pi / 8
+    _gear(a, 15, 16, 12.5, 9.0, 8, t, big, hub)
+    _gear(a, 29, 28, 9.0, 6.2, 6, -t * 1.4 + np.pi / 6, small, hub)
+    a = outline(outline(a, OUT_LINE), (0, 0, 0, 80))
+    if not on:
+        a[..., 3] = (a[..., 3] * 0.75).astype(np.uint8)
+    return a
+
+
 CURSORS = {"pointer": cur_pointer, "sword": cur_sword, "dagger": cur_dagger, "wand": cur_wand, "arrow": cur_arrow,
-           "talk": lambda: cur_talk(True), "talk_off": lambda: cur_talk(False)}
+           "talk": lambda: cur_talk(True), "talk_off": lambda: cur_talk(False),
+           "gear_a": lambda: cur_gear("a"), "gear_b": lambda: cur_gear("b"), "gear_off": lambda: cur_gear("off")}
 
 
 # --- backdrops -------------------------------------------------------------------------------------

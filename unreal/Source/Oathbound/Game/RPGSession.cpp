@@ -21,6 +21,9 @@
 #include "TSDayNight.h"
 #include "TSInteractable.h"
 #include "TSHeroControl.h"
+#include "TSSleep.h"
+#include "RPGWorldBuilder.h"
+#include "TSChannel.h"
 #include "Engine/Texture2D.h"
 
 #include "EngineUtils.h"
@@ -74,6 +77,9 @@ void URPGSession::Tick(float Dt)
 	if (GetWorld()->IsPaused()) return;
 	EncounterCooldown -= Dt;
 	UpdateEncounters();
+	// Things that show by the story (a hay to put a stolen relic back on...): the story also moves outside dialogue.
+	RefreshIn -= Dt;
+	if (RefreshIn <= 0.f) { RefreshIn = 1.f; RefreshInteractables(); }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -143,7 +149,96 @@ void URPGSession::SpawnInteractables()
 		if (GetWorld()->LineTraceSingleByChannel(H, Loc + FVector(0, 0, 3000), Loc - FVector(0, 0, 3000), ECC_Visibility)) Loc.Z = H.ImpactPoint.Z;
 		ATSInteractable::Spawn(GetWorld(), FString(*KV.Key), Def, Loc);
 	}
+
+	// Rest places: a prop at every bed (grave mounds, bedrolls, hay), and the gate of a walled one.
+	if (const TSJson::FObj Rest = D.Section(TEXT("restPlaces")))
+		for (const auto& KV : Rest->Values)
+		{
+			const TSJson::FObj R = TSJson::Obj(Rest, FString(*KV.Key));
+			if (!R) continue;
+			int32 N = 0;
+			if (const TSJson::FObj Prop = TSJson::Obj(R, TEXT("prop")))
+				for (const TSharedPtr<FJsonValue>& V : TSJson::Arr(R, TEXT("spots")))
+				{
+					const TArray<TSharedPtr<FJsonValue>>& At = V->AsArray();
+					const TSJson::FObj Def = MakeShared<FJsonObject>();
+					for (const auto& F : Prop->Values) Def->SetField(F.Key, F.Value);
+					Def->SetStringField(TEXT("name"), TSJson::Str(R, TEXT("name")));
+					Def->SetBoolField(TEXT("usable"), false);
+					// A standing prop goes a little behind the bed, so whoever sleeps there lies in front of it.
+					const FVector Spot = GroundAt(int32(At[0]->AsNumber()), int32(At[1]->AsNumber())) - FVector(0, TSJson::Bool(Prop, TEXT("flat")) ? 0.f : 60.f, 0);
+					ATSInteractable::Spawn(GetWorld(), FString::Printf(TEXT("%s_%d"), *FString(*KV.Key), N++), Def, Spot);
+				}
+			const TArray<TSharedPtr<FJsonValue>> Entry = TSJson::Arr(R, TEXT("entry"));
+			if (const TSJson::FObj Gate = TSJson::Obj(R, TEXT("gate")); Gate && Entry.Num() == 2)
+				if (ATSInteractable* G = ATSInteractable::Spawn(GetWorld(), FString(*KV.Key) + TEXT("_gate"), Gate, GroundAt(int32(Entry[0]->AsNumber()), int32(Entry[1]->AsNumber()))))
+					if (const ARPGWorldBuilder* B = Builder(); B && B->Enclosures.Contains(FString(*KV.Key))) Locks.Add(G->Id, B->Enclosures[FString(*KV.Key)]);
+		}
+
+	// Every cottage's front door (no card: the door is part of the house).
+	if (const ARPGWorldBuilder* B = Builder())
+		if (const TSJson::FObj Door = TSJson::Obj(D.Section(TEXT("houses")), TEXT("door")))
+			for (int32 I = 0; I < B->Houses.Num(); ++I)
+				if (ATSInteractable* It = ATSInteractable::Spawn(GetWorld(), FString::Printf(TEXT("house_door_%d"), I), Door, B->Houses[I].Door)) Locks.Add(It->Id, B->Houses[I].Cutaway);
 	RefreshInteractables();
+}
+
+FVector URPGSession::GroundAt(int32 TileX, int32 TileY) const
+{
+	// The world builder knows the ground everywhere, the separate areas (the mine) included.
+	FVector Loc = UTSData::Get(this).TileCenter(TileX, TileY);
+	if (const ARPGWorldBuilder* B = Builder()) Loc.Z = B->GroundZ(Loc.X, Loc.Y);
+	return Loc;
+}
+
+ARPGWorldBuilder* URPGSession::Builder() const
+{
+	for (TActorIterator<ARPGWorldBuilder> It(GetWorld()); It; ++It) return *It;
+	return nullptr;
+}
+
+bool URPGSession::IsLock(const ATSInteractable* It) const { return It && Locks.Contains(It->Id); }
+
+bool URPGSession::IsLocked(const ATSInteractable* It) const
+{
+	const int32* Index = It ? Locks.Find(It->Id) : nullptr;
+	const ARPGWorldBuilder* B = Builder();
+	return Index && B && !B->IsCutawayOpen(*Index);
+}
+
+void URPGSession::UseLock(ATSInteractable* Lock, bool bByKey)
+{
+	ARPGPlayerCharacter* P = Player();
+	if (!P || !IsLocked(Lock)) return;   // already open: walk in
+	const TSJson::FObj Houses = UTSData::Get(this).Section(TEXT("houses"));
+	const FLinearColor Grey(0.85f, 0.82f, 0.72f);
+	// Only the Thief gets through other people's locks, and only by working them (E), never just walking in.
+	if (P->ClassId != TEXT("thief")) { Feedback()->Float(Lock->Top(), TSJson::Str(Lock->Def, TEXT("bark"), TSJson::Str(Houses, TEXT("lockedBark"), TEXT("Locked."))), Grey, 1.f); return; }
+	if (!bByKey) { Feedback()->Float(Lock->Top(), TSJson::Str(Houses, TEXT("pickHint"), TEXT("Locked. (E, then click: pick the lock)")), Grey, 1.f); return; }
+	// A lock of its own (its "pickLevel" / "pickTime"): a stiff old gate takes a practised hand and longer. Beyond the
+	// hero's skill it can still be tried: the pick gets a little over halfway and snaps.
+	const int32 Min = int32(TSJson::Num(Lock->Def, TEXT("pickLevel"), 1));
+	const bool bBeyond = P->Level() < Min;
+	// A moment's work at the lock: stay there until it gives.
+	const int32 Index = Locks[Lock->Id];
+	TWeakObjectPtr<ATSInteractable> Weak = Lock;
+	TWeakObjectPtr<ARPGPlayerCharacter> WP = P;
+	P->Channel->Start(TEXT("Picking the lock..."), float(TSJson::Num(Lock->Def, TEXT("pickTime"), TSJson::Num(Houses, TEXT("pickTime"), 1.2))),
+		[Weak, WP]() { return Weak.IsValid() && WP.IsValid() && FVector::Dist2D(Weak->GetActorLocation(), WP->GetActorLocation()) < 320.f + Weak->Radius; },
+		[this, Index, Weak, Houses]()
+		{
+			if (ARPGWorldBuilder* Bld = Builder()) Bld->OpenLock(Index);
+			if (Weak.IsValid()) Feedback()->Float(Weak->Top(), TSJson::Str(Houses, TEXT("pickedBark"), TEXT("Click.")), FLinearColor(0.25f, 0.76f, 0.56f), 1.f);
+			UE_LOG(LogRPG, Display, TEXT("Lock %d picked."), Index);
+		},
+		[this, WP, Weak, bBeyond, Min]()
+		{
+			if (!WP.IsValid()) return;
+			if (bBeyond && WP->Channel->IsSnapped())
+				Feedback()->Float(Weak.IsValid() ? Weak->Top() : WP->Head() + FVector(0, 0, 30), FString::Printf(TEXT("*Snap.* The pick breaks. (This lock needs level %d.)"), Min), FLinearColor(1.f, 0.45f, 0.4f), 1.f);
+			else Feedback()->Float(WP->Head() + FVector(0, 0, 30), TEXT("You leave the lock."), FLinearColor(0.8f, 0.8f, 0.78f), 0.7f);
+		});
+	if (bBeyond) P->Channel->FailAt(FMath::FRandRange(0.55f, 0.65f));
 }
 
 void URPGSession::RefreshInteractables()
@@ -155,10 +250,17 @@ void URPGSession::RefreshInteractables()
 	}
 }
 
-void URPGSession::UseInteractable(ATSInteractable* It)
+void URPGSession::UseInteractable(ATSInteractable* It, bool bByKey)
 {
 	if (!It || !It->CanUse()) return;
 	if (!It->DoorTo.IsEmpty()) { Travel(It); return; }
+	if (IsLock(It)) { UseLock(It, bByKey); return; }
+	if (!It->UseAction.IsEmpty())
+	{
+		// Anything else the game can't open: say so (a sealed gate).
+		Feedback()->Float(It->Top(), TSJson::Str(It->Def, TEXT("bark"), TEXT("It won't open.")), FLinearColor(0.85f, 0.82f, 0.72f), 1.f);
+		return;
+	}
 	Story()->OpenDialogue(It, FLMSpeaker{ It->DisplayName, It->NameColor, It->TalkKey, It->DialogueRoot });
 }
 
@@ -192,12 +294,19 @@ float URPGSession::FadeAlpha() const
 void URPGSession::OpenDialogue(ATSCharacter* Npc, const FString& NodeId)
 {
 	if (!Npc) return;
+	// Woken to talk: a grumble first (tuning.sleep.wokenBarks), and it stays up a while.
+	if (UTSSleep* Sleep = UTSSleep::Of(Npc); Sleep && Sleep->IsAsleep())
+	{
+		Sleep->Wake();
+		const TArray<TSharedPtr<FJsonValue>> Barks = TSJson::Arr(TSJson::Obj(UTSData::Get(this).Section(TEXT("tuning")), TEXT("sleep")), TEXT("wokenBarks"));
+		if (Barks.Num()) Feedback()->Float(Npc->Head() + FVector(0, 0, 40), Barks[FMath::RandRange(0, Barks.Num() - 1)]->AsString(), FLinearColor(0.75f, 0.8f, 0.95f), 1.f);
+	}
 	Story()->OpenDialogue(Npc, FLMSpeaker{ Npc->DisplayName, Npc->NameColor, Npc->TalkKey, Npc->DialogueRoot }, NodeId);
 }
 
 FString URPGSession::MarkerFor(const ATSCharacter* Npc) const
 {
-	return Npc ? Story()->MarkerFor(Npc->DialogueRoot) : FString();
+	return Npc && !UTSSleep::IsAsleep(Npc) ? Story()->MarkerFor(Npc->DialogueRoot) : FString();
 }
 
 void URPGSession::OnCharacterDied(ATSCharacter* Who, AActor* Killer)
@@ -247,7 +356,9 @@ int32 URPGSession::PriceOf(int32 Base) const
 {
 	const TArray<TSharedPtr<FJsonValue>> Mul = TSJson::Arr(UTSData::Get(this).Section(TEXT("tuning")), TEXT("moodPrices"));
 	const float M = Mul.Num() == 7 ? float(Mul[FMath::Clamp(ShownBand, -3, 3) + 3]->AsNumber()) : 1.f;
-	return FMath::Max(1, FMath::RoundToInt(Base * M));
+	// Caught robbing a villager: word gets round and Tobin charges a thief's price (tuning.thiefPriceMul).
+	const float Thief = Story()->HasFlag(TEXT("thief_known")) ? float(UTSData::Get(this).Tuning(TEXT("thiefPriceMul"), 1.3)) : 1.f;
+	return FMath::Max(1, FMath::RoundToInt(Base * M * Thief));
 }
 
 ARPGCharacterBase* URPGSession::DialogueNpc() const { return Cast<ARPGCharacterBase>(Story()->Speaker()); }
@@ -384,6 +495,12 @@ void URPGSession::Bind(ULMStory* L)
 	{
 		const FString F = TSJson::Str(A, TEXT("leave"));
 		for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->FactionId() == F && !It->IsDead()) It->Leave();
+	});
+	// A band breaks up on its own (robbed blind, its captain shamed): they walk off, but nobody talked them down.
+	L->AddAction(TEXT("scatter"), [this](const TSJson::FObj& A)
+	{
+		const FString F = TSJson::Str(A, TEXT("scatter"));
+		for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->FactionId() == F && !It->IsDead()) It->Leave(false, /*bPeace*/ false);
 	});
 	L->AddAction(TEXT("pacify"), [this](const TSJson::FObj& A)
 	{

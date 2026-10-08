@@ -12,6 +12,8 @@
 #include "RPGLoot.h"
 #include "RPGGhost.h"
 #include "TSRoutine.h"
+#include "TSSleep.h"
+#include "RPGTheft.h"
 #include "TSInteractable.h"
 #include "TSLook.h"
 #include "TSAssets.h"
@@ -110,6 +112,69 @@ void ARPGEnemy::Init(const FString& InType, const FVector& InHome)
 	Telegraph->SetMaterial(0, TelegraphMat);
 	Telegraph->SetRelativeLocation(FVector(0, 0, -GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() + 4.f));
 	Strafe = FMath::RandBool() ? 1.f : -1.f;
+	SetupSleep();
+}
+
+void ARPGEnemy::SetupSleep()
+{
+	const ETSSleepHours Hours = UTSSleep::Parse(TSJson::Str(Def, TEXT("sleeps")));
+	if (Hours == ETSSleepHours::Never) return;
+	const UTSData& D = UTSData::Get(this);
+	URPGSession* Session = URPGSession::Get(this);
+	const TSJson::FObj Rest = TSJson::Obj(D.Section(TEXT("restPlaces")), TSJson::Str(Def, TEXT("rest")));
+	// Its bed: the rest place's spot nearest home that nobody has taken yet (none: sleeps where it stands).
+	FVector Bed = Home;
+	bool bBed = false;
+	float Best = BIG_NUMBER;
+	for (const TSharedPtr<FJsonValue>& V : TSJson::Arr(Rest, TEXT("spots")))
+	{
+		const TArray<TSharedPtr<FJsonValue>>& T2 = V->AsArray();
+		const FVector At = Session->GroundAt(int32(T2[0]->AsNumber()), int32(T2[1]->AsNumber()));
+		bool bTaken = false;
+		for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It)
+			if (*It != this && It->Sleep && It->Sleep->bHasBed && It->Sleep->Bed.Equals(At, 5.f)) { bTaken = true; break; }
+		const float Dist = FVector::Dist2D(At, Home);
+		if (!bTaken && Dist < Best) { Best = Dist; Bed = At; bBed = true; }
+	}
+	Sleep = UTSSleep::Add(this, Hours, Bed, bBed);
+	const TArray<TSharedPtr<FJsonValue>> Entry = TSJson::Arr(Rest, TEXT("entry"));
+	if (Entry.Num() == 2) Sleep->SetEntry(Session->GroundAt(int32(Entry[0]->AsNumber()), int32(Entry[1]->AsNumber())));
+	// Up at the end of its night: back to its post.
+	Sleep->OnWoke.AddWeakLambda(this, [this](ATSCharacter*)
+	{
+		if (Sleep->IsBedtime() || bPacified || bDead || IsProwling()) return;
+		State = ERPGEnemyState::Return;
+		T = 60.f;
+	});
+}
+
+bool ARPGEnemy::TickSleep(float Dt)
+{
+	if (!Sleep || Routine) return false;
+	URPGSession* Session = URPGSession::Get(this);
+	if (IsHunting() || Session->Duel.Get() == this || Session->DialogueNpc() == this) Sleep->Hold();
+	const ARPGPlayerCharacter* P = Session->Player();
+	const float Dist = P ? FVector::Dist2D(P->GetActorLocation(), GetActorLocation()) : BIG_NUMBER;
+	if (Sleep->IsAsleep())
+	{
+		// A hero right beside it (TSPerception: a sleeper only hears, and only close) wakes it.
+		if (!bPacified && !Sleep->IsIndoors() && CanSeePlayer(Dist))
+		{
+			Sleep->Wake();
+			UTSFeedback::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("!"), FLinearColor(1.f, 0.88f, 0.3f), 1.4f);
+			if (!IsPassive()) State = ERPGEnemyState::Chase;
+		}
+		return true;
+	}
+	if (!Sleep->IsTurningIn() || !(State == ERPGEnemyState::Idle || State == ERPGEnemyState::Return)) return false;
+	if (!bPacified && !IsPassive() && CanSeePlayer(Dist)) return false;   // spotted the hero on the way: the AI takes over
+	const UTSData& D = UTSData::Get(this);
+	GetCharacterMovement()->MaxWalkSpeed = D.Px(TSJson::Num(Def, TEXT("speed"), 80));
+	GetCharacterMovement()->bOrientRotationToMovement = true;
+	State = ERPGEnemyState::Idle;
+	const FVector Dir = Sleep->Direction(Dt);
+	if (!Dir.IsNearlyZero()) AddMovementInput(Dir, 0.8f);
+	return true;
 }
 
 bool ARPGEnemy::IsPassive() const
@@ -240,6 +305,9 @@ void ARPGEnemy::Tick(float Dt)
 		TelegraphMat->SetScalarParameterValue(TEXT("Opacity"), 0.12f + 0.38f * WindupProgress());
 	}
 
+	if (TickProwl(Dt)) return;
+	if (TickSleep(Dt)) return;
+
 	if (bPacified)
 	{
 		// Won over: stands easy, or (a trader) walks its rounds.
@@ -282,9 +350,16 @@ void ARPGEnemy::RunAI(float Dt)
 
 	if (IsPassive())
 	{
-		// Stand your ground and watch the player.
-		if (P && FVector::Dist2D(P->GetActorLocation(), GetActorLocation()) < D.Px(260)) FaceToward(P->GetActorLocation(), Dt, 360.f);
+		// Away from its post (up from its bed): walk back. Otherwise stand your ground and watch the player.
 		State = ERPGEnemyState::Idle;
+		if (Sleep && FVector::Dist2D(Home, GetActorLocation()) > D.Px(30))
+		{
+			Move->bOrientRotationToMovement = true;
+			const FVector Dir = Sleep->DirectionTo(Home, Dt);
+			if (!Dir.IsNearlyZero()) { AddMovementInput(Dir, 0.8f); return; }
+		}
+		// Watch the hero, once it has noticed them (not a crouched Thief creeping up behind).
+		if (P && FVector::Dist2D(P->GetActorLocation(), GetActorLocation()) < D.Px(260) && (Session->DialogueNpc() == this || RPGTheft::Notices(this, P))) FaceToward(P->GetActorLocation(), Dt, 360.f);
 		return;
 	}
 	if (!P) return;
@@ -372,7 +447,8 @@ void ARPGEnemy::RunAI(float Dt)
 	{
 		Move->bOrientRotationToMovement = true;
 		T -= Dt;
-		MoveToward(Home, 1.f);
+		if (Sleep) { const FVector Dir = Sleep->DirectionTo(Home, Dt); AddMovementInput(Dir.IsNearlyZero() ? (Home - GetActorLocation()).GetSafeNormal2D() : Dir, 1.f); }   // round the graveyard wall
+		else MoveToward(Home, 1.f);
 		if (CanSeePlayer(Dist) && FVector::Dist2D(GetActorLocation(), Home) < D.Px(TSJson::Num(Def, TEXT("leash"), 360)) * 0.6f) { State = ERPGEnemyState::Chase; break; }
 		if (FVector::Dist2D(GetActorLocation(), Home) < 40.f || T <= 0.f) ResetToHome();
 		break;
@@ -486,10 +562,19 @@ void ARPGEnemy::PerformAttack()
 
 // ---------------------------------------------------------------------------------------------
 
-void ARPGEnemy::Leave(bool bRest)
+void ARPGEnemy::Provoke()
+{
+	if (bDead || IsLeaving()) return;
+	if (Sleep) Sleep->Wake();
+	bProvoked = true;
+	if (!IsPassive()) { State = ERPGEnemyState::Chase; UTSFeedback::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("!"), FLinearColor(1.f, 0.88f, 0.3f), 1.4f); }
+}
+
+void ARPGEnemy::Leave(bool bRest, bool bPeace)
 {
 	if (State == ERPGEnemyState::Leaving || bDead) return;
-	if (!bPacified) GrantPeace(TEXT("talked down "));
+	if (Sleep) { Sleep->Reset(); Sleep->Hours = ETSSleepHours::Never; }   // up and off, whatever the hour
+	if (!bPacified && bPeace) GrantPeace(TEXT("talked down "));
 	State = ERPGEnemyState::Leaving;
 	T = 3.f;
 	bResting = bRest;
@@ -528,26 +613,23 @@ void ARPGEnemy::Pacify(const TSJson::FObj& Become)
 	}
 }
 
-void ARPGEnemy::BecomeTrader()
+UTSRoutine* ARPGEnemy::MakeRoutine(const TSJson::FObj& Spec, FName Name)
 {
-	const TSJson::FObj Trade = TSJson::Obj(Def, TEXT("trade"));
-	if (!Trade || Routine) return;
-	Pacify(TSJson::Obj(Trade, TEXT("become")));
 	// Its rounds (Tessera's routine): tiles in the data, uu here.
 	const UTSData& D = UTSData::Get(this);
-	Routine = NewObject<UTSRoutine>(this, TEXT("Routine"));
-	Routine->RegisterComponent();
-	for (const TSharedPtr<FJsonValue>& V : TSJson::Arr(Trade, TEXT("stops")))
+	UTSRoutine* R = NewObject<UTSRoutine>(this, Name);
+	R->RegisterComponent();
+	for (const TSharedPtr<FJsonValue>& V : TSJson::Arr(Spec, TEXT("stops")))
 	{
 		const TSJson::FObj S = V->AsObject();
 		const TArray<TSharedPtr<FJsonValue>> At = TSJson::Arr(S, TEXT("at"));
 		if (At.Num() != 2) continue;
-		Routine->AddStop(D.TileCenter(int32(At[0]->AsNumber()), int32(At[1]->AsNumber())), float(TSJson::Num(S, TEXT("wait"), 4)),
+		R->AddStop(D.TileCenter(int32(At[0]->AsNumber()), int32(At[1]->AsNumber())), float(TSJson::Num(S, TEXT("wait"), 4)),
 			FName(TSJson::Str(S, TEXT("when"), TEXT("any"))), FName(TSJson::Str(S, TEXT("tag"))));
 	}
-	Routine->ArriveDistance = 120.f + Radius();
-	// Its mine is in the cave: the routine walks to the door between areas, and through it.
-	Routine->FindDoor = [this](const FVector& From, const FVector& Goal, FVector& Door)
+	R->ArriveDistance = 120.f + Radius();
+	// Its lair is in the cave: the routine walks to the door between areas, and through it.
+	R->FindDoor = [this](const FVector& From, const FVector& Goal, FVector& Door)
 	{
 		const UTSData& Data = UTSData::Get(this);
 		const FTSArea* Here = Data.AreaAt(From);
@@ -560,13 +642,73 @@ void ARPGEnemy::BecomeTrader()
 		}
 		return false;
 	};
-	Routine->ThroughDoor = [this](const FVector& Door)
+	R->ThroughDoor = [this](const FVector& Door)
 	{
 		for (TActorIterator<ATSInteractable> It(GetWorld()); It; ++It)
 			if (It->GetActorLocation().Equals(Door, 1.f))
 				if (const ATSInteractable* To = It->DoorTarget())
 					TeleportTo(To->ExitPoint(UTSData::Get(this).TileSize) + FVector(0, 0, GetSimpleCollisionHalfHeight() + 30.f), GetActorRotation(), false, true);
 	};
+	return R;
+}
+
+bool ARPGEnemy::IsProwling() const
+{
+	if (bDead || bPacified || IsLeaving() || !TSJson::Has(Def, TEXT("prowl"))) return false;
+	const ULMStory* L = URPGSession::Get(this)->Story();
+	return L->HasFlag(TEXT("relic_stolen")) && !L->HasFlag(TEXT("relic_returned")) && !L->HasFlag(TEXT("relic_paid")) && !L->HasFlag(TEXT("relic_brute_slain"));
+}
+
+bool ARPGEnemy::TickProwl(float Dt)
+{
+	if (!IsProwling())
+	{
+		// Given back or paid off: home to its lair (out of sight it simply turns up there).
+		if (Prowl) { Prowl->DestroyComponent(); Prowl = nullptr; if (!UTSData::Get(this).AreaAt(GetActorLocation())) { State = ERPGEnemyState::Return; T = 8.f; } }
+		return false;
+	}
+	const UTSData& D = UTSData::Get(this);
+	const TSJson::FObj Spec = TSJson::Obj(Def, TEXT("prowl"));
+	if (!Prowl)
+	{
+		Prowl = MakeRoutine(Spec, TEXT("Prowl"));
+		const FString Bark = TSJson::Str(Spec, TEXT("bark"));
+		Prowl->OnArrive.AddWeakLambda(this, [this, Bark](int32, FName Tag)
+		{
+			if (Tag == TEXT("village") && !Bark.IsEmpty()) UTSFeedback::Get(this)->Float(Head() + FVector(0, 0, 40), Bark, FLinearColor(1.f, 0.6f, 0.45f), 1.2f);
+		});
+		Prowl->Begin();
+	}
+	if (IsHunting()) { if (Sleep) Sleep->Hold(); return false; }   // found someone: the AI fights
+	if (State == ERPGEnemyState::Return) State = ERPGEnemyState::Idle;  // lost them: back to the hunt for its shiny
+	if (Sleep && Sleep->IsAsleep()) return false;                      // (TickSleep: asleep on its hay)
+	// It sleeps only once it's back on its hay, by day.
+	if (Sleep)
+	{
+		if (Prowl->CurrentTag() == TEXT("hay") && Prowl->IsWaiting() && Sleep->IsBedtime()) { Sleep->FallAsleep(false); return true; }
+		Sleep->Hold();
+	}
+	const ARPGPlayerCharacter* P = URPGSession::Get(this)->Player();
+	if (P && CanSeePlayer(FVector::Dist2D(P->GetActorLocation(), GetActorLocation())))
+	{
+		bProvoked = true;
+		State = ERPGEnemyState::Chase;
+		UTSFeedback::Get(this)->Float(Head() + FVector(0, 0, 30), TEXT("SHINY THIEF!"), FLinearColor(1.f, 0.45f, 0.35f), 1.3f);
+		return false;
+	}
+	GetCharacterMovement()->MaxWalkSpeed = D.Px(TSJson::Num(Spec, TEXT("speed"), 70));
+	GetCharacterMovement()->bOrientRotationToMovement = true;
+	const FVector Dir = Prowl->Direction(Dt);
+	if (!Dir.IsNearlyZero()) AddMovementInput(Dir, 1.f);
+	return true;
+}
+
+void ARPGEnemy::BecomeTrader()
+{
+	const TSJson::FObj Trade = TSJson::Obj(Def, TEXT("trade"));
+	if (!Trade || Routine) return;
+	Pacify(TSJson::Obj(Trade, TEXT("become")));
+	Routine = MakeRoutine(Trade, TEXT("Routine"));
 	// Gold from the mine to the village; on the way back, its pay (food). The sack shows while it carries gold.
 	const FName CarryTo(TSJson::Str(Trade, TEXT("carryTo"), TEXT("village")));
 	const FString Delivered = TSJson::Str(Trade, TEXT("deliveredBark"));
@@ -586,7 +728,7 @@ void ARPGEnemy::BecomeTrader()
 	Sack->SetupAttachment(RootComponent);
 	Sack->RegisterComponent();
 	Sack->SetVisibility(false);
-	GetCharacterMovement()->MaxWalkSpeed = D.Px(TSJson::Num(Trade, TEXT("speed"), 60));
+	GetCharacterMovement()->MaxWalkSpeed = UTSData::Get(this).Px(TSJson::Num(Trade, TEXT("speed"), 60));
 	Routine->Begin();
 }
 
@@ -607,6 +749,7 @@ void ARPGEnemy::PlaceSack()
 
 void ARPGEnemy::ResetToHome()
 {
+	if (Sleep) Sleep->Reset();   // out of bed; settles in again next tick if it's its hours
 	SetActorLocation(Home + FVector(0, 0, GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 10.f), false, nullptr, ETeleportType::TeleportPhysics);
 	State = ERPGEnemyState::Idle;
 	Tags.Clear();
@@ -622,6 +765,7 @@ void ARPGEnemy::ResetToHome()
 void ARPGEnemy::Die(AActor* Killer)
 {
 	if (bDead) return;
+	if (IsProwling()) URPGSession::Get(this)->Story()->SetFlag(TEXT("relic_brute_slain"));   // the hunt for its shiny ends here
 	Super::Die(Killer);
 	Telegraph->SetVisibility(false);
 	SwingDelay = -1.f;

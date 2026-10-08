@@ -1,5 +1,7 @@
 #include "RPGPlayerCharacter.h"
 #include "TSInteractable.h"
+#include "TSChannel.h"
+#include "RPGTheft.h"
 #include "TSFeedback.h"
 #include "TSSky.h"
 #include "Oathbound.h"
@@ -63,6 +65,7 @@ ARPGPlayerCharacter::ARPGPlayerCharacter()
 	Control = CreateDefaultSubobject<UTSHeroControl>(TEXT("Control"));
 
 	Inventory = CreateDefaultSubobject<UTSInventoryComponent>(TEXT("Inventory"));
+	Channel = CreateDefaultSubobject<UTSChannel>(TEXT("Channel"));
 	Abilities = CreateDefaultSubobject<UTSAbilityComponent>(TEXT("Abilities"));
 
 	PoseMesh = CreateDefaultSubobject<UTSPoseMesh>(TEXT("PoseMesh"));
@@ -138,10 +141,24 @@ void ARPGPlayerCharacter::BeginPlay()
 	Control->InAttackRange = [this](const ATSCharacter* T) { return InAttackRange(T); };
 	Control->IsAttacking = [this]() { return bAttacking; };
 	Control->Attack = [this]() { PrimaryAttack(); };
-	Control->TalkBlocker = [this](const ATSCharacter* C) { return TalkBlocker(C); };
-	Control->Talk = [this](ATSCharacter* C) { URPGSession::Get(this)->OpenDialogue(C); };
+	// A steal walks right up to the mark (a talk stops at speaking distance).
+	Control->ApproachRange = [this](const ATSCharacter* C) { return C && IsStealing() ? FMath::Max(0.f, RPGTheft::Reach(this, C) * 0.75f - C->Radius()) : -1.f; };
+	Control->Interesting = [this](const ATSCharacter* C) { return Control->IsTalkMode() && IsSneaking() && RPGTheft::Pockets(C).IsValid(); };
+	// An action-mode click by a crouched Thief steals instead of talking (walk up, then lift).
+	Control->TalkBlocker = [this](const ATSCharacter* C)
+	{
+		if (!IsStealing()) return TalkBlocker(C);
+		const FString Why = RPGTheft::Why(this, C, /*bIgnoreReach*/ true);
+		if (!Why.IsEmpty()) bActionClick = false;   // refused: whatever comes next is an ordinary move
+		return Why;
+	};
+	Control->Talk = [this](ATSCharacter* C)
+	{
+		if (IsStealing()) { bActionClick = false; RPGTheft::Begin(this, C); return; }
+		URPGSession::Get(this)->OpenDialogue(C);
+	};
 	Control->UseBlocker = [this](const ATSInteractable* It) { return It && It->CanUse() ? FString() : FString(TEXT("...")); };
-	Control->Use = [this](ATSInteractable* It) { URPGSession::Get(this)->UseInteractable(It); };
+	Control->Use = [this](ATSInteractable* It) { const bool bKey = bUseByKey; bUseByKey = false; URPGSession::Get(this)->UseInteractable(It, bKey); };
 
 	// After dark a soft, warm light follows the hero (faded in by the day/night cycle) so you never lose yourself.
 	NightGlow = NewObject<UPointLightComponent>(this, TEXT("NightGlow"));
@@ -238,7 +255,10 @@ void ARPGPlayerCharacter::ApplyClass(const FString& InClassId, const FString& In
 	for (const TSharedPtr<FJsonValue>& V : TSJson::Arr(ClassDef, TEXT("abilities"))) AbilityIds.Add(V->AsString());
 	Abilities->Setup(AbilityIds);
 
-	GetCharacterMovement()->MaxWalkSpeed = D.Px(TSJson::Num(ClassDef, TEXT("moveSpeed"), 165));
+	Tags.Remove(TEXT("Sneaking"));
+	UpdateSpeed();
+	// Night eyes (classes.<id>.nightEyes): the Thief makes out shapes in the dark beyond the light.
+	ATSSky::SetNightEyes(float(TSJson::Num(ClassDef, TEXT("nightEyes"), 1.0)));
 	RefreshWeapons();
 	UE_LOG(LogRPG, Display, TEXT("Player is a %s %s: HP %.0f, stamina %.0f, mana %.0f, speed %.0f uu/s."),
 		*Sex, *ClassId, Stats->MaxHealth(), Stats->Max(RPGStat::Stamina), Stats->Max(RPGStat::Mana), GetCharacterMovement()->MaxWalkSpeed);
@@ -419,7 +439,13 @@ FName ARPGPlayerCharacter::CursorIcon() const
 	if (!Control->CursorRay(O, R) || bDead) return NAME_None;
 	bool bHostile = false;
 	const ATSCharacter* On = Control->UnderCursor(bHostile);
-	if (Control->IsTalkMode()) return On && TalkBlocker(On).IsEmpty() ? FName(TEXT("talk")) : FName(TEXT("talk_off"));
+	if (Control->IsTalkMode())
+	{
+		const FName Icon = ActionIcon(On, On ? nullptr : Control->ObjectUnderCursor());
+		// Something to do: the gears turn (two frames).
+		if (Icon == TEXT("gear")) return FMath::Fmod(GetWorld()->GetRealTimeSeconds(), 0.36f) < 0.18f ? FName(TEXT("gear_a")) : FName(TEXT("gear_b"));
+		return Icon;
+	}
 	// The weapon this class attacks with right now.
 	auto Weapon = [this]() -> FName
 	{
@@ -431,6 +457,53 @@ FName ARPGPlayerCharacter::CursorIcon() const
 	if (On) return bHostile ? Weapon() : FName(TEXT("talk"));
 	if (Control->IsModifierDown() && Control->PickerSlot() < 0) return Weapon();   // attack in place
 	return TEXT("pointer");
+}
+
+bool ARPGPlayerCharacter::IsStealing() const { return bActionClick && IsSneaking() && ClassId == TEXT("thief"); }
+
+FName ARPGPlayerCharacter::ActionIcon(const ATSCharacter* On, const ATSInteractable* It) const
+{
+	if (On)
+	{
+		// Crouched, the Thief only steals (never talks): gears if it can't see you and has pockets left.
+		if (IsSneaking() && ClassId == TEXT("thief"))
+			return RPGTheft::Why(this, On, /*bIgnoreReach*/ true).IsEmpty() ? FName(TEXT("gear")) : FName(TEXT("gear_off"));
+		return TalkBlocker(On).IsEmpty() ? FName(TEXT("talk")) : FName(TEXT("talk_off"));
+	}
+	if (It)
+	{
+		const URPGSession* S = URPGSession::Get(this);
+		if (S->IsLock(It)) return S->IsLocked(It) && ClassId == TEXT("thief") ? FName(TEXT("gear")) : FName(TEXT("gear_off"));   // (beyond his level he can still try)
+		return It->CanUse() ? FName(TEXT("gear")) : FName(TEXT("gear_off"));
+	}
+	return TEXT("gear_off");
+}
+
+FString ARPGPlayerCharacter::ActionLabel(const ATSCharacter* On, const ATSInteractable* It) const
+{
+	if (On)
+	{
+		if (IsSneaking() && ClassId == TEXT("thief"))
+		{
+			const FString No = RPGTheft::Why(this, On, true);
+			return No.IsEmpty() ? FString::Printf(TEXT("Steal: %s (%s)"), *On->DisplayName, *RPGTheft::Hint(On)) : On->DisplayName + TEXT(": ") + No;
+		}
+		const FString No = TalkBlocker(On);
+		return No.IsEmpty() ? TEXT("Talk: ") + On->DisplayName : On->DisplayName + TEXT(": ") + No;
+	}
+	if (It)
+	{
+		const URPGSession* S = URPGSession::Get(this);
+		if (S->IsLock(It)) return !S->IsLocked(It) ? It->DisplayName + TEXT(" (open)") : ClassId == TEXT("thief") ? FString::Printf(TEXT("Pick the lock: %s (level %d)"), *It->DisplayName, int32(TSJson::Num(It->Def, TEXT("pickLevel"), 1))) : It->DisplayName + TEXT(": locked");
+		return It->DisplayName;
+	}
+	return FString();
+}
+
+void ARPGPlayerCharacter::ActionClick(ATSCharacter* On)
+{
+	bActionClick = bUseByKey = true;
+	Control->TryTalk(On);
 }
 
 float ARPGPlayerCharacter::TalkRange() const
@@ -502,19 +575,11 @@ void ARPGPlayerCharacter::OnKey(FName Key)
 	URPGSession* Session = URPGSession::Get(this);
 	if (Key == TEXT("Interact"))
 	{
-		// Top-down: E on someone talks to them; otherwise it toggles talk mode for the next click.
-		FVector O, R;
-		if (Control->CursorRay(O, R))
-		{
-			bool bHostile = false;
-			if (ATSCharacter* C = Control->UnderCursor(bHostile)) Control->TryTalk(C);
-			else if (ATSInteractable* It = Control->ObjectUnderCursor()) Control->TryUse(It);
-			else if (ATSInteractable* Near = ATSInteractable::Nearest(GetWorld(), GetActorLocation(), Control->TalkRange)) Session->UseInteractable(Near);
-			else Control->SetTalkMode(!Control->IsTalkMode());
-			return;
-		}
+		// Top-down: E switches action mode on (the cursor shows what a click would do) or off.
+		if (bTopDown) { Control->SetTalkMode(!Control->IsTalkMode()); return; }
+		bUseByKey = true;
 		if (ARPGCharacterBase* T = TalkTarget()) Session->OpenDialogue(T);
-		else if (ATSInteractable* Near = ATSInteractable::Nearest(GetWorld(), GetActorLocation(), Control->TalkRange)) Session->UseInteractable(Near);
+		else if (ATSInteractable* Near = ATSInteractable::Nearest(GetWorld(), GetActorLocation(), Control->TalkRange)) Session->UseInteractable(Near, true);
 		return;
 	}
 	if (Key == TEXT("Potion")) { DrinkPotion(); return; }
@@ -802,6 +867,7 @@ ARPGCharacterBase* ARPGPlayerCharacter::TalkTarget() const
 		ARPGCharacterBase* C = *It;
 		if (C == this || C->IsDead() || C->DialogueRoot.IsEmpty() || C->IsLeaving()) continue;
 		if (C->Team == ETSTeam::Hostile && !C->IsPassive()) continue;
+		if (!C->CanBeTargeted(this)) continue;
 		const float D = FVector::Dist2D(C->GetActorLocation(), GetActorLocation()) - C->Radius();
 		if (D < BestD) { BestD = D; Best = C; }
 	}
@@ -817,6 +883,9 @@ void ARPGPlayerCharacter::OnAttack()
 	if (Control->bInputLocked) return;
 	// Top-down: LMB on the ground walks, on a foe fights, on a villager talks; in talk mode (E) it talks to
 	// whoever it's on; while choosing an ability it casts. Shift+LMB attacks in place.
+	// In action mode (E) a click on a lock picks it and a click on someone steals (crouched Thief); a plain click only
+	// tries the lock and talks.
+	bActionClick = bUseByKey = Control->IsTalkMode();
 	if (Control->HandlePrimaryPress()) return;
 	PrimaryAttack();
 }
@@ -1049,9 +1118,29 @@ void ARPGPlayerCharacter::FireArrow(float Held)
 // Dodge / dash
 // ---------------------------------------------------------------------------------------------
 
+bool ARPGPlayerCharacter::CanSneak() const { return TSJson::Obj(ClassDef, TEXT("sneak")).IsValid(); }
+
+void ARPGPlayerCharacter::SetSneaking(bool bOn)
+{
+	if (bOn == IsSneaking() || (bOn && (!CanSneak() || bDead))) return;
+	if (bOn) Tags.Add(TEXT("Sneaking"));
+	else Tags.Remove(TEXT("Sneaking"));
+	UpdateSpeed();
+	UTSFeedback::Get(this)->Float(Head() + FVector(0, 0, 30), bOn ? TEXT("Sneaking") : TEXT("Standing"), FLinearColor(0.6f, 0.75f, 0.7f), 0.7f);
+}
+
+void ARPGPlayerCharacter::UpdateSpeed()
+{
+	const UTSData& D = UTSData::Get(this);
+	const float Base = D.Px(TSJson::Num(ClassDef, TEXT("moveSpeed"), 165));
+	GetCharacterMovement()->MaxWalkSpeed = Base * (IsSneaking() ? float(TSJson::Num(TSJson::Obj(ClassDef, TEXT("sneak")), TEXT("speed"), 0.5)) : 1.f);
+}
+
 void ARPGPlayerCharacter::OnDodge()
 {
 	if (Control->bInputLocked) return;
+	// The Thief crouches on Space instead (quiet and slow; E steals while crouched).
+	if (CanSneak()) { SetSneaking(!IsSneaking()); return; }
 	if (IsDodging() || bDead || Tags.Has(TEXT("Staggered"))) return;
 	const UTSData& D = UTSData::Get(this);
 	const TSJson::FObj Base = TSJson::Obj(D.Section(TEXT("tuning")), TEXT("dodge"));
@@ -1207,6 +1296,7 @@ void ARPGPlayerCharacter::Respawn()
 	GetCharacterMovement()->SetMovementMode(MOVE_Walking);
 	SetActorLocation(SpawnPoint, false, nullptr, ETeleportType::TeleportPhysics);
 	Tags.Clear();
+	UpdateSpeed();   // (no longer crouched)
 	Stats->Effects.Reset();
 	Stats->Fill();
 	KnockVelocity = FVector::ZeroVector;

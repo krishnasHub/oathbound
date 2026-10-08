@@ -247,12 +247,19 @@ def humanoid(spec, d, action, f):
         bob = 1          # braced, a little lower
 
     guard = action == "guard" and spec.get("offhand") in ("shield", "buckler")
+    # Crouch pose (spec "_crouch": how far the head and shoulders sink; "_wide": knees out; "_lean": forward, side
+    # view; "_reach": the weapon hand out in front). All 0 = standing, so ordinary sheets are untouched.
+    crouch, wide_k, lean, reach = spec.get("_crouch", 0), spec.get("_wide", 0), spec.get("_lean", 0), spec.get("_reach", 0)
+    if d != "side" and "_crouchFront" in spec:
+        crouch = spec["_crouchFront"]   # facing the camera / away, sink deeper: the big head hides a shallow crouch
+    bob += crouch
     hy = 11 + bob          # head centre
     ty0, ty1 = 17 + bob, 25
     fem = bool(spec.get("fem"))
     tx0, tx1 = (9, 22) if wide else (11, 20) if thin else (11, 20) if fem else (10, 21)
     if d == "side":
         tx0, tx1 = (12, 21) if wide else (13, 19) if thin else (12, 20)
+        tx0, tx1 = tx0 + lean // 2, tx1 + lean // 2
 
     weapon_kind = spec.get("weapon")
     off = spec.get("offhand")
@@ -280,7 +287,9 @@ def humanoid(spec, d, action, f):
     elif d == "up":
         hx, hyy = tx1 + 1, 22 + bob + arm_r
     else:
-        hx, hyy = 17, 23 + bob
+        hx, hyy = 17 + lean + reach, 23 + bob - reach // 2
+    if d == "down" and reach:
+        hyy += reach // 2
     if action == "attack" and weapon_kind not in ("bow",):
         if d == "side":
             hx += (0, 0, 2, 1)[f]
@@ -302,7 +311,8 @@ def humanoid(spec, d, action, f):
         shield(fr, off, 15.5, 17 + bob, spec)          # raised in front: its rim shows around the body
     if spec.get("back") == "bow" and d != "up":
         for t in range(-6, 7):
-            fr.px(13 + t * 0.6 if d == "down" else 11, 19 + t if d == "down" else 18 + t, C("#8a5a30"))
+            # (crouched, the bow rides lower on the back, and further back as he leans)
+            fr.px(13 + t * 0.6 if d == "down" else 11 + lean // 2 - (2 if crouch else 0), 19 + t + crouch if d == "down" else 18 + t + crouch, C("#8a5a30"))
     long_hair = spec.get("longHair")
     if long_hair and d != "up":
         lh = C(long_hair)
@@ -320,12 +330,28 @@ def humanoid(spec, d, action, f):
             fr.fill(rect(7, hy - 2, 24, hy + 7) & ~rect(10, hy + 2, 21, hy + 8), hair_c)
 
     # --- legs
-    if d == "side":
+    if d == "side" and crouch:
+        # Bent legs: the back knee down and behind, the front thigh forward and the shin straight down to the boot.
+        lx_back, lx_front = 12 + shift_r - wide_k, 16 + shift_l + wide_k
+        fr.fill(rect(lx_back, 25 - lift_r, lx_back + 3, 27 - lift_r), shadow_of(legs_c), shade=False)            # back thigh, kneeling
+        fr.fill(rect(lx_back - 2, 27 - lift_r, lx_back + 1, 29 - lift_r), shadow_of(legs_c), shade=False)        # back shin along the ground
+        fr.fill(rect(lx_back - 3, 28 - lift_r, lx_back - 1, 29 - lift_r), shadow_of(boots_c), shade=False)
+        fr.fill(rect(lx_front - 1, 24 - lift_l, lx_front + 3, 26 - lift_l), legs_c)                               # front thigh, forward
+        fr.fill(rect(lx_front + 2, 26 - lift_l, lx_front + 4, 29 - lift_l), legs_c)                               # front shin
+        fr.fill(rect(lx_front + 2, 28 - lift_l, lx_front + 5, 29 - lift_l), boots_c)
+    elif d == "side":
         lx_back, lx_front = 13 + shift_r, 16 + shift_l
         fr.fill(rect(lx_back, 25 - lift_r, lx_back + 2, 29 - lift_r), shadow_of(legs_c), shade=False)
         fr.fill(rect(lx_back, 28 - lift_r, lx_back + 3, 29 - lift_r), shadow_of(boots_c), shade=False)
         fr.fill(rect(lx_front, 25 - lift_l, lx_front + 2, 29 - lift_l), legs_c)
         fr.fill(rect(lx_front, 28 - lift_l, lx_front + 3, 29 - lift_l), boots_c)
+    elif crouch:
+        # Facing the camera or away: knees splayed out, feet wide.
+        for x0, lift in ((12 - wide_k, lift_l), (17 + wide_k, lift_r)):
+            out = -1 if x0 < 16 else 1
+            fr.fill(rect(x0 + out, 25 - lift, x0 + 2 + out, 27 - lift), legs_c)    # knee out
+            fr.fill(rect(x0, 27 - lift, x0 + 2, 29 - lift), legs_c)
+            fr.fill(rect(x0, 28 - lift, x0 + 2, 29 - lift), boots_c, shade=False)
     else:
         fr.fill(rect(12, 25 - lift_l, 14, 29 - lift_l), legs_c)
         fr.fill(rect(17, 25 - lift_r, 19, 29 - lift_r), legs_c)
@@ -336,6 +362,7 @@ def humanoid(spec, d, action, f):
     if spec.get("robe"):
         fr.fill(trapezoid(tx0 + 1, tx1 - 1, ty0, tx0 - 1, tx1 + 1, 28), torso_c)
     else:
+        if crouch: ty0 = min(ty0, ty1 - 3)      # a hunched back: never shorter than this
         body = rect(tx0, ty0, tx1, ty1) & ~(rect(tx0, ty0, tx0, ty0) | rect(tx1, ty0, tx1, ty0))
         fr.fill(body, torso_c)
     if spec.get("trim"):
@@ -352,9 +379,14 @@ def humanoid(spec, d, action, f):
     # --- arms
     sleeve = C(spec.get("sleeve", spec["torso"]))
     if d == "side":
-        ax = 15 + (shift_l // 2 if action == "walk" else 0)
-        fr.fill(rect(ax, ty0 + 1, ax + 2, 22 + bob), sleeve)
-        fr.fill(rect(ax, 23 + bob, ax + 2, 24 + bob), skin)
+        ax = 15 + (shift_l // 2 if action == "walk" else 0) + lean
+        if reach:
+            # The dagger arm out in front, low: shoulder to hand.
+            fr.fill(rect(ax, ty0 + 1, ax + 2 + reach, ty0 + 3), sleeve)
+            fr.fill(rect(ax + 2 + reach, ty0 + 2, ax + 3 + reach, ty0 + 3), skin)
+        else:
+            fr.fill(rect(ax, ty0 + 1, ax + 2, min(22 + bob, 27)), sleeve)
+            fr.fill(rect(ax, min(23 + bob, 27), ax + 2, min(24 + bob, 28)), skin)
     else:
         fr.fill(rect(tx0 - 2, ty0 + 1, tx0 - 1, 22 + bob + arm_l), sleeve)
         fr.fill(rect(tx1 + 1, ty0 + 1, tx1 + 2, 22 + bob + arm_r), sleeve)
@@ -362,7 +394,7 @@ def humanoid(spec, d, action, f):
         fr.fill(rect(tx1 + 1, 23 + bob + arm_r, tx1 + 2, 24 + bob + arm_r), skin, shade=False)
 
     # --- head
-    hcx = 15.5 if d != "side" else 17
+    hcx = 15.5 if d != "side" else 17 + lean
     head = ellipse(hcx, hy, 7.2 if d != "side" else 6.6, 6.6)
     fr.fill(head, skin)
     helmet = spec.get("helmet")
@@ -557,6 +589,10 @@ def sheet(spec):
     guard = lambda d: draw(spec, d, "guard" if spec.get("kind") != "slime" else "idle", 0)
     return layout.build(lambda d, action, f: draw(spec, d, action, f), N, dead, guard)
 
+
+# The Thief's sneak (crouched, Space): the "ninja creep" pose, a sheet of its own (SPR_<id>_sneak) the game swaps to.
+SNEAK_POSE = dict(_crouch=5, _crouchFront=7, _wide=1, _lean=3, _reach=3)
+SNEAK_SHEETS = ("thief_m", "thief_f")
 
 SPECS = {
     # heroes (male / female differ by hair)

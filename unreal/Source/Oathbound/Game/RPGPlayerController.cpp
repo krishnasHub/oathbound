@@ -47,8 +47,8 @@ void ARPGPlayerController::BeginPlay()
 	GEngine->GameViewport->AddViewportWidgetContent(PauseMenu.ToSharedRef(), 50);
 	// The game's own cursor: what a click would do now (ARPGPlayerCharacter::CursorIcon), only while playing.
 	SAssignNew(Cursor, STSCursor).IconFolder(TEXT("/Game/RPG/Pixel")).IconPrefix(TEXT("CUR_"))
-		.Icons({ TEXT("pointer"), TEXT("sword"), TEXT("dagger"), TEXT("wand"), TEXT("arrow"), TEXT("talk"), TEXT("talk_off") })
-		.Centred({ TEXT("talk"), TEXT("talk_off") })
+		.Icons({ TEXT("pointer"), TEXT("sword"), TEXT("dagger"), TEXT("wand"), TEXT("arrow"), TEXT("talk"), TEXT("talk_off"), TEXT("gear_a"), TEXT("gear_b"), TEXT("gear_off") })
+		.Centred({ TEXT("talk"), TEXT("talk_off"), TEXT("gear_a"), TEXT("gear_b"), TEXT("gear_off") })
 		.IconFn([this]() { const ARPGPlayerCharacter* P = Cast<ARPGPlayerCharacter>(GetPawn()); return P && IsInGameplay() ? P->CursorIcon() : FName(NAME_None); });
 	GEngine->GameViewport->AddViewportWidgetContent(Cursor.ToSharedRef(), 100);   // on top of everything
 	Dialogue->SetVisibility(EVisibility::Collapsed);

@@ -47,6 +47,7 @@ void ARPGWorldBuilder::Build()
 	BuildWater(D);
 	BuildBlockers(D);
 	BuildRuins(D);
+	BuildEnclosures(D);
 	BuildHouses(D);
 	BuildBridge(D);
 	BuildTreesAndScatter(D);
@@ -360,7 +361,9 @@ void ARPGWorldBuilder::BuildRuins(const UTSData& D)
 	{
 		for (int32 X = 1; X < MapW - 1; ++X)
 		{
-			if (Rows[Y][X] != TEXT('#')) continue;
+			if (Rows[Y][X] != TEXT('#') && Rows[Y][X] != TEXT('+')) continue;
+			// A gate ('+') is built like the wall, but its blocks are kept: they go when the gate opens.
+			if (Rows[Y][X] == TEXT('+')) Collect = &GateParts.Add(FIntPoint(X, Y));
 			FRandomStream R = TileRand(X, Y, 1);
 			const FVector C = D.TileCenter(X, Y);
 			const float Z0 = GroundZ(C.X, C.Y) - 40.f;
@@ -373,8 +376,36 @@ void ARPGWorldBuilder::BuildRuins(const UTSData& D)
 				AddBox(FVector(C.X + R.FRandRange(-12, 12), C.Y + R.FRandRange(-12, 12), Z0 + H + CapH * 0.5f),
 					FVector(Tile * 0.9f, Tile * 0.9f, CapH), Cap, true, FRotator(R.FRandRange(-3, 3), R.FRandRange(-6, 6), 0));
 			}
+			Collect = nullptr;
 		}
 	}
+}
+
+void ARPGWorldBuilder::BuildEnclosures(const UTSData& D)
+{
+	const TSJson::FObj Rest = D.Section(TEXT("restPlaces"));
+	if (!Rest) return;
+	for (const auto& KV : Rest->Values)
+	{
+		const TArray<TSharedPtr<FJsonValue>> E = TSJson::Arr(TSJson::Obj(Rest, FString(*KV.Key)), TEXT("enclosure"));
+		if (E.Num() != 4) continue;
+		const int32 X0 = int32(E[0]->AsNumber()), Y0 = int32(E[1]->AsNumber()), X1 = int32(E[2]->AsNumber()), Y1 = int32(E[3]->AsNumber());
+		// A cutaway with nothing to cut: only its footprint (far below ground, so it never hides anything) and its gate.
+		FTSCutaway& C = Cutaways.AddDefaulted_GetRef();
+		C.Bounds = FBox(FVector(X0 * Tile, Y0 * Tile, -5000.f), FVector((X1 + 1) * Tile, (Y1 + 1) * Tile, -4990.f));
+		for (const auto& G : GateParts)
+			if (G.Key.X >= X0 && G.Key.X <= X1 && G.Key.Y >= Y0 && G.Key.Y <= Y1) C.Full.Append(G.Value);
+		Enclosures.Add(FString(*KV.Key), Cutaways.Num() - 1);
+	}
+}
+
+void ARPGWorldBuilder::OpenLock(int32 Cutaway)
+{
+	SetCutawayOpen(Cutaway, true);
+	// An enclosure's gate: gone (a house keeps its look; it just lets you in).
+	for (const auto& KV : Enclosures)
+		if (KV.Value == Cutaway && Cutaways.IsValidIndex(Cutaway))
+			for (UStaticMeshComponent* M : Cutaways[Cutaway].Full) if (M) M->SetVisibility(false);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -470,16 +501,30 @@ void ARPGWorldBuilder::BuildHouses(const UTSData& D)
 				AddBox(FVector(WX, A.Y - 8.f, FootTop + 165.f), FVector(70.f, 10.f, 70.f), Glass, false);
 			}
 
-			// The cut-away version: a plank floor inside walls cut off at knee height.
+			// The cut-away version: a plank floor inside walls cut off at knee height, a gap where the door is, and a bed
+			// (they only collide once the house is opened: ATSWorldBuilder::SetCutawayOpen).
 			Collect = &House.Cut;
-			const float CutH = 80.f, Thick = 26.f;
+			const float CutH = 80.f, Thick = 26.f, Gap = 150.f;
 			AddBox(FVector(Ctr, FootTop + 2.f), FVector(Size.X - Thick, Size.Y - Thick, 4.f), DoorMat, false);
 			AddBox(FVector(Ctr.X, A.Y + Thick * 0.5f, FootTop + CutH * 0.5f), FVector(Size.X, Thick, CutH), Plaster, false);
-			AddBox(FVector(Ctr.X, B.Y - Thick * 0.5f, FootTop + CutH * 0.5f), FVector(Size.X, Thick, CutH), Plaster, false);
+			const float Half = (Size.X - Gap) * 0.5f;
+			AddBox(FVector(A.X + Half * 0.5f, B.Y - Thick * 0.5f, FootTop + CutH * 0.5f), FVector(Half, Thick, CutH), Plaster, false);
+			AddBox(FVector(B.X - Half * 0.5f, B.Y - Thick * 0.5f, FootTop + CutH * 0.5f), FVector(Half, Thick, CutH), Plaster, false);
 			AddBox(FVector(A.X + Thick * 0.5f, Ctr.Y, FootTop + CutH * 0.5f), FVector(Thick, Size.Y, CutH), Plaster, false);
 			AddBox(FVector(B.X - Thick * 0.5f, Ctr.Y, FootTop + CutH * 0.5f), FVector(Thick, Size.Y, CutH), Plaster, false);
+			// The bed: along the back wall, head to the west (whoever sleeps in it lies across the screen).
+			const FVector2D BedAt(A.X + Thick + 150.f, A.Y + Thick + 85.f);
+			const float BedTop = FootTop + 42.f;
+			AddBox(FVector(BedAt, FootTop + 20.f), FVector(260.f, 130.f, 40.f), Timber, false);
+			AddBox(FVector(BedAt + FVector2D(20.f, 0.f), BedTop - 4.f), FVector(210.f, 118.f, 12.f), TSAssets::Color(this, FLinearColor(0.42f, 0.12f, 0.1f)), false);
+			AddBox(FVector(BedAt - FVector2D(100.f, 0.f), BedTop - 2.f), FVector(50.f, 100.f, 16.f), TSAssets::Color(this, FLinearColor(0.85f, 0.82f, 0.74f)), false);
 			Collect = nullptr;
 			for (UStaticMeshComponent* C : House.Cut) C->SetVisibility(false);
+			FHouse& Home = Houses.AddDefaulted_GetRef();
+			Home.Cutaway = Cutaways.Num() - 1;
+			Home.Bed = FVector(BedAt, BedTop);
+			Home.BedYaw = 90.f;
+			Home.Door = FVector(Ctr.X, B.Y + 120.f, GroundZ(Ctr.X, B.Y + 120.f));
 			House.Bounds = FBox(FVector(A.X - 70.f, A.Y - 70.f, Ground), FVector(B.X + 70.f, B.Y + 70.f, WallTop + Diag * 0.5f + 80.f));
 		}
 	}
@@ -694,39 +739,58 @@ void ARPGWorldBuilder::AddFire(const FVector& Location, float Scale, float Light
 	ATSSky::AddNightLight(Location.X, Location.Y, L->AttenuationRadius);   // a fire keeps the dark back
 }
 
+const ARPGWorldBuilder::FHouse* ARPGWorldBuilder::HouseAt(const FVector& Point) const
+{
+	const int32 I = CutawayAt(Point);
+	for (const FHouse& H : Houses) if (H.Cutaway == I && I != INDEX_NONE) return &H;
+	return nullptr;
+}
+
+void ARPGWorldBuilder::AddCampfire(const FVector2D& Where)
+{
+	FVector At(Where, GroundZ(Where.X, Where.Y));
+	UStaticMesh* Rock = RPGAssets::StarterProp(TEXT("SM_Rock"));
+	for (int32 I = 0; I < 8; ++I)
+	{
+		const float A = I * UE_TWO_PI / 8.f;
+		AddMesh(Rock, nullptr, FTransform(FRotator(0, I * 47.f, 0), At + FVector(FMath::Cos(A) * 55.f, FMath::Sin(A) * 55.f, -6.f), FVector(0.16f)), false);
+	}
+	UMaterialInterface* Log = RPGAssets::StarterMat(TEXT("M_Wood_Walnut"));
+	AddMesh(TSAssets::Shape(TEXT("Cylinder")), Log, FTransform(FRotator(90, 30, 0), At + FVector(0, 0, 10), FVector(0.16f, 0.16f, 0.8f)), false);
+	AddMesh(TSAssets::Shape(TEXT("Cylinder")), Log, FTransform(FRotator(90, -40, 0), At + FVector(0, 0, 14), FVector(0.16f, 0.16f, 0.8f)), false);
+	AddFire(At + FVector(0, 0, 8), 0.6f, 90.f);
+
+	if (USoundBase* Crackle = TSAssets::Load<USoundBase>(TEXT("/Game/StarterContent/Audio/Fire01_Cue.Fire01_Cue")))
+	{
+		UAudioComponent* A = NewObject<UAudioComponent>(this);
+		A->SetSound(Crackle);
+		A->SetupAttachment(RootComponent);
+		A->SetWorldLocation(At);
+		A->bOverrideAttenuation = true;
+		A->AttenuationOverrides.bAttenuate = true;
+		A->AttenuationOverrides.FalloffDistance = 1500.f;
+		A->SetVolumeMultiplier(0.6f);
+		A->RegisterComponent();
+		A->Play();
+	}
+}
+
 void ARPGWorldBuilder::BuildProps(const UTSData& D)
 {
 	// Campfire beside the elder.
 	for (const FTSSpawn& S : D.Spawns)
-	{
-		if (S.Kind != TEXT("npc") || S.Id != TEXT("elder")) continue;
-		FVector At = D.TileCenter(S.X, S.Y) + FVector(Tile * 1.1f, Tile * 0.9f, 0);
-		At.Z = GroundZ(At.X, At.Y);
-		UStaticMesh* Rock = RPGAssets::StarterProp(TEXT("SM_Rock"));
-		for (int32 I = 0; I < 8; ++I)
+		if (S.Kind == TEXT("npc") && S.Id == TEXT("elder"))
 		{
-			const float A = I * UE_TWO_PI / 8.f;
-			AddMesh(Rock, nullptr, FTransform(FRotator(0, I * 47.f, 0), At + FVector(FMath::Cos(A) * 55.f, FMath::Sin(A) * 55.f, -6.f), FVector(0.16f)), false);
+			const FVector At = D.TileCenter(S.X, S.Y) + FVector(Tile * 1.1f, Tile * 0.9f, 0);
+			AddCampfire(FVector2D(At));
 		}
-		UMaterialInterface* Log = RPGAssets::StarterMat(TEXT("M_Wood_Walnut"));
-		AddMesh(TSAssets::Shape(TEXT("Cylinder")), Log, FTransform(FRotator(90, 30, 0), At + FVector(0, 0, 10), FVector(0.16f, 0.16f, 0.8f)), false);
-		AddMesh(TSAssets::Shape(TEXT("Cylinder")), Log, FTransform(FRotator(90, -40, 0), At + FVector(0, 0, 14), FVector(0.16f, 0.16f, 0.8f)), false);
-		AddFire(At + FVector(0, 0, 8), 0.6f, 90.f);
-
-		if (USoundBase* Crackle = TSAssets::Load<USoundBase>(TEXT("/Game/StarterContent/Audio/Fire01_Cue.Fire01_Cue")))
+	// Fires at the rest places that have one (restPlaces.<id>.fire: the bandits' camp).
+	if (const TSJson::FObj Rest = D.Section(TEXT("restPlaces")))
+		for (const auto& KV : Rest->Values)
 		{
-			UAudioComponent* A = NewObject<UAudioComponent>(this);
-			A->SetSound(Crackle);
-			A->SetupAttachment(RootComponent);
-			A->SetWorldLocation(At);
-			A->bOverrideAttenuation = true;
-			A->AttenuationOverrides.bAttenuate = true;
-			A->AttenuationOverrides.FalloffDistance = 1500.f;
-			A->SetVolumeMultiplier(0.6f);
-			A->RegisterComponent();
-			A->Play();
+			const TArray<TSharedPtr<FJsonValue>> F = TSJson::Arr(TSJson::Obj(Rest, FString(*KV.Key)), TEXT("fire"));
+			if (F.Num() == 2) AddCampfire(FVector2D(D.TileCenter(int32(F[0]->AsNumber()), int32(F[1]->AsNumber()))));
 		}
-	}
 
 	// Gentle outdoor ambience.
 	if (USoundBase* Birds = TSAssets::Load<USoundBase>(TEXT("/Game/StarterContent/Audio/Starter_Birds01.Starter_Birds01")))

@@ -64,12 +64,23 @@ public:
 	FTSDialogueView DialogueView();
 
 	// ---- things in the world (Tessera's interactables: graves, lost items...) ----
-	/** Spawn data "interactables" { id: { ...ATSInteractable fields, "at": [tileX, tileY], "showIf": cond } }. */
+	/** Spawn data "interactables" { id: { ...ATSInteractable fields, "at": [tileX, tileY], "showIf": cond } }, the rest
+	 *  places' props and gates (restPlaces) and every cottage's front door (houses.door). */
 	void SpawnInteractables();
+	/** The ground under a tile's centre. */
+	FVector GroundAt(int32 TileX, int32 TileY) const;
+	/** This game's world builder (houses, cutaways). */
+	class ARPGWorldBuilder* Builder() const;
+	/** A lock was used (a cottage door, the graveyard gate): in action mode (E) the Thief picks it, a moment's work
+	 *  standing at it, and it stays open; a plain click only tries it; anyone else finds it locked. */
+	void UseLock(class ATSInteractable* Lock, bool bByKey);
+	/** A lock (door, gate) at all, and one still shut. */
+	bool IsLock(const class ATSInteractable* It) const;
+	bool IsLocked(const class ATSInteractable* It) const;
 	/** Show / hide each by its "showIf" (re-checked whenever the story moves). */
 	void RefreshInteractables();
-	/** Open a thing's conversation, or (a door) go through it. */
-	void UseInteractable(class ATSInteractable* It);
+	/** Open a thing's conversation, or (a door) go through it; bByKey: used with E (a lock gets picked, not just tried). */
+	void UseInteractable(class ATSInteractable* It, bool bByKey = false);
 	/** Through a door: a short fade, and the hero comes out at the other side (two-way: that one leads back). */
 	void Travel(class ATSInteractable* Door);
 	/** 0..1 black over the screen (doors). */
@@ -96,5 +107,8 @@ private:
 	void OnCharacterDied(ATSCharacter* Who, AActor* Killer);
 	void UpdateEncounters();
 	float EncounterCooldown = 0.f;
+	float RefreshIn = 0.f;
+	/** Locks (interactable ids) -> the cutaway they open (a house, an enclosure). */
+	TMap<FString, int32> Locks;
 	bool bDebug = false;
 };

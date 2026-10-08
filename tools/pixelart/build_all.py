@@ -111,6 +111,8 @@ def main():
         write_png(os.path.join(OUT, f"SPR_{name}.png"), ch.sheet(spec)); n += 1
         if spec.get("kind") != "slime":
             write_png(os.path.join(OUT, f"POR_{name}.png"), ch.portrait(spec)); n += 1   # dialogue portraits
+    for name in ch.SNEAK_SHEETS:   # the Thief crouched (the game swaps to it while sneaking)
+        write_png(os.path.join(OUT, f"SPR_{name}_sneak.png"), ch.sheet(dict(ch.SPECS[name], **ch.SNEAK_POSE))); n += 1
     for name, fn in env.TEXTURES.items():
         write_png(os.path.join(OUT, f"TX_{name}.png"), fn()); n += 1
     write_png(os.path.join(OUT, "PR_Tree1.png"), env.tree(20)); n += 1
