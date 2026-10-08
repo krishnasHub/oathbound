@@ -109,6 +109,9 @@ private:
 	void PerformAttack();
 	void MoveToward(const FVector& Target, float SpeedMul);
 	bool CanSeePlayer(float Dist) const;
+	/** Idle: amble about its post (data "wander": px, or { day, night }). */
+	void Wander(float Dt);
+	double RoamRadius() const;
 	void FaceToward(const FVector& Target, float Dt, float Rate = 720.f);
 	void BuildTelegraph();
 	void Respawn();

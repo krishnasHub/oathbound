@@ -999,6 +999,7 @@ void ARPGSelfTest::RunStep()
 			const float From = FVector::Dist2D(Brute->GetActorLocation(), Mine);
 			Report(FString::Printf(TEXT("%s: after a rest in the mine he comes out of the cave with a sack of gold for the village (carrying %d, %.0fuu from the mine, heading to %s)"),
 				Brute->IsCarrying() && From > 200.f && R && R->CurrentTag() == TEXT("village") && !D.AreaAt(Brute->GetActorLocation()) ? TEXT("PASS") : TEXT("FAIL"), Brute->IsCarrying(), From, R ? *R->CurrentTag().ToString() : TEXT("-")));
+				Report(FString::Printf(TEXT("%s: Grot walks his rounds awake, not asleep on his feet (asleep %d)"), !UTSSleep::IsAsleep(Brute) ? TEXT("PASS") : TEXT("FAIL"), UTSSleep::IsAsleep(Brute)));
 			Place(Brute->GetActorLocation() + FVector(420, 380, 0), -120.f);   // beside him, not in front (the screenshot)
 			Step = 2; Next = T + 0.4f;
 		}
@@ -1387,6 +1388,18 @@ void ARPGSelfTest::RunStep()
 			Report(FString::Printf(TEXT("%s: at night (%.1fh, phase %d) the skeletons are up (%d asleep, archer outside: %s) and the brute too (%s)"),
 				SkAsleep == 0 && Sk && !Indoors(Sk) && Brute && !Asleep(Brute) ? TEXT("PASS") : TEXT("FAIL"), ATSSky::Hour(), int32(UTSDayNight::Get(this)->Phase()),
 				SkAsleep, Sk && !Indoors(Sk) ? TEXT("yes") : TEXT("no"), Brute && Asleep(Brute) ? TEXT("asleep") : TEXT("awake")));
+			{
+				// Up and out by walking, not by popping: most have left the bone-hole and are on their way home.
+				int32 Away = 0, Total = 0;
+				for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It)
+					if (const UTSSleep* Z = UTSSleep::Of(*It); Z && Z->bHasEntry && TSJson::Str(It->Def, TEXT("rest")) == TEXT("graveyard"))
+					{
+						++Total;
+						if (FVector::Dist2D(It->GetActorLocation(), Z->Entry) > 400.f) ++Away;
+					}
+				Report(FString::Printf(TEXT("%s: at night the skeletons dig out one by one and walk off toward their posts (%d / %d away from the bone-hole)"),
+					Total > 0 && Away * 3 >= Total * 2 ? TEXT("PASS") : TEXT("FAIL"), Away, Total));
+			}
 			Report(FString::Printf(TEXT("%s: the camp sleeps on its bedrolls (%d / %d) while Wren keeps watch (%s)"),
 				CampTotal > 0 && CampAsleep == CampTotal && Wren && !Asleep(Wren) ? TEXT("PASS") : TEXT("FAIL"), CampAsleep, CampTotal, Wren && !Asleep(Wren) ? TEXT("awake") : TEXT("asleep")));
 			Report(FString::Printf(TEXT("%s: Elder Maren has gone in to bed (asleep %s, indoors %s)"),
@@ -1845,6 +1858,118 @@ void ARPGSelfTest::RunStep()
 			Shot(TEXT("crouch_standing"));
 			FLinearColor Tint;
 			Report(FString::Printf(TEXT("%s: the shadow cloak is a status tint for Sneaking"), ATSCharacter::TintForTag(Pl, TEXT("Sneaking"), Tint) ? TEXT("PASS") : TEXT("FAIL")));
+			Quit(0.5f);
+		}
+	}
+	else if (Scenario == TEXT("burrow"))
+	{
+		// The skeletons dig in and out of the graveyard by the bone-hole under its west wall; the Scholar learns the way
+		// from Aldric once his grave is marked, goes in, reads the Bonewardens' headstones, and comes back out.
+		ULMStory* L = S->Story();
+		ARPGWorldBuilder* B = S->Builder();
+		ATSInteractable* Hole = ATSInteractable::Find(GetWorld(), TEXT("graveyard_burrow"));
+		ATSInteractable* HoleIn = ATSInteractable::Find(GetWorld(), TEXT("graveyard_burrow_in"));
+		const int32* Yard = B ? B->Enclosures.Find(TEXT("graveyard")) : nullptr;
+		if (!Hole || !HoleIn || !Yard) { Report(TEXT("FAIL: no bone-hole or graveyard")); Quit(0.5f); return; }
+		auto Inside = [&]() { return B->CutawayAt(Pl->GetActorLocation()) == *Yard; };
+		if (Step == 0)
+		{
+			ARPGEnemy* Sk = Find(TEXT("archer"));
+			const UTSSleep* Z = Sk ? UTSSleep::Of(Sk) : nullptr;
+			Report(FString::Printf(TEXT("%s: the skeletons go in and out by the bone-hole, not the gate (%.0fuu apart)"),
+				Z && FVector::Dist2D(Z->Entry, Hole->GetActorLocation()) < 60.f ? TEXT("PASS") : TEXT("FAIL"), Z ? FVector::Dist2D(Z->Entry, Hole->GetActorLocation()) : -1.f));
+			Place(Hole->GetActorLocation() + FVector(-200, 0, 100), 0.f);
+			S->UseInteractable(Hole);
+			Step = 1; Next = T + 1.5f;
+		}
+		else if (Step == 1)
+		{
+			Report(FString::Printf(TEXT("%s: not knowing the secret, it's just loose earth (still outside: %d)"), !Inside() ? TEXT("PASS") : TEXT("FAIL"), !Inside()));
+			// Aldric's grave: marked; then, at night, he tells the Scholar the way in as he goes to rest.
+			L->SetFlag(TEXT("grave_marked"));
+			ATSSky::SetHour(23.f);
+			Step = 2; Next = T + 12.f;
+		}
+		else if (Step == 2)
+		{
+			ARPGEnemy* Watcher = Find(TEXT("skeleton_watcher"));
+			if (!Watcher) { Report(TEXT("FAIL: no Aldric")); Quit(0.5f); return; }
+			S->OpenDialogue(Watcher);
+			const int32 Done = L->FindChoice(TEXT("It's done"));
+			if (Done != INDEX_NONE) L->Choose(Done);
+			L->CloseDialogue();
+			Report(FString::Printf(TEXT("%s: laid to rest, Aldric whispers the way in (graveyard_secret %d)"), L->HasFlag(TEXT("graveyard_secret")) ? TEXT("PASS") : TEXT("FAIL"), L->HasFlag(TEXT("graveyard_secret"))));
+			Place(Hole->GetActorLocation() + FVector(-200, 0, 100), 0.f);
+			Step = 3; Next = T + 0.6f;
+		}
+		else if (Step == 3) { S->UseInteractable(Hole); Step = 4; Next = T + 1.5f; }
+		else if (Step == 4)
+		{
+			Report(FString::Printf(TEXT("%s: the Scholar slips in by the bone-hole (inside the graveyard: %d)"), Inside() ? TEXT("PASS") : TEXT("FAIL"), Inside()));
+			Shot(TEXT("burrow_inside"));
+			if (ATSInteractable* Stones = ATSInteractable::Find(GetWorld(), TEXT("bonewarden_stones")))
+			{
+				const int32 Xp0 = Pl->Xp, Lv0 = Pl->Level();
+				S->UseInteractable(Stones);
+				const int32 Read = L->FindChoice(TEXT("[Read the names"));
+				if (Read != INDEX_NONE) L->Choose(Read);
+				L->CloseDialogue();
+				const bool bGained = Pl->Level() > Lv0 || Pl->Xp > Xp0;   // (a level-up resets the counter)
+				Report(FString::Printf(TEXT("%s: the Bonewardens' headstones read, and the lore pays (xp %d -> %d, level %d -> %d)"),
+					L->HasFlag(TEXT("read_stones")) && bGained ? TEXT("PASS") : TEXT("FAIL"), Xp0, Pl->Xp, Lv0, Pl->Level()));
+			}
+			Step = 5; Next = T + 0.5f;
+		}
+		else if (Step == 5) { S->UseInteractable(HoleIn); Step = 6; Next = T + 1.5f; }
+		else if (Step == 6)
+		{
+			Report(FString::Printf(TEXT("%s: and back out the same way (outside: %d)"), !Inside() ? TEXT("PASS") : TEXT("FAIL"), !Inside()));
+			Quit(0.5f);
+		}
+	}
+	else if (Scenario == TEXT("shifts"))
+	{
+		// Who works when (run with -RPGHour=23): the troll lurks wide around the mine at night; Guard Brask (recruited)
+		// stands his post all night and sleeps by day; Grot the Miner sleeps at the mine at night and works by day.
+		ULMStory* L = S->Story();
+		auto Npc = [this](const FString& Id) -> ARPGNPC* { for (TActorIterator<ARPGNPC> It(GetWorld()); It; ++It) if (It->NpcId == Id) return *It; return nullptr; };
+		auto Indoors = [](const AActor* A) { const UTSSleep* Z = UTSSleep::Of(A); return Z && Z->IsIndoors(); };
+		ARPGEnemy* Brute = Find(TEXT("brute"));
+		if (!Brute) { Report(TEXT("FAIL: no brute")); Quit(0.5f); return; }
+		if (Step == 0) { Place(S->GroundAt(44, 3) + FVector(0, 0, 120), 180.f); MinDist = 0.f; Swings = 0; Step = 1; Next = T + 2.f; return; }
+		if (Step == 1)
+		{
+			// Watch the troll roam for a while (it lurks well away from its post at night).
+			MinDist = FMath::Max(MinDist, float(FVector::Dist2D(Brute->GetActorLocation(), Brute->Home)));
+			if (++Swings < 30) { Next = T + 0.5f; return; }
+			Report(FString::Printf(TEXT("%s: at night the troll lurks around the mine (up to %.0fpx from its post; awake %d)"),
+				MinDist > D.Px(110) && !UTSSleep::IsAsleep(Brute) ? TEXT("PASS") : TEXT("FAIL"), MinDist / D.Px(1), !UTSSleep::IsAsleep(Brute)));
+			// Brask recruited as the town guard, and the troll taught a trade (becoming Grot).
+			TArray<TSharedPtr<FJsonValue>> Acts;
+			const TSJson::FObj R = MakeShared<FJsonObject>(); R->SetStringField(TEXT("recruit"), TEXT("brask_guard"));
+			Acts.Add(MakeShared<FJsonValueObject>(R));
+			L->RunActions(Acts);
+			Brute->BecomeTrader();
+			Step = 2; Next = T + 8.f;
+		}
+		else if (Step == 2)
+		{
+			ARPGNPC* Guard = Npc(TEXT("brask_guard"));
+			Report(FString::Printf(TEXT("%s: at night Guard Brask is up at his post (asleep %d, indoors %d)"),
+				Guard && !UTSSleep::IsAsleep(Guard) && !Indoors(Guard) ? TEXT("PASS") : TEXT("FAIL"), Guard ? UTSSleep::IsAsleep(Guard) : -1, Guard ? Indoors(Guard) : -1));
+			Report(FString::Printf(TEXT("%s: at night Grot the Miner sleeps at the mine (asleep %d, carrying %d)"),
+				UTSSleep::IsAsleep(Brute) && !Brute->IsCarrying() ? TEXT("PASS") : TEXT("FAIL"), UTSSleep::IsAsleep(Brute), Brute->IsCarrying()));
+			ATSSky::SetHour(8.f);
+			Step = 3; Next = T + 22.f;
+		}
+		else if (Step == 3)
+		{
+			ARPGNPC* Guard = Npc(TEXT("brask_guard"));
+			Report(FString::Printf(TEXT("%s: by day Guard Brask sleeps in his cottage (asleep %d, indoors %d)"),
+				Guard && UTSSleep::IsAsleep(Guard) && Indoors(Guard) ? TEXT("PASS") : TEXT("FAIL"), Guard ? UTSSleep::IsAsleep(Guard) : -1, Guard ? Indoors(Guard) : -1));
+			const UTSRoutine* Rt = Brute->GetRoutine();
+			Report(FString::Printf(TEXT("%s: by day Grot is up and on his rounds (asleep %d, heading to %s)"),
+				!UTSSleep::IsAsleep(Brute) && Rt && Rt->CurrentTag() == TEXT("village") ? TEXT("PASS") : TEXT("FAIL"), UTSSleep::IsAsleep(Brute), Rt ? *Rt->CurrentTag().ToString() : TEXT("-")));
 			Quit(0.5f);
 		}
 	}

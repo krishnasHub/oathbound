@@ -411,6 +411,13 @@ dynamic story. So the reusable code is moving into two plugins, each its own rep
   drawn lighter for the Thief: dim grey, not black); the crouch is its own sprite sheet (`characters.py` crouch
   parameters `_crouch / _crouchFront / _wide / _lean / _reach`, `SNEAK_POSE`, SPR_<id>_sneak; standard sheets are
   pixel-identical) that `UTSSpriteComponent` swaps to while "Sneaking", plus a shadow tint (`statusTints`).
+- **The bone-hole** (third play): the graveyard's entry is a burrow under the west wall (`restPlaces.graveyard.entry`
+  [13, 27], the gate has its own `at`); `UTSSleep` staggers getting up (`staggerUp`) and steps out at a free spot
+  (TeleportTo), so a crowd never jams in one doorway; interactables can be conditional doors (`doorIf` + `bark`);
+  Loom action `xp`. Aldric's rest sets `graveyard_secret` (the Scholar's way in); `bonewarden_stones` inside.
+- **Shifts**: a trader sleeps only when his routine brings him to `trade.sleepAt` at bedtime (held otherwise);
+  `ARPGEnemy::Wander / RoamRadius` (`wander` px or { day, night }) also run for passive foes nobody's watching;
+  Guard Brask keeps day hours (`npcs.brask_guard.sleeps: day`).
 - **Routes**: Brask's toll purse -> `toll_bridge:robbed`, the Red Hands scatter; Ossric's badge -> the Bonewardens
   drift apart; archers' grave coins and the Ferryman's Coin (pays a toll-wanting skeleton); Maren / Tobin / Guard Brask
   robbed in their beds; the relic lifted from the sleeping brute, which then prowls the village at night.

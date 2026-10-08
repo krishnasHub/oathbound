@@ -170,8 +170,11 @@ void URPGSession::SpawnInteractables()
 					ATSInteractable::Spawn(GetWorld(), FString::Printf(TEXT("%s_%d"), *FString(*KV.Key), N++), Def, Spot);
 				}
 			const TArray<TSharedPtr<FJsonValue>> Entry = TSJson::Arr(R, TEXT("entry"));
-			if (const TSJson::FObj Gate = TSJson::Obj(R, TEXT("gate")); Gate && Entry.Num() == 2)
-				if (ATSInteractable* G = ATSInteractable::Spawn(GetWorld(), FString(*KV.Key) + TEXT("_gate"), Gate, GroundAt(int32(Entry[0]->AsNumber()), int32(Entry[1]->AsNumber()))))
+			// Its gate (at the gate's own "at", else the entry).
+			const TSJson::FObj Gate = TSJson::Obj(R, TEXT("gate"));
+			const TArray<TSharedPtr<FJsonValue>> GateAt = TSJson::Has(Gate, TEXT("at")) ? TSJson::Arr(Gate, TEXT("at")) : Entry;
+			if (Gate && GateAt.Num() == 2)
+				if (ATSInteractable* G = ATSInteractable::Spawn(GetWorld(), FString(*KV.Key) + TEXT("_gate"), Gate, GroundAt(int32(GateAt[0]->AsNumber()), int32(GateAt[1]->AsNumber()))))
 					if (const ARPGWorldBuilder* B = Builder(); B && B->Enclosures.Contains(FString(*KV.Key))) Locks.Add(G->Id, B->Enclosures[FString(*KV.Key)]);
 		}
 
@@ -253,6 +256,12 @@ void URPGSession::RefreshInteractables()
 void URPGSession::UseInteractable(ATSInteractable* It, bool bByKey)
 {
 	if (!It || !It->CanUse()) return;
+	// A secret way ("doorIf": a story condition): just loose earth to anyone who doesn't know it.
+	if (const TSharedPtr<FJsonValue> If = It->Def ? It->Def->TryGetField(TEXT("doorIf")) : nullptr; If && !Story()->CheckCond(If))
+	{
+		Feedback()->Float(It->Top(), TSJson::Str(It->Def, TEXT("bark"), TEXT("Nothing here.")), FLinearColor(0.85f, 0.82f, 0.72f), 1.f);
+		return;
+	}
 	if (!It->DoorTo.IsEmpty()) { Travel(It); return; }
 	if (IsLock(It)) { UseLock(It, bByKey); return; }
 	if (!It->UseAction.IsEmpty())
@@ -497,6 +506,7 @@ void URPGSession::Bind(ULMStory* L)
 		for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) if (It->FactionId() == F && !It->IsDead()) It->Leave();
 	});
 	// A band breaks up on its own (robbed blind, its captain shamed): they walk off, but nobody talked them down.
+	L->AddAction(TEXT("xp"), [this](const TSJson::FObj& A) { if (ARPGPlayerCharacter* P = Player()) P->GainXp(int32(TSJson::Num(A, TEXT("xp")))); });
 	L->AddAction(TEXT("scatter"), [this](const TSJson::FObj& A)
 	{
 		const FString F = TSJson::Str(A, TEXT("scatter"));

@@ -18,7 +18,8 @@ Pixel art for the world's mood and the Scholar's quests (TODO.md phases 2-5). Al
 
   Rest places (where foes sleep; TODO.md phase T0):
     PR_Haystack 64x44 (the cave brute's bed), PR_Bedroll 64x36 (lies flat: a bandit's bed by the camp fire),
-    PR_Gate 64x56 (the graveyard's iron gate between two stone posts)
+    PR_Gate 64x56 (the graveyard's iron gate between two stone posts),
+    PR_Burrow 64x40 (lies flat: the bone-hole the skeletons dig in and out by, under the graveyard wall)
 """
 import math
 
@@ -607,6 +608,28 @@ def pr_gate():
     return outline(a)
 
 
+def pr_burrow():
+    a = blank(64, 40)
+    r = rng(94)
+    earth, dark, rim = C("#6a4a30"), C("#2a1c14"), C("#8a6a48")
+    yy, xx = np.mgrid[0:40, 0:64]
+    pile = ellipse_mask(64, 40, 32, 20, 28, 15)
+    a[pile] = earth
+    for _ in range(90):                                            # clods of turned earth
+        y, x = int(r.integers(5, 36)), int(r.integers(5, 59))
+        if pile[y, x]:
+            a[y, x] = rim if r.random() < 0.5 else C("#5a3e28")
+    hole = ellipse_mask(64, 40, 32, 21, 13, 7)
+    a[hole] = dark
+    a[ellipse_mask(64, 40, 32, 19, 13, 3.5) & hole] = C("#140e0a")
+    bone = C("#e8e2d0")                                            # a bone poking out of the rim, and a finger
+    line(a, 44, 24, 54, 18, bone, 2)
+    disc(a, 54, 18, 2, bone); disc(a, 44, 24, 2, bone)
+    for k in range(3):
+        line(a, 20 + k * 2, 19, 19 + k * 2, 15, bone)
+    return outline(a)
+
+
 SHEETS = {
     "SPR_ChildA": spr_child_a, "SPR_ChildB": spr_child_b, "SPR_Grumpy": spr_grumpy, "SPR_Puppy": spr_puppy,
     "SPR_ButterflyA": spr_butterfly_a, "SPR_ButterflyB": spr_butterfly_b, "SPR_Wolf": spr_wolf, "SPR_Bat": spr_bat,
@@ -615,5 +638,5 @@ SHEETS = {
     "PR_Signet": pr_signet, "PR_Bread": pr_bread, "PR_Puddle": pr_puddle, "PR_WallCrack": pr_wall_crack, "PR_Moss": pr_moss,
     "PR_Vines": pr_vines, "PR_VinesCorner": pr_vines_corner, "PR_Sunray": pr_sunray,
     "PR_RoadCrack": pr_road_crack, "PR_RoadCrackB": pr_road_crack_b,
-    "PR_Haystack": pr_haystack, "PR_Bedroll": pr_bedroll, "PR_Gate": pr_gate,
+    "PR_Haystack": pr_haystack, "PR_Bedroll": pr_bedroll, "PR_Gate": pr_gate, "PR_Burrow": pr_burrow,
 }

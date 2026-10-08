@@ -13,6 +13,7 @@
 #include "RPGGhost.h"
 #include "TSRoutine.h"
 #include "TSSleep.h"
+#include "TSSky.h"
 #include "RPGTheft.h"
 #include "TSInteractable.h"
 #include "TSLook.h"
@@ -139,6 +140,14 @@ void ARPGEnemy::SetupSleep()
 	Sleep = UTSSleep::Add(this, Hours, Bed, bBed);
 	const TArray<TSharedPtr<FJsonValue>> Entry = TSJson::Arr(Rest, TEXT("entry"));
 	if (Entry.Num() == 2) Sleep->SetEntry(Session->GroundAt(int32(Entry[0]->AsNumber()), int32(Entry[1]->AsNumber())));
+	// Into the ground through its burrow (the graveyard's bone-hole), and out again: you hear it dig.
+	if (Entry.Num() == 2)
+	{
+		const FString Dig = TSJson::Str(Rest, TEXT("entryBark"));
+		auto Scrape = [this, Dig]() { if (!Dig.IsEmpty() && Sleep) UTSFeedback::Get(this)->Float(Sleep->Entry + FVector(0, 0, 90), Dig, FLinearColor(0.75f, 0.62f, 0.45f), 0.7f); };
+		Sleep->OnFellAsleep.AddWeakLambda(this, [Scrape](ATSCharacter*) { Scrape(); });
+		Sleep->OnWoke.AddWeakLambda(this, [this, Scrape](ATSCharacter*) { if (!Sleep->IsBedtime()) Scrape(); });
+	}
 	// Up at the end of its night: back to its post.
 	Sleep->OnWoke.AddWeakLambda(this, [this](ATSCharacter*)
 	{
@@ -310,8 +319,19 @@ void ARPGEnemy::Tick(float Dt)
 
 	if (bPacified)
 	{
-		// Won over: stands easy, or (a trader) walks its rounds.
-		if (Routine) { const FVector Dir = Routine->Direction(Dt); if (!Dir.IsNearlyZero()) AddMovementInput(Dir, 1.f); }
+		// Won over: stands easy, or (a trader) walks its rounds, and sleeps when they bring him home at bedtime.
+		if (Routine)
+		{
+			const FName SleepAt(TSJson::Str(TSJson::Obj(Def, TEXT("trade")), TEXT("sleepAt"), TEXT("mine")));
+			if (Sleep && Sleep->Hours != ETSSleepHours::Never)
+			{
+				if (Sleep->IsAsleep()) { PlaceSack(); return; }
+				if (Sleep->IsBedtime() && Routine->CurrentTag() == SleepAt && Routine->IsWaiting()) { bCarrying = false; Sleep->FallAsleep(false); PlaceSack(); return; }
+				Sleep->Hold();   // (on his rounds: never asleep on his feet)
+			}
+			const FVector Dir = Routine->Direction(Dt);
+			if (!Dir.IsNearlyZero()) AddMovementInput(Dir, 1.f);
+		}
 		PlaceSack();
 		return;
 	}
@@ -350,16 +370,21 @@ void ARPGEnemy::RunAI(float Dt)
 
 	if (IsPassive())
 	{
-		// Away from its post (up from its bed): walk back. Otherwise stand your ground and watch the player.
+		// Watch the hero once it has noticed them (not a crouched Thief creeping up behind); otherwise go about its
+		// business: back to its post if it strayed far (up from its bed), else roam round it like any idle foe.
 		State = ERPGEnemyState::Idle;
-		if (Sleep && FVector::Dist2D(Home, GetActorLocation()) > D.Px(30))
+		if (P && FVector::Dist2D(P->GetActorLocation(), GetActorLocation()) < D.Px(260) && (Session->DialogueNpc() == this || RPGTheft::Notices(this, P)))
+		{
+			FaceToward(P->GetActorLocation(), Dt, 360.f);
+			return;
+		}
+		if (Sleep && FVector::Dist2D(Home, GetActorLocation()) > D.Px(RoamRadius() + 60.0))
 		{
 			Move->bOrientRotationToMovement = true;
 			const FVector Dir = Sleep->DirectionTo(Home, Dt);
 			if (!Dir.IsNearlyZero()) { AddMovementInput(Dir, 0.8f); return; }
 		}
-		// Watch the hero, once it has noticed them (not a crouched Thief creeping up behind).
-		if (P && FVector::Dist2D(P->GetActorLocation(), GetActorLocation()) < D.Px(260) && (Session->DialogueNpc() == this || RPGTheft::Notices(this, P))) FaceToward(P->GetActorLocation(), Dt, 360.f);
+		Wander(Dt);
 		return;
 	}
 	if (!P) return;
@@ -379,15 +404,7 @@ void ARPGEnemy::RunAI(float Dt)
 			UTSFeedback::Get(Session)->Float(Head() + FVector(0, 0, 30), TEXT("!"), FLinearColor(1.f, 0.88f, 0.3f), 1.4f);
 			break;
 		}
-		T -= Dt;
-		if (!bHasWander || T <= 0.f)
-		{
-			T = FMath::FRandRange(1.5f, 4.f);
-			const float A = FMath::FRandRange(0.f, UE_TWO_PI), R = FMath::FRandRange(0.f, D.Px(60));
-			WanderTarget = Home + FVector(FMath::Cos(A) * R, FMath::Sin(A) * R, 0);
-			bHasWander = true;
-		}
-		if (FVector::Dist2D(WanderTarget, GetActorLocation()) > 15.f) MoveToward(WanderTarget, 0.35f);
+		Wander(Dt);
 		break;
 	}
 	case ERPGEnemyState::Chase:
@@ -450,11 +467,37 @@ void ARPGEnemy::RunAI(float Dt)
 		if (Sleep) { const FVector Dir = Sleep->DirectionTo(Home, Dt); AddMovementInput(Dir.IsNearlyZero() ? (Home - GetActorLocation()).GetSafeNormal2D() : Dir, 1.f); }   // round the graveyard wall
 		else MoveToward(Home, 1.f);
 		if (CanSeePlayer(Dist) && FVector::Dist2D(GetActorLocation(), Home) < D.Px(TSJson::Num(Def, TEXT("leash"), 360)) * 0.6f) { State = ERPGEnemyState::Chase; break; }
-		if (FVector::Dist2D(GetActorLocation(), Home) < 40.f || T <= 0.f) ResetToHome();
+		// Home, or lost for a long while: put back at its post, but never in front of the hero (no popping).
+		if (FVector::Dist2D(GetActorLocation(), Home) < 40.f) ResetToHome();
+		else if (T <= 0.f && (!P || (FVector::Dist2D(P->GetActorLocation(), GetActorLocation()) > 2500.f && FVector::Dist2D(P->GetActorLocation(), Home) > 2500.f))) ResetToHome();
+		else if (T <= 0.f) T = 5.f;
 		break;
 	}
 	default: break;
 	}
+}
+
+double ARPGEnemy::RoamRadius() const
+{
+	// How far it roams from its post (px): "wander", or { day, night } (a lair beast lurks wide at night).
+	const TSharedPtr<FJsonValue> W = Def->TryGetField(TEXT("wander"));
+	return !W ? 60.0 : W->Type == EJson::Object ? TSJson::Num(W->AsObject(), ATSSky::Night() >= 0.5f ? TEXT("night") : TEXT("day"), 60) : W->AsNumber();
+}
+
+void ARPGEnemy::Wander(float Dt)
+{
+	const UTSData& D = UTSData::Get(this);
+	T -= Dt;
+	if (!bHasWander || T <= 0.f)
+	{
+		T = FMath::FRandRange(1.5f, 4.f);
+		const double Roam = RoamRadius();
+		const float A = FMath::FRandRange(0.f, UE_TWO_PI), R = FMath::FRandRange(Roam > 100.0 ? D.Px(Roam * 0.4) : 0.f, D.Px(Roam));
+		WanderTarget = Home + FVector(FMath::Cos(A) * R, FMath::Sin(A) * R, 0);
+		bHasWander = true;
+	}
+	GetCharacterMovement()->bOrientRotationToMovement = true;
+	if (FVector::Dist2D(WanderTarget, GetActorLocation()) > 15.f) MoveToward(WanderTarget, 0.35f);
 }
 
 void ARPGEnemy::BeginWindup(const TSJson::FObj& Atk)
@@ -708,6 +751,13 @@ void ARPGEnemy::BecomeTrader()
 	const TSJson::FObj Trade = TSJson::Obj(Def, TEXT("trade"));
 	if (!Trade || Routine) return;
 	Pacify(TSJson::Obj(Trade, TEXT("become")));
+	// A working life now: he keeps village hours (trade.sleeps), sleeping at the stop tagged trade.sleepAt (his hay
+	// in the mine) once his rounds bring him there. (Not wherever bedtime finds him: that laid him down mid-walk.)
+	if (Sleep)
+	{
+		Sleep->Reset();
+		Sleep->Hours = UTSSleep::Parse(TSJson::Str(Trade, TEXT("sleeps"), TEXT("night")));
+	}
 	Routine = MakeRoutine(Trade, TEXT("Routine"));
 	// Gold from the mine to the village; on the way back, its pay (food). The sack shows while it carries gold.
 	const FName CarryTo(TSJson::Str(Trade, TEXT("carryTo"), TEXT("village")));

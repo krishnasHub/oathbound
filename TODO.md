@@ -101,6 +101,18 @@ noticed), sleep schedules (a perception state + day/night events). **Loom** = th
 - [x] Crouch look "B+" (the user's pick from tools/pixelart/out/crouch_options.png): a ninja-creep sheet
       (SPR_thief_*_sneak: deep, leaning crouch, dagger hand out low) swapped in while sneaking, and a shadow-cloak
       tint (`statusTints.Sneaking`). Test `crouch`.
+- [x] The graveyard's bone-hole: the skeletons dig in and out under the west wall ("*scritch... scratch*"), not
+      through the locked gate. Fixed: they used to all step out on one spot and jam, then pop home after 60 s
+      (sleepers now get up staggered over `tuning.sleep.staggerUp` s at a free spot nearby, and the lost-way
+      teleport only happens far from the hero). The Scholar learns the bone-hole from Aldric as he's laid to rest
+      (`graveyard_secret`), and can then slip in and out (a door with `doorIf`); inside, the Bonewardens'
+      headstones are lore and XP (`read_stones`). The Thief still picks the gate; Knight and Mage can't get in.
+      Test `burrow`; `sleep` now checks the skeletons walk home.
+- [x] Shifts: Grot the Miner sleeps at night on his hay in the mine and mines / trades by day (`trade.sleeps`,
+      `trade.sleepAt`; fixed: he used to be laid down mid-walk, "asleep" while carrying gold); the untaught troll
+      lurks wide round the mine at night (`wander` { day, night }); Guard Brask (recruited) stands his post all night
+      and sleeps by day in his cottage. Waiting creatures now amble round their posts when nobody's watching (they
+      used to stand frozen). Test `shifts`.
 
 ### Phase T6 — Proof runs
 - [x] `heist` (Thief, night): crouch, quiet steps, a lift from behind, caught mid-lift, Brask's purse (band
