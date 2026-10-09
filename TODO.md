@@ -117,6 +117,8 @@ noticed), sleep schedules (a perception state + day/night events). **Loom** = th
       someone's lifting their purse). Lifting from a walking mark: the Thief keeps step behind it (the Assassin's
       Creed / Thief tail; Tessera `UTSChannel::FollowActor`), breaking only if it sees him or he's shaken off.
       Test `linger` (a real, unfrozen Red Hand: robbed lingering, then another robbed on the move).
+- [x] Runaway critters (children, geese...) fade out at full size as they flee instead of shrinking (the user's call,
+      2026-10-08; Tessera `ATSAmbientLife::StartVanish` swaps to the see-through sprite material). Test `mood`.
 
 ### Phase T6 — Proof runs
 - [x] `heist` (Thief, night): crouch, quiet steps, a lift from behind, caught mid-lift, Brask's purse (band
