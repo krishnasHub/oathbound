@@ -74,6 +74,8 @@ public:
 	/** A lock was used (a cottage door, the graveyard gate): in action mode (E) the Thief picks it, a moment's work
 	 *  standing at it, and it stays open; a plain click only tries it; anyone else finds it locked. */
 	void UseLock(class ATSInteractable* Lock, bool bByKey);
+	/** A lock gives: its cutaway opens (an enclosure's gate is gone), and whoever sleeps behind it uses the way in. */
+	void OpenLock(int32 Cutaway);
 	/** A lock (door, gate) at all, and one still shut. */
 	bool IsLock(const class ATSInteractable* It) const;
 	bool IsLocked(const class ATSInteractable* It) const;

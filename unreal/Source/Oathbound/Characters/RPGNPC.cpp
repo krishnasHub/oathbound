@@ -39,7 +39,9 @@ void ARPGNPC::Init(const FString& InId)
 	const ARPGWorldBuilder::FHouse* House = B && HouseTile.Num() == 2
 		? B->HouseAt(UTSData::Get(this).TileCenter(int32(HouseTile[0]->AsNumber()), int32(HouseTile[1]->AsNumber()))) : nullptr;
 	if (Hours == ETSSleepHours::Never || !House) return;
-	Sleep = UTSSleep::Add(this, Hours, House->Bed, true);
+	// On the bed, not in it: the lying sprite goes a little above the mattress.
+	const float Lift = float(TSJson::Num(UTSData::Get(this).Section(TEXT("houses")), TEXT("sleeperLift"), 0));
+	Sleep = UTSSleep::Add(this, Hours, House->Bed + FVector(0, 0, Lift), true);
 	Sleep->SetEntry(House->Door);
 	Sleep->BedYaw = House->BedYaw;
 	Sleep->bHasBedYaw = true;

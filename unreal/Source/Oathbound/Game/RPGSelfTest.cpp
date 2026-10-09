@@ -1,4 +1,5 @@
 #include "RPGSelfTest.h"
+#include "TSCameraRig.h"
 #include "TSFeedback.h"
 #include "Oathbound.h"
 #include "TSData.h"
@@ -1486,7 +1487,7 @@ void ARPGSelfTest::RunStep()
 				Elder->CanBeTargeted(Pl) ? TEXT("yes") : TEXT("no")));
 			Shot(TEXT("sleep_inside"));
 			ATSSky::SetHour(7.5f);
-			Step = 9; Next = T + 4.f;
+			Step = 9; Next = T + 8.f;   // (sleepers get up staggered over tuning.sleep.staggerUp, 6 s)
 		}
 		else if (Step == 9)
 		{
@@ -1680,7 +1681,7 @@ void ARPGSelfTest::RunStep()
 			ARPGNPC* Elder = Npc(TEXT("elder"));
 			const ARPGWorldBuilder::FHouse* House = B->HouseAt(Elder->GetActorLocation());
 			Report(FString::Printf(TEXT("%s: Maren's door picked open"), B->IsCutawayOpen(House->Cutaway) ? TEXT("PASS") : TEXT("FAIL")));
-			Pl->Control->TestClick(House->Bed + FVector(140.f, 60.f, -40.f));
+			Pl->Control->TestClick(House->Bed + FVector(20.f, 130.f, -40.f));   // beside the bed (the pillow end is east)
 			Step = 9; Next = T + 3.5f;
 		}
 		else if (Step == 9)
@@ -1819,8 +1820,52 @@ void ARPGSelfTest::RunStep()
 		else if (Step == 4)
 		{
 			Report(FString::Printf(TEXT("%s: at level %d the same gate gives"), !S->IsLocked(Gate) ? TEXT("PASS") : TEXT("FAIL"), Pl->Level()));
+			// The gate open: from now on the skeletons come and go through it, not the bone-hole.
+			int32 Total = 0, ByHole = 0;
+			for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It)
+				if (const UTSSleep* Z = UTSSleep::Of(*It); Z && TSJson::Str(It->Def, TEXT("rest")) == TEXT("graveyard")) { ++Total; ByHole += Z->bHasEntry ? 1 : 0; }
+			Report(FString::Printf(TEXT("%s: the gate picked, no skeleton digs by the bone-hole any more (%d / %d still would)"), Total > 0 && ByHole == 0 ? TEXT("PASS") : TEXT("FAIL"), ByHole, Total));
+			Place(Pl->SpawnPoint, 0.f);   // off home, out of their way
+			ATSSky::SetHour(23.f);        // they get up and go out to their posts...
+			Step = 5; Next = T + 12.f;
+		}
+		else if (Step == 5) { ATSSky::SetHour(9.f); Step = 6; Next = T + 25.f; }   // ...and come back at their bedtime
+		else if (Step == 6)
+		{
+			const ARPGWorldBuilder* B = S->Builder();
+			const int32* Yard = B ? B->Enclosures.Find(TEXT("graveyard")) : nullptr;
+			int32 Total = 0, InGraves = 0, Indoors = 0;
+			for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It)
+				if (const UTSSleep* Z = UTSSleep::Of(*It); Z && !It->IsDead() && TSJson::Str(It->Def, TEXT("rest")) == TEXT("graveyard"))
+				{
+					++Total;
+					Indoors += Z->IsIndoors() ? 1 : 0;
+					InGraves += Yard && Z->IsAsleep() && B->CutawayAt(It->GetActorLocation()) == *Yard && FVector::Dist2D(It->GetActorLocation(), Z->Bed) < 200.f ? 1 : 0;
+				}
+			Report(FString::Printf(TEXT("%s: by day they're back through the open gate, asleep on their graves in the open (%d / %d; behind a door: %d)"),
+				Total > 0 && Indoors == 0 && InGraves == Total ? TEXT("PASS") : TEXT("FAIL"), InGraves, Total, Indoors));
 			Quit(0.5f);
 		}
+	}
+	else if (Scenario == TEXT("beds"))
+	{
+		// Close-ups of everyone asleep, for the look (starts at night, so everyone is in bed, then shot at dusk): a villager in a cottage bed, a
+		// bandit on a bedroll; then by day a skeleton on its grave and the brute on its hay.
+		auto Npc = [this](const FString& Id) -> ARPGNPC* { for (TActorIterator<ARPGNPC> It(GetWorld()); It; ++It) if (It->NpcId == Id) return *It; return nullptr; };
+		auto Near = [this](const AActor* A, const FVector& Off) { if (A) Place(A->GetActorLocation() + Off, 0.f); };
+		if (Step == 0) { for (int32 I = 0; I < 30; ++I) Pl->Rig->Zoom(1.f); ATSSky::SetHour(19.6f); Step = 1; Next = T + 2.f; }   // dusk: still bedtime, light enough to see
+		else if (Step == 1) { Near(Npc(TEXT("elder")), FVector(0, 260, 0)); Step = 2; Next = T + 2.5f; }
+		else if (Step == 2) { Shot(TEXT("beds_house")); Near(Find(TEXT("bandit_captain")), FVector(0, 260, 0)); Step = 3; Next = T + 2.5f; }
+		else if (Step == 3) { Shot(TEXT("beds_camp")); ATSSky::SetHour(13.f); Step = 4; Next = T + 15.f; }
+		else if (Step == 4)
+		{
+			for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It)
+				if (UTSSleep::IsAsleep(*It) && TSJson::Str(It->Def, TEXT("rest")) == TEXT("graveyard")) { Near(*It, FVector(0, 260, 0)); break; }
+			Step = 5; Next = T + 2.5f;
+		}
+		else if (Step == 5) { Shot(TEXT("beds_grave")); Near(Find(TEXT("brute")), FVector(0, 300, 0)); Step = 6; Next = T + 2.5f; }
+		else if (Step == 6) { Shot(TEXT("beds_hay")); Step = 7; Next = T + 0.5f; }
+		else Quit(0.3f);
 	}
 	else if (Scenario == TEXT("nighteyes"))
 	{

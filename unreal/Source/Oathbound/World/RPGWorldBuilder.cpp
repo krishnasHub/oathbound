@@ -512,12 +512,12 @@ void ARPGWorldBuilder::BuildHouses(const UTSData& D)
 			AddBox(FVector(B.X - Half * 0.5f, B.Y - Thick * 0.5f, FootTop + CutH * 0.5f), FVector(Half, Thick, CutH), Plaster, false);
 			AddBox(FVector(A.X + Thick * 0.5f, Ctr.Y, FootTop + CutH * 0.5f), FVector(Thick, Size.Y, CutH), Plaster, false);
 			AddBox(FVector(B.X - Thick * 0.5f, Ctr.Y, FootTop + CutH * 0.5f), FVector(Thick, Size.Y, CutH), Plaster, false);
-			// The bed: along the back wall, head to the west (whoever sleeps in it lies across the screen).
+			// The bed: along the back wall, the pillow to the east (a lying sprite's head is at its east end).
 			const FVector2D BedAt(A.X + Thick + 150.f, A.Y + Thick + 85.f);
 			const float BedTop = FootTop + 42.f;
 			AddBox(FVector(BedAt, FootTop + 20.f), FVector(260.f, 130.f, 40.f), Timber, false);
-			AddBox(FVector(BedAt + FVector2D(20.f, 0.f), BedTop - 4.f), FVector(210.f, 118.f, 12.f), TSAssets::Color(this, FLinearColor(0.42f, 0.12f, 0.1f)), false);
-			AddBox(FVector(BedAt - FVector2D(100.f, 0.f), BedTop - 2.f), FVector(50.f, 100.f, 16.f), TSAssets::Color(this, FLinearColor(0.85f, 0.82f, 0.74f)), false);
+			AddBox(FVector(BedAt - FVector2D(20.f, 0.f), BedTop - 4.f), FVector(210.f, 118.f, 12.f), TSAssets::Color(this, FLinearColor(0.42f, 0.12f, 0.1f)), false);
+			AddBox(FVector(BedAt + FVector2D(100.f, 0.f), BedTop - 2.f), FVector(50.f, 100.f, 16.f), TSAssets::Color(this, FLinearColor(0.85f, 0.82f, 0.74f)), false);
 			Collect = nullptr;
 			for (UStaticMeshComponent* C : House.Cut) C->SetVisibility(false);
 			FHouse& Home = Houses.AddDefaulted_GetRef();

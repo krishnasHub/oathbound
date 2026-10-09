@@ -209,6 +209,12 @@ bool URPGSession::IsLocked(const ATSInteractable* It) const
 	return Index && B && !B->IsCutawayOpen(*Index);
 }
 
+void URPGSession::OpenLock(int32 Cutaway)
+{
+	if (ARPGWorldBuilder* Bld = Builder()) Bld->OpenLock(Cutaway);
+	for (TActorIterator<ARPGEnemy> It(GetWorld()); It; ++It) It->RefreshRestEntry();
+}
+
 void URPGSession::UseLock(ATSInteractable* Lock, bool bByKey)
 {
 	ARPGPlayerCharacter* P = Player();
@@ -230,7 +236,7 @@ void URPGSession::UseLock(ATSInteractable* Lock, bool bByKey)
 		[Weak, WP]() { return Weak.IsValid() && WP.IsValid() && FVector::Dist2D(Weak->GetActorLocation(), WP->GetActorLocation()) < 320.f + Weak->Radius; },
 		[this, Index, Weak, Houses]()
 		{
-			if (ARPGWorldBuilder* Bld = Builder()) Bld->OpenLock(Index);
+			OpenLock(Index);
 			if (Weak.IsValid()) Feedback()->Float(Weak->Top(), TSJson::Str(Houses, TEXT("pickedBark"), TEXT("Click.")), FLinearColor(0.25f, 0.76f, 0.56f), 1.f);
 			UE_LOG(LogRPG, Display, TEXT("Lock %d picked."), Index);
 		},

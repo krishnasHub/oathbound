@@ -119,6 +119,16 @@ noticed), sleep schedules (a perception state + day/night events). **Loom** = th
       Test `linger` (a real, unfrozen Red Hand: robbed lingering, then another robbed on the move).
 - [x] Runaway critters (children, geese...) fade out at full size as they flee instead of shrinking (the user's call,
       2026-10-08; Tessera `ATSAmbientLife::StartVanish` swaps to the see-through sprite material). Test `mood`.
+- [x] A picked graveyard gate stays open, and from then on the skeletons come and go through it to their graves in the
+      open instead of digging by the bone-hole (`URPGSession::OpenLock` -> `ARPGEnemy::RefreshRestEntry`; Tessera
+      `UTSSleep::ClearEntry`). Sleepers stuck on the way to bed (a corner, a crowd at a gate) sidestep and retry; out of
+      the hero's sight they're simply in bed (`tuning.sleep.snapUnwatched` 2500 uu), watched they give up after
+      `giveUpAfter` 8 s. Test `lockpick` (the Thief picks it, then a night and a day pass).
+- [x] Villagers sleep on their beds, not in them: `houses.sleeperLift` (50 uu above the mattress), and the cottage
+      pillow moved to the east end, where a lying sprite's head is. Camp bedrolls and the brute's hay were already
+      right. Look test `beds` (close-ups of a cottage bed, the camp, a grave, the hay).
+- [x] Fixed a crash in look tests: entering an area with a frozen sun (`-RPGSun`) updated a moon that doesn't exist
+      (Tessera `ATSSky::SetIndoors`).
 
 ### Phase T6 — Proof runs
 - [x] `heist` (Thief, night): crouch, quiet steps, a lift from behind, caught mid-lift, Brask's purse (band
@@ -200,6 +210,16 @@ code that listens to Loom / Tessera events. Event-driven: the plugins announce, 
 - Puddles on the road replaced by road cracks (the user's call).
 - Spawn letters are case-insensitive in Unreal (`b` vs `B` swapped the brute for a skeleton); noted in the map legend.
 - Tests run at most 4 at a time (tessera.json maxParallel).
+
+## Next: ideas from the user (2026-10-09)
+
+1. **Brask robbed by day vs by night.** Today the toll purse makes the Red Hands leave at once. By day: still at once.
+   At night (they're asleep): they wake, find their leader robbed, raise the alarm and look around, then all leave.
+2. **A non-violent way past the skeletons for the Thief.** The Scholar talks them to rest; the Thief needs his own
+   route (theft and trickery, not killing them all). Pitch options first.
+3. **NPCs living their own lives.** NPCs talk to each other and do things together, not only with the hero: a
+   self-sustaining world that feels real and never blocks the player's goals. Likely generic (Tessera / Loom) with
+   this game's lines and routines in data. Pitch a design first.
 
 ## Later / open threads
 See `SO_FAR.md` §8 (fog of war, saves, music, Scholar and Knight polish, traits...).

@@ -5,6 +5,7 @@
 #include "RPGAssets.h"
 #include "TSCombat.h"
 #include "RPGSession.h"
+#include "RPGWorldBuilder.h"
 #include "LMStory.h"
 #include "RPGPlayerCharacter.h"
 #include "TSProjectile.h"
@@ -138,13 +139,12 @@ void ARPGEnemy::SetupSleep()
 		if (!bTaken && Dist < Best) { Best = Dist; Bed = At; bBed = true; }
 	}
 	Sleep = UTSSleep::Add(this, Hours, Bed, bBed);
-	const TArray<TSharedPtr<FJsonValue>> Entry = TSJson::Arr(Rest, TEXT("entry"));
-	if (Entry.Num() == 2) Sleep->SetEntry(Session->GroundAt(int32(Entry[0]->AsNumber()), int32(Entry[1]->AsNumber())));
-	// Into the ground through its burrow (the graveyard's bone-hole), and out again: you hear it dig.
-	if (Entry.Num() == 2)
+	RefreshRestEntry();
+	// Into the ground through its burrow (the graveyard's bone-hole), and out again: you hear it dig (not once the gate is open).
+	if (TSJson::Arr(Rest, TEXT("entry")).Num() == 2)
 	{
 		const FString Dig = TSJson::Str(Rest, TEXT("entryBark"));
-		auto Scrape = [this, Dig]() { if (!Dig.IsEmpty() && Sleep) UTSFeedback::Get(this)->Float(Sleep->Entry + FVector(0, 0, 90), Dig, FLinearColor(0.75f, 0.62f, 0.45f), 0.7f); };
+		auto Scrape = [this, Dig]() { if (!Dig.IsEmpty() && Sleep && Sleep->bHasEntry) UTSFeedback::Get(this)->Float(Sleep->Entry + FVector(0, 0, 90), Dig, FLinearColor(0.75f, 0.62f, 0.45f), 0.7f); };
 		Sleep->OnFellAsleep.AddWeakLambda(this, [Scrape](ATSCharacter*) { Scrape(); });
 		Sleep->OnWoke.AddWeakLambda(this, [this, Scrape](ATSCharacter*) { if (!Sleep->IsBedtime()) Scrape(); });
 	}
@@ -155,6 +155,19 @@ void ARPGEnemy::SetupSleep()
 		State = ERPGEnemyState::Return;
 		T = 60.f;
 	});
+}
+
+void ARPGEnemy::RefreshRestEntry()
+{
+	if (!Sleep) return;
+	URPGSession* Session = URPGSession::Get(this);
+	const FString RestId = TSJson::Str(Def, TEXT("rest"));
+	// Its gate picked and left open: in and out through it like anyone, to a bed in the open.
+	const ARPGWorldBuilder* B = Session->Builder();
+	const int32* Yard = B ? B->Enclosures.Find(RestId) : nullptr;
+	if (Yard && B->IsCutawayOpen(*Yard)) { Sleep->ClearEntry(); return; }
+	const TArray<TSharedPtr<FJsonValue>> Entry = TSJson::Arr(TSJson::Obj(UTSData::Get(this).Section(TEXT("restPlaces")), RestId), TEXT("entry"));
+	if (Entry.Num() == 2) Sleep->SetEntry(Session->GroundAt(int32(Entry[0]->AsNumber()), int32(Entry[1]->AsNumber())));
 }
 
 bool ARPGEnemy::TickSleep(float Dt)

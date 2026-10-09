@@ -139,6 +139,10 @@ private:
 	/** Prowling after its stolen relic: true when that took the tick. */
 	bool TickProwl(float Dt);
 	void SetupSleep();
+public:
+	/** Its way into its rest place: through the gate if it has been opened, else its own (the bone-hole). */
+	void RefreshRestEntry();
+private:
 	/** Asleep, or walking to bed: true when that took the tick (skip the AI). */
 	bool TickSleep(float Dt);
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> Sack;
